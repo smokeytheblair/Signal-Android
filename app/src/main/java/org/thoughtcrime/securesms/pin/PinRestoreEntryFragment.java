@@ -110,8 +110,8 @@ public class PinRestoreEntryFragment extends LoggingFragment {
   private void initViewModel() {
     viewModel = ViewModelProviders.of(this).get(PinRestoreViewModel.class);
 
-    viewModel.getTriesRemaining().observe(this, this::presentTriesRemaining);
-    viewModel.getEvent().observe(this, this::presentEvent);
+    viewModel.getTriesRemaining().observe(getViewLifecycleOwner(), this::presentTriesRemaining);
+    viewModel.getEvent().observe(getViewLifecycleOwner(), this::presentEvent);
   }
 
   private void presentTriesRemaining(PinRestoreViewModel.TriesRemaining triesRemaining) {
@@ -198,7 +198,7 @@ public class PinRestoreEntryFragment extends LoggingFragment {
                    }))
                    .setNeutralButton(R.string.PinRestoreEntryFragment_contact_support, (dialog, which) -> {
                      String body = SupportEmailUtil.generateSupportEmailBody(requireContext(),
-                                                                             getString(R.string.PinRestoreEntryFragment_signal_registration_need_help_with_pin),
+                                                                             R.string.PinRestoreEntryFragment_signal_registration_need_help_with_pin,
                                                                              null,
                                                                              null);
                      CommunicationActions.openEmail(requireContext(),

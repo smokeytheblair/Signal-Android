@@ -5,10 +5,10 @@ import android.os.ResultReceiver;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
 import org.signal.ringrtc.CallException;
 import org.signal.ringrtc.CallId;
-import org.signal.ringrtc.IceCandidate;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.events.CallParticipant;
 import org.thoughtcrime.securesms.events.WebRtcViewModel;
@@ -16,7 +16,6 @@ import org.thoughtcrime.securesms.ringrtc.CallState;
 import org.thoughtcrime.securesms.ringrtc.IceCandidateParcel;
 import org.thoughtcrime.securesms.ringrtc.RemotePeer;
 import org.thoughtcrime.securesms.service.webrtc.state.WebRtcServiceState;
-import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.webrtc.audio.OutgoingRinger;
 import org.whispersystems.signalservice.api.messages.calls.IceUpdateMessage;
 import org.whispersystems.signalservice.api.messages.calls.SignalServiceCallMessage;
@@ -85,27 +84,6 @@ public class ActiveCallActionProcessorDelegate extends WebRtcActionProcessor {
     SignalServiceCallMessage callMessage         = SignalServiceCallMessage.forIceUpdates(iceUpdateMessages, true, destinationDeviceId);
 
     webRtcInteractor.sendCallMessage(callMetadata.getRemotePeer(), callMessage);
-
-    return currentState;
-  }
-
-  @Override
-  protected @NonNull WebRtcServiceState handleReceivedIceCandidates(@NonNull WebRtcServiceState currentState,
-                                                                    @NonNull WebRtcData.CallMetadata callMetadata,
-                                                                    @NonNull ArrayList<IceCandidateParcel> iceCandidateParcels)
-  {
-    Log.i(tag, "handleReceivedIceCandidates(): id: " + callMetadata.getCallId().format(callMetadata.getRemoteDevice()) + ", count: " + iceCandidateParcels.size());
-
-    LinkedList<IceCandidate> iceCandidates = new LinkedList<>();
-    for (IceCandidateParcel parcel : iceCandidateParcels) {
-      iceCandidates.add(parcel.getIceCandidate());
-    }
-
-    try {
-      webRtcInteractor.getCallManager().receivedIceCandidates(callMetadata.getCallId(), callMetadata.getRemoteDevice(), iceCandidates);
-    } catch (CallException e) {
-      return callFailure(currentState, "receivedIceCandidates() failed: ", e);
-    }
 
     return currentState;
   }
@@ -218,7 +196,7 @@ public class ActiveCallActionProcessorDelegate extends WebRtcActionProcessor {
 
       OutgoingRinger ringer = new OutgoingRinger(context);
       ringer.start(OutgoingRinger.Type.BUSY);
-      Util.runOnMainDelayed(ringer::stop, BUSY_TONE_LENGTH);
+      ThreadUtil.runOnMainDelayed(ringer::stop, BUSY_TONE_LENGTH);
     } else if (action.equals(ACTION_ENDED_REMOTE_GLARE) && incomingBeforeAccept) {
       webRtcInteractor.insertMissedCall(remotePeer, true, remotePeer.getCallStartTimestamp(), currentState.getCallSetupState().isRemoteVideoOffer());
     }

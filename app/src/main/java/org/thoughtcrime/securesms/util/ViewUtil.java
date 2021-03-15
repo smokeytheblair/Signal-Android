@@ -19,6 +19,7 @@ package org.thoughtcrime.securesms.util;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -30,6 +31,7 @@ import android.view.ViewTreeObserver;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.annotation.IdRes;
@@ -49,6 +51,20 @@ import org.thoughtcrime.securesms.util.views.Stub;
 public final class ViewUtil {
 
   private ViewUtil() {
+  }
+
+  public static void focusAndMoveCursorToEndAndOpenKeyboard(@NonNull EditText input) {
+    input.requestFocus();
+
+    int numberLength = input.getText().length();
+    input.setSelection(numberLength, numberLength);
+
+    InputMethodManager imm = (InputMethodManager) input.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+    imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+
+    if (!imm.isAcceptingText()) {
+      imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, InputMethodManager.HIDE_IMPLICIT_ONLY);
+    }
   }
 
   public static void focusAndShowKeyboard(@NonNull View view) {
@@ -151,7 +167,7 @@ public final class ViewUtil {
 
   @SuppressLint("RtlHardcoded")
   public static void setTextViewGravityStart(final @NonNull TextView textView, @NonNull Context context) {
-    if (DynamicLanguage.getLayoutDirection(context) == View.LAYOUT_DIRECTION_RTL) {
+    if (isRtl(context)) {
       textView.setGravity(Gravity.RIGHT);
     } else {
       textView.setGravity(Gravity.LEFT);
@@ -159,9 +175,25 @@ public final class ViewUtil {
   }
 
   public static void mirrorIfRtl(View view, Context context) {
-    if (DynamicLanguage.getLayoutDirection(context) == View.LAYOUT_DIRECTION_RTL) {
+    if (isRtl(context)) {
       view.setScaleX(-1.0f);
     }
+  }
+
+  public static boolean isLtr(@NonNull View view) {
+    return isLtr(view.getContext());
+  }
+
+  public static boolean isLtr(@NonNull Context context) {
+    return context.getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_LTR;
+  }
+
+  public static boolean isRtl(@NonNull View view) {
+    return isRtl(view.getContext());
+  }
+
+  public static boolean isRtl(@NonNull Context context) {
+    return context.getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
   }
 
   public static float pxToDp(float px) {
@@ -197,21 +229,21 @@ public final class ViewUtil {
   }
 
   public static int getLeftMargin(@NonNull View view) {
-    if (ViewCompat.getLayoutDirection(view) == ViewCompat.LAYOUT_DIRECTION_LTR) {
+    if (isLtr(view)) {
       return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).leftMargin;
     }
     return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).rightMargin;
   }
 
   public static int getRightMargin(@NonNull View view) {
-    if (ViewCompat.getLayoutDirection(view) == ViewCompat.LAYOUT_DIRECTION_LTR) {
+    if (isLtr(view)) {
       return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).rightMargin;
     }
     return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).leftMargin;
   }
 
   public static void setLeftMargin(@NonNull View view, int margin) {
-    if (ViewCompat.getLayoutDirection(view) == ViewCompat.LAYOUT_DIRECTION_LTR) {
+    if (isLtr(view)) {
       ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).leftMargin = margin;
     } else {
       ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).rightMargin = margin;
@@ -221,7 +253,7 @@ public final class ViewUtil {
   }
 
   public static void setRightMargin(@NonNull View view, int margin) {
-    if (ViewCompat.getLayoutDirection(view) == ViewCompat.LAYOUT_DIRECTION_LTR) {
+    if (isLtr(view)) {
       ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).rightMargin = margin;
     } else {
       ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).leftMargin = margin;
@@ -232,6 +264,11 @@ public final class ViewUtil {
 
   public static void setTopMargin(@NonNull View view, int margin) {
     ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).topMargin = margin;
+    view.requestLayout();
+  }
+
+  public static void setBottomMargin(@NonNull View view, int margin) {
+    ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).bottomMargin = margin;
     view.requestLayout();
   }
 
@@ -248,7 +285,7 @@ public final class ViewUtil {
   }
 
   public static void setPaddingStart(@NonNull View view, int padding) {
-    if (view.getLayoutDirection() == View.LAYOUT_DIRECTION_LTR) {
+    if (isLtr(view)) {
       view.setPadding(padding, view.getPaddingTop(), view.getPaddingRight(), view.getPaddingBottom());
     } else {
       view.setPadding(view.getPaddingLeft(), view.getPaddingTop(), padding, view.getPaddingBottom());
@@ -256,10 +293,10 @@ public final class ViewUtil {
   }
 
   public static void setPaddingEnd(@NonNull View view, int padding) {
-    if (view.getLayoutDirection() != View.LAYOUT_DIRECTION_LTR) {
-      view.setPadding(padding, view.getPaddingTop(), view.getPaddingRight(), view.getPaddingBottom());
-    } else {
+    if (isLtr(view)) {
       view.setPadding(view.getPaddingLeft(), view.getPaddingTop(), padding, view.getPaddingBottom());
+    } else {
+      view.setPadding(padding, view.getPaddingTop(), view.getPaddingRight(), view.getPaddingBottom());
     }
   }
 

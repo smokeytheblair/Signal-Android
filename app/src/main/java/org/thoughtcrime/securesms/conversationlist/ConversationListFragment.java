@@ -56,7 +56,6 @@ import androidx.appcompat.widget.TooltipCompat;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.lifecycle.DefaultLifecycleObserver;
-import androidx.lifecycle.LifecycleObserver;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.ProcessLifecycleOwner;
 import androidx.lifecycle.ViewModelProviders;
@@ -72,6 +71,7 @@ import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
+import org.thoughtcrime.securesms.ApplicationPreferencesActivity;
 import org.thoughtcrime.securesms.MainFragment;
 import org.thoughtcrime.securesms.MainNavigator;
 import org.thoughtcrime.securesms.NewConversationActivity;
@@ -108,16 +108,19 @@ import org.thoughtcrime.securesms.megaphone.MegaphoneActionController;
 import org.thoughtcrime.securesms.megaphone.MegaphoneViewBuilder;
 import org.thoughtcrime.securesms.megaphone.Megaphones;
 import org.thoughtcrime.securesms.mms.GlideApp;
+import org.thoughtcrime.securesms.net.PipeConnectivityListener;
 import org.thoughtcrime.securesms.notifications.MarkReadReceiver;
 import org.thoughtcrime.securesms.permissions.Permissions;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.service.KeyCachingService;
 import org.thoughtcrime.securesms.sms.MessageSender;
 import org.thoughtcrime.securesms.storage.StorageSyncHelper;
+import org.thoughtcrime.securesms.util.AppForegroundObserver;
 import org.thoughtcrime.securesms.util.AppStartup;
 import org.thoughtcrime.securesms.util.AvatarUtil;
 import org.thoughtcrime.securesms.util.PlayStoreUtil;
 import org.thoughtcrime.securesms.util.ServiceUtil;
+import org.thoughtcrime.securesms.util.SignalProxyUtil;
 import org.thoughtcrime.securesms.util.SnapToTopDataObserver;
 import org.thoughtcrime.securesms.util.StickyHeaderDecoration;
 import org.thoughtcrime.securesms.util.Stopwatch;
@@ -161,6 +164,7 @@ public class ConversationListFragment extends MainFragment implements ActionMode
   private PulsingFloatingActionButton       fab;
   private PulsingFloatingActionButton       cameraFab;
   private Stub<SearchToolbar>               searchToolbar;
+  private ImageView                         proxyStatus;
   private ImageView                         searchAction;
   private View                              toolbarShadow;
   private ConversationListViewModel         viewModel;
@@ -171,7 +175,7 @@ public class ConversationListFragment extends MainFragment implements ActionMode
   private Stub<ViewGroup>                   megaphoneContainer;
   private SnapToTopDataObserver             snapToTopDataObserver;
   private Drawable                          archiveDrawable;
-  private LifecycleObserver                 visibilityLifecycleObserver;
+  private AppForegroundObserver.Listener    appForegroundObserver;
 
   private Stopwatch startupStopwatch;
 
@@ -199,6 +203,7 @@ public class ConversationListFragment extends MainFragment implements ActionMode
     searchEmptyState   = view.findViewById(R.id.search_no_results);
     searchAction       = view.findViewById(R.id.search_action);
     toolbarShadow      = view.findViewById(R.id.conversation_list_toolbar_shadow);
+    proxyStatus        = view.findViewById(R.id.conversation_list_proxy_status);
     reminderView       = new Stub<>(view.findViewById(R.id.reminder));
     emptyState         = new Stub<>(view.findViewById(R.id.empty_state));
     searchToolbar      = new Stub<>(view.findViewById(R.id.search_toolbar));
@@ -207,6 +212,8 @@ public class ConversationListFragment extends MainFragment implements ActionMode
     Toolbar toolbar = getToolbar(view);
     toolbar.setVisibility(View.VISIBLE);
     ((AppCompatActivity) requireActivity()).setSupportActionBar(toolbar);
+
+    proxyStatus.setOnClickListener(v -> onProxyStatusClicked());
 
     fab.show();
     cameraFab.show();
@@ -262,13 +269,15 @@ public class ConversationListFragment extends MainFragment implements ActionMode
     if (activeAdapter != null) {
       activeAdapter.notifyDataSetChanged();
     }
+
+    SignalProxyUtil.startListeningToWebsocket();
   }
 
   @Override
   public void onStart() {
     super.onStart();
     ConversationFragment.prepare(requireContext());
-    ProcessLifecycleOwner.get().getLifecycle().addObserver(visibilityLifecycleObserver);
+    ApplicationDependencies.getAppForegroundObserver().addListener(appForegroundObserver);
   }
 
   @Override
@@ -283,7 +292,7 @@ public class ConversationListFragment extends MainFragment implements ActionMode
   @Override
   public void onStop() {
     super.onStop();
-    ProcessLifecycleOwner.get().getLifecycle().removeObserver(visibilityLifecycleObserver);
+    ApplicationDependencies.getAppForegroundObserver().removeListener(appForegroundObserver);
   }
 
   @Override
@@ -481,7 +490,7 @@ public class ConversationListFragment extends MainFragment implements ActionMode
   private void initializeListAdapters() {
     defaultAdapter          = new ConversationListAdapter(GlideApp.with(this), this);
     searchAdapter           = new ConversationListSearchAdapter(GlideApp.with(this), this, Locale.getDefault());
-    searchAdapterDecoration = new StickyHeaderDecoration(searchAdapter, false, false);
+    searchAdapterDecoration = new StickyHeaderDecoration(searchAdapter, false, false, 0);
 
     setAdapter(defaultAdapter);
 
@@ -523,7 +532,7 @@ public class ConversationListFragment extends MainFragment implements ActionMode
   }
 
   private void initializeTypingObserver() {
-    ApplicationDependencies.getTypingStatusRepository().getTypingThreads().observe(this, threadIds -> {
+    ApplicationDependencies.getTypingStatusRepository().getTypingThreads().observe(getViewLifecycleOwner(), threadIds -> {
       if (threadIds == null) {
         threadIds = Collections.emptySet();
       }
@@ -543,12 +552,16 @@ public class ConversationListFragment extends MainFragment implements ActionMode
     viewModel.getMegaphone().observe(getViewLifecycleOwner(), this::onMegaphoneChanged);
     viewModel.getConversationList().observe(getViewLifecycleOwner(), this::onSubmitList);
     viewModel.hasNoConversations().observe(getViewLifecycleOwner(), this::updateEmptyState);
+    viewModel.getPipeState().observe(getViewLifecycleOwner(), this::updateProxyStatus);
 
-    visibilityLifecycleObserver = new DefaultLifecycleObserver() {
+    appForegroundObserver = new AppForegroundObserver.Listener() {
       @Override
-      public void onStart(@NonNull LifecycleOwner owner) {
+      public void onForeground() {
         viewModel.onVisible();
       }
+
+      @Override
+      public void onBackground() { }
     };
   }
 
@@ -856,6 +869,34 @@ public class ConversationListFragment extends MainFragment implements ActionMode
     }
   }
 
+  private void updateProxyStatus(@NonNull PipeConnectivityListener.State state) {
+    if (SignalStore.proxy().isProxyEnabled()) {
+      proxyStatus.setVisibility(View.VISIBLE);
+
+      switch (state) {
+        case CONNECTING:
+        case DISCONNECTED:
+          proxyStatus.setImageResource(R.drawable.ic_proxy_connecting_24);
+          break;
+        case CONNECTED:
+          proxyStatus.setImageResource(R.drawable.ic_proxy_connected_24);
+          break;
+        case FAILURE:
+          proxyStatus.setImageResource(R.drawable.ic_proxy_failed_24);
+          break;
+      }
+    } else {
+      proxyStatus.setVisibility(View.GONE);
+    }
+  }
+
+  private void onProxyStatusClicked() {
+    Intent intent = new Intent(requireContext(), ApplicationPreferencesActivity.class);
+    intent.putExtra(ApplicationPreferencesActivity.LAUNCH_TO_PROXY_FRAGMENT, true);
+
+    startActivity(intent);
+  }
+
   protected void onPostSubmitList(int conversationCount) {
     if (conversationCount >= 6 && (SignalStore.onboarding().shouldShowInviteFriends() || SignalStore.onboarding().shouldShowNewGroup())) {
       SignalStore.onboarding().clearAll();
@@ -1026,24 +1067,34 @@ public class ConversationListFragment extends MainFragment implements ActionMode
                                 Snackbar.LENGTH_LONG,
                                 false)
     {
+      private final ThreadDatabase threadDatabase= DatabaseFactory.getThreadDatabase(getActivity());
+
+      private List<Long> pinnedThreadIds;
+
       @Override
       protected void executeAction(@Nullable Long parameter) {
-        DatabaseFactory.getThreadDatabase(getActivity()).archiveConversation(threadId);
+        Context context = requireActivity();
+
+        pinnedThreadIds = threadDatabase.getPinnedThreadIds();
+        threadDatabase.archiveConversation(threadId);
 
         if (unreadCount > 0) {
-          List<MarkedMessageInfo> messageIds = DatabaseFactory.getThreadDatabase(getActivity()).setRead(threadId, false);
-          ApplicationDependencies.getMessageNotifier().updateNotification(getActivity());
-          MarkReadReceiver.process(getActivity(), messageIds);
+          List<MarkedMessageInfo> messageIds = threadDatabase.setRead(threadId, false);
+          ApplicationDependencies.getMessageNotifier().updateNotification(context);
+          MarkReadReceiver.process(context, messageIds);
         }
       }
 
       @Override
       protected void reverseAction(@Nullable Long parameter) {
-        DatabaseFactory.getThreadDatabase(getActivity()).unarchiveConversation(threadId);
+        Context context = requireActivity();
+
+        threadDatabase.unarchiveConversation(threadId);
+        threadDatabase.restorePins(pinnedThreadIds);
 
         if (unreadCount > 0) {
-          DatabaseFactory.getThreadDatabase(getActivity()).incrementUnread(threadId, unreadCount);
-          ApplicationDependencies.getMessageNotifier().updateNotification(getActivity());
+          threadDatabase.incrementUnread(threadId, unreadCount);
+          ApplicationDependencies.getMessageNotifier().updateNotification(context);
         }
       }
     }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, threadId);

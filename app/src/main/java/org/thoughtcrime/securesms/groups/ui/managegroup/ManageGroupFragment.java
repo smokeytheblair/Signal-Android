@@ -60,8 +60,10 @@ import org.thoughtcrime.securesms.util.AsynchronousCallback;
 import org.thoughtcrime.securesms.util.DateUtils;
 import org.thoughtcrime.securesms.util.FeatureFlags;
 import org.thoughtcrime.securesms.util.LifecycleCursorWrapper;
+import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.views.LearnMoreTextView;
 import org.thoughtcrime.securesms.util.views.SimpleProgressDialog;
+import org.thoughtcrime.securesms.wallpaper.ChatWallpaperActivity;
 
 import java.util.List;
 import java.util.Locale;
@@ -114,6 +116,7 @@ public class ManageGroupFragment extends LoggingFragment {
   private View                               toggleAllMembers;
   private View                               groupLinkRow;
   private TextView                           groupLinkButton;
+  private View                               wallpaperButton;
 
   private final Recipient.FallbackPhotoProvider fallbackPhotoProvider = new Recipient.FallbackPhotoProvider() {
     @Override
@@ -175,6 +178,7 @@ public class ManageGroupFragment extends LoggingFragment {
     toggleAllMembers            = view.findViewById(R.id.toggle_all_members);
     groupLinkRow                = view.findViewById(R.id.group_link_row);
     groupLinkButton             = view.findViewById(R.id.group_link_button);
+    wallpaperButton             = view.findViewById(R.id.chat_wallpaper);
 
     return view;
   }
@@ -240,6 +244,7 @@ public class ManageGroupFragment extends LoggingFragment {
       });
       customNotificationsRow.setOnClickListener(v -> CustomNotificationsDialogFragment.create(groupRecipient.getId())
                                                                                       .show(requireFragmentManager(), DIALOG_TAG));
+      wallpaperButton.setOnClickListener(v -> startActivity(ChatWallpaperActivity.createIntent(requireContext(), groupRecipient.getId())));
     });
 
     if (groupId.isV2()) {
@@ -257,8 +262,8 @@ public class ManageGroupFragment extends LoggingFragment {
       threadPhotoRailView.setListener(mediaRecord ->
           startActivityForResult(MediaPreviewActivity.intentFromMediaRecord(context,
                                                                             mediaRecord,
-                                                                            ViewCompat.getLayoutDirection(threadPhotoRailView) == ViewCompat.LAYOUT_DIRECTION_LTR),
-                                 RETURN_FROM_MEDIA));
+                                                                            ViewUtil.isLtr(threadPhotoRailView)),
+                                                                            RETURN_FROM_MEDIA));
 
       groupLinkCard.setVisibility(vs.getGroupRecipient().requireGroupId().isV2() ? View.VISIBLE : View.GONE);
     });
@@ -348,10 +353,8 @@ public class ManageGroupFragment extends LoggingFragment {
     viewModel.getMentionSetting().observe(getViewLifecycleOwner(), value -> mentionsValue.setText(value));
 
     viewModel.getCanLeaveGroup().observe(getViewLifecycleOwner(), canLeave -> leaveGroup.setVisibility(canLeave ? View.VISIBLE : View.GONE));
-    viewModel.getCanBlockGroup().observe(getViewLifecycleOwner(), canBlock -> {
-      blockGroup.setVisibility(canBlock ? View.VISIBLE : View.GONE);
-      unblockGroup.setVisibility(canBlock ? View.GONE : View.VISIBLE);
-    });
+    viewModel.getCanBlockGroup().observe(getViewLifecycleOwner(), canBlock -> blockGroup.setVisibility(canBlock ? View.VISIBLE : View.GONE));
+    viewModel.getCanUnblockGroup().observe(getViewLifecycleOwner(), canUnblock -> unblockGroup.setVisibility(canUnblock ? View.VISIBLE : View.GONE));
 
     viewModel.getGroupInfoMessage().observe(getViewLifecycleOwner(), message -> {
       switch (message) {

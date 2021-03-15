@@ -8,6 +8,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MediatorLiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
+import androidx.lifecycle.Transformations;
 
 import com.annimon.stream.function.Predicate;
 
@@ -74,6 +75,13 @@ public final class LiveDataUtil {
     });
 
     return outputLiveData;
+  }
+
+  /**
+   * Performs a map operation on the source observable and then only emits the mapped item if it has changed since the previous emission.
+   */
+  public static <A, B> LiveData<B> mapDistinct(@NonNull LiveData<A> source, @NonNull androidx.arch.core.util.Function<A, B> mapFunction) {
+    return Transformations.distinctUntilChanged(Transformations.map(source, mapFunction));
   }
 
   /**
@@ -196,6 +204,22 @@ public final class LiveDataUtil {
     });
 
     return outputLiveData;
+  }
+
+  /**
+   * Observes a source until the predicate is met. The final value matching the predicate is emitted.
+   */
+  public static @NonNull <A> LiveData<A> until(@NonNull LiveData<A> source, @NonNull Predicate<A> predicate) {
+    MediatorLiveData<A> mediator = new MediatorLiveData<>();
+
+    mediator.addSource(source, newValue -> {
+      mediator.setValue(newValue);
+      if (predicate.test(newValue)) {
+        mediator.removeSource(source);
+      }
+    });
+
+    return mediator;
   }
 
   public interface Combine<A, B, R> {

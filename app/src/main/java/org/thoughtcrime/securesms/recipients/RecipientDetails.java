@@ -2,7 +2,6 @@ package org.thoughtcrime.securesms.recipients;
 
 import android.content.Context;
 import android.net.Uri;
-import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -19,6 +18,7 @@ import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.profiles.ProfileName;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.Util;
+import org.thoughtcrime.securesms.wallpaper.ChatWallpaper;
 import org.whispersystems.libsignal.util.guava.Optional;
 
 import java.util.LinkedList;
@@ -32,7 +32,7 @@ public class RecipientDetails {
   final String                 e164;
   final String                 email;
   final GroupId                groupId;
-  final String                 name;
+  final String groupName;
   final String                 customLabel;
   final Uri                    systemContactPhoto;
   final Uri                    contactUri;
@@ -65,8 +65,12 @@ public class RecipientDetails {
   final InsightsBannerTier     insightsBannerTier;
   final byte[]                 storageId;
   final MentionSetting         mentionSetting;
+  final ChatWallpaper          wallpaper;
+  final String                 about;
+  final String                 aboutEmoji;
+  final ProfileName            systemProfileName;
 
-  public RecipientDetails(@Nullable String name,
+  public RecipientDetails(@Nullable String groupName,
                           @NonNull Optional<Long> groupAvatarId,
                           boolean systemContact,
                           boolean isSelf,
@@ -110,9 +114,11 @@ public class RecipientDetails {
     this.insightsBannerTier          = settings.getInsightsBannerTier();
     this.storageId                   = settings.getStorageId();
     this.mentionSetting              = settings.getMentionSetting();
-
-    if (name == null) this.name = settings.getSystemDisplayName();
-    else              this.name = name;
+    this.wallpaper                   = settings.getWallpaper();
+    this.about                       = settings.getAbout();
+    this.aboutEmoji                  = settings.getAboutEmoji();
+    this.systemProfileName           = settings.getSystemProfileName();
+    this.groupName                   = groupName;
   }
 
   /**
@@ -152,15 +158,19 @@ public class RecipientDetails {
     this.notificationChannel         = null;
     this.unidentifiedAccessMode      = UnidentifiedAccessMode.UNKNOWN;
     this.forceSmsSelection           = false;
-    this.name                        = null;
+    this.groupName                   = null;
     this.groupsV2Capability          = Recipient.Capability.UNKNOWN;
     this.groupsV1MigrationCapability = Recipient.Capability.UNKNOWN;
     this.storageId                   = null;
     this.mentionSetting              = MentionSetting.ALWAYS_NOTIFY;
+    this.wallpaper                   = null;
+    this.about                       = null;
+    this.aboutEmoji                  = null;
+    this.systemProfileName           = ProfileName.EMPTY;
   }
 
   public static @NonNull RecipientDetails forIndividual(@NonNull Context context, @NonNull RecipientSettings settings) {
-    boolean systemContact = !TextUtils.isEmpty(settings.getSystemDisplayName());
+    boolean systemContact = !settings.getSystemProfileName().isEmpty();
     boolean isSelf        = (settings.getE164() != null && settings.getE164().equals(TextSecurePreferences.getLocalNumber(context))) ||
                             (settings.getUuid() != null && settings.getUuid().equals(TextSecurePreferences.getLocalUuid(context)));
 

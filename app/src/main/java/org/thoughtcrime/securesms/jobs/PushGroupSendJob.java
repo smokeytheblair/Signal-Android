@@ -155,10 +155,10 @@ public final class PushGroupSendJob extends PushSendJob {
   {
     MessageDatabase           database                   = DatabaseFactory.getMmsDatabase(context);
     OutgoingMediaMessage      message                    = database.getOutgoingMessage(messageId);
+    long                      threadId                   = database.getMessageRecord(messageId).getThreadId();
     List<NetworkFailure>      existingNetworkFailures    = message.getNetworkFailures();
     List<IdentityKeyMismatch> existingIdentityMismatches = message.getIdentityKeyMismatches();
 
-    long threadId = DatabaseFactory.getThreadDatabase(context).getThreadIdFor(message.getRecipient());
     ApplicationDependencies.getJobManager().cancelAllInQueue(TypingSendJob.getQueue(threadId));
 
     if (database.isSent(messageId)) {
@@ -177,7 +177,7 @@ public final class PushGroupSendJob extends PushSendJob {
     }
 
     try {
-      log(TAG, String.valueOf(message.getSentTimeMillis()), "Sending message: " + messageId);
+      log(TAG, String.valueOf(message.getSentTimeMillis()), "Sending message: " + messageId + ", Recipient: " + message.getRecipient().getId() + ", Thread: " + threadId);
 
       if (!groupRecipient.resolve().isProfileSharing() && !database.isGroupQuitMessage(messageId)) {
         RecipientUtil.shareProfileIfFirstSecureMessage(context, groupRecipient);
@@ -232,7 +232,7 @@ public final class PushGroupSendJob extends PushSendJob {
       if (existingNetworkFailures.isEmpty() && networkFailures.isEmpty() && identityMismatches.isEmpty() && existingIdentityMismatches.isEmpty()) {
         database.markAsSent(messageId, true);
 
-        markAttachmentsUploaded(messageId, message.getAttachments());
+        markAttachmentsUploaded(messageId, message);
 
         if (message.getExpiresIn() > 0 && !message.isExpirationUpdate()) {
           database.markExpireStarted(messageId);
@@ -261,13 +261,6 @@ public final class PushGroupSendJob extends PushSendJob {
       database.markAsSentFailed(messageId);
       notifyMediaMessageDeliveryFailed(context, messageId);
     }
-  }
-
-  @Override
-  public boolean onShouldRetry(@NonNull Exception exception) {
-    if (exception instanceof IOException)         return true;
-    if (exception instanceof RetryLaterException) return true;
-    return false;
   }
 
   @Override

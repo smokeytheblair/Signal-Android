@@ -23,6 +23,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -35,6 +37,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
@@ -104,6 +107,7 @@ import org.thoughtcrime.securesms.linkpreview.LinkPreview;
 import org.thoughtcrime.securesms.longmessage.LongMessageActivity;
 import org.thoughtcrime.securesms.mediasend.Media;
 import org.thoughtcrime.securesms.messagedetails.MessageDetailsActivity;
+import org.thoughtcrime.securesms.messagerequests.MessageRequestState;
 import org.thoughtcrime.securesms.messagerequests.MessageRequestViewModel;
 import org.thoughtcrime.securesms.mms.GlideApp;
 import org.thoughtcrime.securesms.mms.OutgoingMediaMessage;
@@ -130,8 +134,10 @@ import org.thoughtcrime.securesms.util.HtmlUtil;
 import org.thoughtcrime.securesms.util.RemoteDeleteUtil;
 import org.thoughtcrime.securesms.util.SaveAttachmentTask;
 import org.thoughtcrime.securesms.util.SetUtil;
+import org.thoughtcrime.securesms.util.SignalProxyUtil;
 import org.thoughtcrime.securesms.util.SnapToTopDataObserver;
 import org.thoughtcrime.securesms.util.StickyHeaderDecoration;
+import org.thoughtcrime.securesms.util.Stopwatch;
 import org.thoughtcrime.securesms.util.StorageUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.ThemeUtil;
@@ -141,6 +147,7 @@ import org.thoughtcrime.securesms.util.WindowUtil;
 import org.thoughtcrime.securesms.util.concurrent.SimpleTask;
 import org.thoughtcrime.securesms.util.task.ProgressDialogAsyncTask;
 import org.thoughtcrime.securesms.util.views.AdaptiveActionsToolbar;
+import org.thoughtcrime.securesms.wallpaper.ChatWallpaper;
 import org.whispersystems.libsignal.util.guava.Optional;
 
 import java.io.IOException;
@@ -171,7 +178,7 @@ public class ConversationFragment extends LoggingFragment {
   private Locale                      locale;
   private RecyclerView                list;
   private RecyclerView.ItemDecoration lastSeenDecoration;
-  private RecyclerView.ItemDecoration stickyHeaderDecoration;
+  private RecyclerView.ItemDecoration inlineDateDecoration;
   private ViewSwitcher                topLoadMoreView;
   private ViewSwitcher                bottomLoadMoreView;
   private ConversationTypingView      typingView;
@@ -193,6 +200,8 @@ public class ConversationFragment extends LoggingFragment {
   private OnScrollListener            conversationScrollListener;
   private int                         pulsePosition = -1;
   private VoiceNoteMediaController    voiceNoteMediaController;
+  private View                        toolbarShadow;
+  private Stopwatch                   startupStopwatch;
 
   public static void prepare(@NonNull Context context) {
     FrameLayout parent = new FrameLayout(context);
@@ -210,6 +219,7 @@ public class ConversationFragment extends LoggingFragment {
   public void onCreate(Bundle icicle) {
     super.onCreate(icicle);
     this.locale = (Locale) getArguments().getSerializable(PassphraseRequiredActivity.LOCALE_EXTRA);
+    startupStopwatch = new Stopwatch("conversation-open");
   }
 
   @Override
@@ -222,6 +232,7 @@ public class ConversationFragment extends LoggingFragment {
     scrollToMentionButton   = view.findViewById(R.id.scroll_to_mention);
     scrollDateHeader        = view.findViewById(R.id.scroll_date_header);
     emptyConversationBanner = view.findViewById(R.id.empty_conversation_banner);
+    toolbarShadow           = requireActivity().findViewById(R.id.conversation_toolbar_shadow);
 
     final LinearLayoutManager layoutManager = new SmoothScrollingLinearLayoutManager(getActivity(), true);
     list.setHasFixedSize(false);
@@ -252,16 +263,16 @@ public class ConversationFragment extends LoggingFragment {
     this.messageCountsViewModel = ViewModelProviders.of(requireActivity()).get(MessageCountsViewModel.class);
     this.conversationViewModel  = ViewModelProviders.of(requireActivity(), new ConversationViewModel.Factory()).get(ConversationViewModel.class);
 
-    conversationViewModel.getMessages().observe(this, messages -> {
+    conversationViewModel.getMessages().observe(getViewLifecycleOwner(), messages -> {
       ConversationAdapter adapter = getListAdapter();
       if (adapter != null) {
         getListAdapter().submitList(messages);
       }
     });
 
-    conversationViewModel.getConversationMetadata().observe(this, this::presentConversationMetadata);
+    conversationViewModel.getConversationMetadata().observe(getViewLifecycleOwner(), this::presentConversationMetadata);
 
-    conversationViewModel.getShowMentionsButton().observe(this, shouldShow -> {
+    conversationViewModel.getShowMentionsButton().observe(getViewLifecycleOwner(), shouldShow -> {
       if (shouldShow) {
         ViewUtil.animateIn(scrollToMentionButton, mentionButtonInAnimation);
       } else {
@@ -269,7 +280,7 @@ public class ConversationFragment extends LoggingFragment {
       }
     });
 
-    conversationViewModel.getShowScrollToBottom().observe(this, shouldShow -> {
+    conversationViewModel.getShowScrollToBottom().observe(getViewLifecycleOwner(), shouldShow -> {
       if (shouldShow) {
         ViewUtil.animateIn(scrollToBottomButton, scrollButtonInAnimation);
       } else {
@@ -279,6 +290,8 @@ public class ConversationFragment extends LoggingFragment {
 
     scrollToBottomButton.setOnClickListener(v -> scrollToBottom());
     scrollToMentionButton.setOnClickListener(v -> scrollToNextMention());
+
+    updateToolbarDependentMargins();
 
     return view;
   }
@@ -308,12 +321,16 @@ public class ConversationFragment extends LoggingFragment {
       list.setTranslationY(Math.min(0, -chTop));
       list.setOverScrollMode(RecyclerView.OVER_SCROLL_NEVER);
     }
-    listener.onListVerticalTranslationChanged(list.getTranslationY());
+
+    int offset = WindowUtil.isStatusBarPresent(requireActivity().getWindow()) ? ViewUtil.getStatusBarHeight(list) : 0;
+    listener.onListVerticalTranslationChanged(list.getTranslationY() - offset);
   }
 
   @Override
   public void onActivityCreated(Bundle bundle) {
     super.onActivityCreated(bundle);
+
+    Log.d(TAG, "[onActivityCreated]");
 
     initializeScrollButtonAnimations();
     initializeResources();
@@ -332,6 +349,7 @@ public class ConversationFragment extends LoggingFragment {
   public void onStart() {
     super.onStart();
     initializeTypingObserver();
+    SignalProxyUtil.startListeningToWebsocket();
   }
 
   @Override
@@ -354,10 +372,18 @@ public class ConversationFragment extends LoggingFragment {
   @Override
   public void onStop() {
     super.onStop();
-    ApplicationDependencies.getTypingStatusRepository().getTypists(threadId).removeObservers(this);
+    ApplicationDependencies.getTypingStatusRepository().getTypists(threadId).removeObservers(getViewLifecycleOwner());
+  }
+
+  @Override
+  public void onConfigurationChanged(@NonNull Configuration newConfig) {
+    super.onConfigurationChanged(newConfig);
+    updateToolbarDependentMargins();
   }
 
   public void onNewIntent() {
+    Log.d(TAG, "[onNewIntent]");
+
     if (actionMode != null) {
       actionMode.finish();
     }
@@ -390,6 +416,20 @@ public class ConversationFragment extends LoggingFragment {
     snapToTopDataObserver.requestScrollPosition(position);
   }
 
+  public void onWallpaperChanged(@Nullable ChatWallpaper wallpaper) {
+    if (list != null) {
+      ConversationAdapter adapter = getListAdapter();
+
+      if (adapter != null) {
+        Log.d(TAG, "Notifying adapter that wallpaper state has changed.");
+
+        if (adapter.onHasWallpaperChanged(wallpaper != null)) {
+          setInlineDateDecoration(adapter);
+        }
+      }
+    }
+  }
+
   private int getStartPosition() {
     return conversationViewModel.getArgs().getStartingPosition();
   }
@@ -406,10 +446,16 @@ public class ConversationFragment extends LoggingFragment {
       presentMessageRequestProfileView(requireContext(), recipientInfo, conversationBanner);
       presentMessageRequestProfileView(requireContext(), recipientInfo, emptyConversationBanner);
     });
+
+    messageRequestViewModel.getMessageData().observe(getViewLifecycleOwner(), data -> {
+      ConversationAdapter adapter = getListAdapter();
+      if (adapter != null) {
+        adapter.setMessageRequestAccepted(data.getMessageState() == MessageRequestState.NONE);
+      }
+    });
   }
 
   private static void presentMessageRequestProfileView(@NonNull Context context, @NonNull MessageRequestViewModel.RecipientInfo recipientInfo, @Nullable ConversationBannerView conversationBanner) {
-
     if (conversationBanner == null) {
       return;
     }
@@ -422,9 +468,11 @@ public class ConversationFragment extends LoggingFragment {
 
     if (recipient != null) {
       conversationBanner.setAvatar(GlideApp.with(context), recipient);
+      conversationBanner.showBackgroundBubble(recipient.hasWallpaper());
 
       String title = isSelf ? context.getString(R.string.note_to_self) : recipient.getDisplayNameOrUsername(context);
       conversationBanner.setTitle(title);
+      conversationBanner.setAbout(recipient.getCombinedAboutAndEmoji());
 
       if (recipient.isGroup()) {
         if (pendingMemberCount > 0) {
@@ -487,7 +535,7 @@ public class ConversationFragment extends LoggingFragment {
     this.threadId       = conversationViewModel.getArgs().getThreadId();
     this.markReadHelper = new MarkReadHelper(threadId, requireContext());
 
-    conversationViewModel.onConversationDataAvailable(threadId, startingPosition);
+    conversationViewModel.onConversationDataAvailable(recipient.getId(), threadId, startingPosition);
     messageCountsViewModel.setThreadId(threadId);
 
     messageCountsViewModel.getUnreadMessagesCount().observe(getViewLifecycleOwner(), scrollToBottomButton::setUnreadCount);
@@ -498,9 +546,10 @@ public class ConversationFragment extends LoggingFragment {
 
     conversationScrollListener = new ConversationScrollListener(requireContext());
     list.addOnScrollListener(conversationScrollListener);
+    list.addOnScrollListener(new ShadowScrollListener());
 
     if (oldThreadId != threadId) {
-      ApplicationDependencies.getTypingStatusRepository().getTypists(oldThreadId).removeObservers(this);
+      ApplicationDependencies.getTypingStatusRepository().getTypists(oldThreadId).removeObservers(getViewLifecycleOwner());
     }
   }
 
@@ -510,7 +559,7 @@ public class ConversationFragment extends LoggingFragment {
       ConversationAdapter adapter = new ConversationAdapter(this, GlideApp.with(this), locale, selectionClickListener, this.recipient.get());
       adapter.setPagingController(conversationViewModel.getPagingController());
       list.setAdapter(adapter);
-      setStickyHeaderDecoration(adapter);
+      setInlineDateDecoration(adapter);
       ConversationAdapter.initializePool(list.getRecycledViewPool());
 
       adapter.registerAdapterDataObserver(snapToTopDataObserver);
@@ -518,8 +567,21 @@ public class ConversationFragment extends LoggingFragment {
       setLastSeen(conversationViewModel.getLastSeen());
 
       emptyConversationBanner.setVisibility(View.GONE);
+
+      adapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+        @Override
+        public void onItemRangeInserted(int positionStart, int itemCount) {
+          startupStopwatch.split("data-set");
+          adapter.unregisterAdapterDataObserver(this);
+          list.post(() -> {
+            startupStopwatch.split("first-render");
+            startupStopwatch.stop(TAG);
+          });
+        }
+      });
     } else if (threadId == -1) {
       emptyConversationBanner.setVisibility(View.VISIBLE);
+      toolbarShadow.setVisibility(View.GONE);
     }
   }
 
@@ -537,8 +599,8 @@ public class ConversationFragment extends LoggingFragment {
 
     LiveData<TypingStatusRepository.TypingState> typists = ApplicationDependencies.getTypingStatusRepository().getTypists(threadId);
 
-    typists.removeObservers(this);
-    typists.observe(this, typingState ->  {
+    typists.removeObservers(getViewLifecycleOwner());
+    typists.observe(getViewLifecycleOwner(), typingState ->  {
       List<Recipient> recipients;
       boolean         replacedByIncomingMessage;
 
@@ -614,7 +676,7 @@ public class ConversationFragment extends LoggingFragment {
     menu.findItem(R.id.menu_context_copy).setVisible(menuState.shouldShowCopyAction());
   }
 
-  private ConversationAdapter getListAdapter() {
+  private @Nullable ConversationAdapter getListAdapter() {
     return (ConversationAdapter) list.getAdapter();
   }
 
@@ -630,14 +692,17 @@ public class ConversationFragment extends LoggingFragment {
   }
 
   public void reload(Recipient recipient, long threadId) {
+    Log.d(TAG, "[reload] Recipient: " + recipient.getId() + ", ThreadId: " + threadId);
     this.recipient = recipient.live();
 
     if (this.threadId != threadId) {
+      Log.i(TAG, "ThreadId changed from " + this.threadId + " to " + threadId + ". Recipient was " + this.recipient.getId() + " and is now " + recipient.getId());
+
       this.threadId = threadId;
       messageRequestViewModel.setConversationInfo(recipient.getId(), threadId);
 
       snapToTopDataObserver.requestScrollPosition(0);
-      conversationViewModel.onConversationDataAvailable(threadId, -1);
+      conversationViewModel.onConversationDataAvailable(recipient.getId(), threadId, -1);
       messageCountsViewModel.setThreadId(threadId);
       initializeListAdapter();
     }
@@ -651,13 +716,13 @@ public class ConversationFragment extends LoggingFragment {
     }
   }
 
-  public void setStickyHeaderDecoration(@NonNull ConversationAdapter adapter) {
-    if (stickyHeaderDecoration != null) {
-      list.removeItemDecoration(stickyHeaderDecoration);
+  public void setInlineDateDecoration(@NonNull ConversationAdapter adapter) {
+    if (inlineDateDecoration != null) {
+      list.removeItemDecoration(inlineDateDecoration);
     }
 
-    stickyHeaderDecoration = new StickyHeaderDecoration(adapter, false, false);
-    list.addItemDecoration(stickyHeaderDecoration);
+    inlineDateDecoration = new StickyHeaderDecoration(adapter, false, false, ConversationAdapter.HEADER_TYPE_INLINE_DATE);
+    list.addItemDecoration(inlineDateDecoration);
   }
 
   public void setLastSeen(long lastSeen) {
@@ -1023,9 +1088,9 @@ public class ConversationFragment extends LoggingFragment {
                                    pulsePosition = position;
                                  }
 
-                                 list.smoothScrollToPosition(p);
+                                 layoutManager.scrollToPositionWithOffset(p, list.getHeight() / 4);
                                } else {
-                                 layoutManager.scrollToPosition(p);
+                                 layoutManager.scrollToPositionWithOffset(p, list.getHeight() / 4);
                                  getListAdapter().pulseAtPosition(position);
                                }
                              })
@@ -1041,8 +1106,8 @@ public class ConversationFragment extends LoggingFragment {
 
   private void maybeShowSwipeToReplyTooltip() {
     if (!TextSecurePreferences.hasSeenSwipeToReplyTooltip(requireContext())) {
-      int text = getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_LTR ? R.string.ConversationFragment_you_can_swipe_to_the_right_reply
-                                                                                                     : R.string.ConversationFragment_you_can_swipe_to_the_left_reply;
+      int text = ViewUtil.isLtr(requireContext()) ? R.string.ConversationFragment_you_can_swipe_to_the_right_reply
+                                                  : R.string.ConversationFragment_you_can_swipe_to_the_left_reply;
       TooltipPopup.forTarget(requireActivity().findViewById(R.id.menu_context_reply))
                   .setText(text)
                   .setTextColor(getResources().getColor(R.color.core_white))
@@ -1097,6 +1162,22 @@ public class ConversationFragment extends LoggingFragment {
         markReadHelper.onViewsRevealed(timestamp);
       }
     }
+  }
+
+  private void updateToolbarDependentMargins() {
+    Toolbar toolbar = requireActivity().findViewById(R.id.toolbar);
+    toolbar.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+      @Override
+      public void onGlobalLayout() {
+        Rect rect = new Rect();
+        toolbar.getGlobalVisibleRect(rect);
+        ViewUtil.setTopMargin(scrollDateHeader, rect.bottom + ViewUtil.dpToPx(8));
+        ViewUtil.setTopMargin(conversationBanner, rect.bottom + ViewUtil.dpToPx(16));
+        ViewUtil.setTopMargin(emptyConversationBanner, rect.bottom + ViewUtil.dpToPx(16));
+        toolbar.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+      }
+    });
+
   }
 
   public interface ConversationFragmentListener {
@@ -1179,7 +1260,7 @@ public class ConversationFragment extends LoggingFragment {
 
     private void bindScrollHeader(StickyHeaderViewHolder headerViewHolder, int positionId) {
       if (((ConversationAdapter)list.getAdapter()).getHeaderId(positionId) != -1) {
-        ((ConversationAdapter) list.getAdapter()).onBindHeaderViewHolder(headerViewHolder, positionId);
+        ((ConversationAdapter) list.getAdapter()).onBindHeaderViewHolder(headerViewHolder, positionId, ConversationAdapter.HEADER_TYPE_POPOVER_DATE);
       }
     }
   }
@@ -1221,6 +1302,7 @@ public class ConversationFragment extends LoggingFragment {
         listener.handleReaction(maskTarget, messageRecord, new ReactionsToolbarListener(conversationMessage), () -> {
           isReacting = false;
           list.setLayoutFrozen(false);
+          WindowUtil.setLightStatusBarFromTheme(requireActivity());
         });
       } else {
         ((ConversationAdapter) list.getAdapter()).toggleSelection(conversationMessage);
@@ -1410,7 +1492,8 @@ public class ConversationFragment extends LoggingFragment {
 
     @Override
     public boolean onUrlClicked(@NonNull String url) {
-      return CommunicationActions.handlePotentialGroupLinkUrl(requireActivity(), url);
+      return CommunicationActions.handlePotentialGroupLinkUrl(requireActivity(), url) ||
+             CommunicationActions.handlePotentialProxyLinkUrl(requireActivity(), url);
     }
 
     @Override
@@ -1576,7 +1659,7 @@ public class ConversationFragment extends LoggingFragment {
 
       mode.setTitle("1");
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      if (Build.VERSION.SDK_INT >= 21) {
         Window window = getActivity().getWindow();
         statusBarColor = window.getStatusBarColor();
         WindowUtil.setStatusBarColor(window, getResources().getColor(R.color.action_mode_status_bar));
@@ -1602,11 +1685,11 @@ public class ConversationFragment extends LoggingFragment {
       ((ConversationAdapter)list.getAdapter()).clearSelection();
       list.getAdapter().notifyDataSetChanged();
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      if (Build.VERSION.SDK_INT >= 21) {
         WindowUtil.setStatusBarColor(requireActivity().getWindow(), statusBarColor);
       }
 
-      WindowUtil.clearLightStatusBar(getActivity().getWindow());
+      WindowUtil.setLightStatusBarFromTheme(requireActivity());
       actionMode = null;
     }
 
@@ -1693,4 +1776,18 @@ public class ConversationFragment extends LoggingFragment {
     }
   }
 
+  private class ShadowScrollListener extends RecyclerView.OnScrollListener {
+    @Override
+    public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+      if (recyclerView.canScrollVertically(-1)) {
+        if (toolbarShadow.getVisibility() != View.VISIBLE) {
+          ViewUtil.fadeIn(toolbarShadow, 250);
+        }
+      } else {
+        if (toolbarShadow.getVisibility() != View.GONE) {
+          ViewUtil.fadeOut(toolbarShadow, 250);
+        }
+      }
+    }
+  }
 }

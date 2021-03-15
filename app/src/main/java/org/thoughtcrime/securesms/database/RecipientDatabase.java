@@ -31,6 +31,7 @@ import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
 import org.thoughtcrime.securesms.database.model.ThreadRecord;
 import org.thoughtcrime.securesms.database.model.databaseprotos.DeviceLastResetTime;
 import org.thoughtcrime.securesms.database.model.databaseprotos.ProfileKeyCredentialColumnData;
+import org.thoughtcrime.securesms.database.model.databaseprotos.Wallpaper;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.groups.v2.ProfileKeySet;
@@ -53,6 +54,9 @@ import org.thoughtcrime.securesms.util.IdentityUtil;
 import org.thoughtcrime.securesms.util.SqlUtil;
 import org.thoughtcrime.securesms.util.StringUtil;
 import org.thoughtcrime.securesms.util.Util;
+import org.thoughtcrime.securesms.wallpaper.ChatWallpaper;
+import org.thoughtcrime.securesms.wallpaper.ChatWallpaperFactory;
+import org.thoughtcrime.securesms.wallpaper.WallpaperStorage;
 import org.whispersystems.libsignal.IdentityKey;
 import org.whispersystems.libsignal.InvalidKeyException;
 import org.whispersystems.libsignal.util.Pair;
@@ -108,7 +112,9 @@ public class RecipientDatabase extends Database {
   private static final String DEFAULT_SUBSCRIPTION_ID   = "default_subscription_id";
   private static final String MESSAGE_EXPIRATION_TIME   = "message_expiration_time";
   public  static final String REGISTERED                = "registered";
-  public  static final String SYSTEM_DISPLAY_NAME       = "system_display_name";
+  public  static final String SYSTEM_JOINED_NAME        = "system_display_name";
+  public  static final String SYSTEM_FAMILY_NAME        = "system_family_name";
+  public  static final String SYSTEM_GIVEN_NAME         = "system_given_name";
   private static final String SYSTEM_PHOTO_URI          = "system_photo_uri";
   public  static final String SYSTEM_PHONE_TYPE         = "system_phone_type";
   public  static final String SYSTEM_PHONE_LABEL        = "system_phone_label";
@@ -120,7 +126,7 @@ public class RecipientDatabase extends Database {
   private static final String PROFILE_SHARING           = "profile_sharing";
   private static final String LAST_PROFILE_FETCH        = "last_profile_fetch";
   private static final String UNIDENTIFIED_ACCESS_MODE  = "unidentified_access_mode";
-  private static final String FORCE_SMS_SELECTION       = "force_sms_selection";
+          static final String FORCE_SMS_SELECTION       = "force_sms_selection";
   private static final String CAPABILITIES              = "capabilities";
   private static final String STORAGE_SERVICE_ID        = "storage_service_key";
   private static final String DIRTY                     = "dirty";
@@ -131,6 +137,10 @@ public class RecipientDatabase extends Database {
   private static final String STORAGE_PROTO             = "storage_proto";
   private static final String LAST_GV1_MIGRATE_REMINDER = "last_gv1_migrate_reminder";
   private static final String LAST_SESSION_RESET        = "last_session_reset";
+  private static final String WALLPAPER                 = "wallpaper";
+  private static final String WALLPAPER_URI             = "wallpaper_file";
+  public  static final String ABOUT                     = "about";
+  public  static final String ABOUT_EMOJI               = "about_emoji";
 
   public  static final String SEARCH_PROFILE_NAME      = "search_signal_profile";
   private static final String SORT_NAME                = "sort_name";
@@ -148,26 +158,28 @@ public class RecipientDatabase extends Database {
       ID, UUID, USERNAME, PHONE, EMAIL, GROUP_ID, GROUP_TYPE,
       BLOCKED, MESSAGE_RINGTONE, CALL_RINGTONE, MESSAGE_VIBRATE, CALL_VIBRATE, MUTE_UNTIL, COLOR, SEEN_INVITE_REMINDER, DEFAULT_SUBSCRIPTION_ID, MESSAGE_EXPIRATION_TIME, REGISTERED,
       PROFILE_KEY, PROFILE_KEY_CREDENTIAL,
-      SYSTEM_DISPLAY_NAME, SYSTEM_PHOTO_URI, SYSTEM_PHONE_LABEL, SYSTEM_PHONE_TYPE, SYSTEM_CONTACT_URI,
+      SYSTEM_GIVEN_NAME, SYSTEM_FAMILY_NAME, SYSTEM_PHOTO_URI, SYSTEM_PHONE_LABEL, SYSTEM_PHONE_TYPE, SYSTEM_CONTACT_URI,
       PROFILE_GIVEN_NAME, PROFILE_FAMILY_NAME, SIGNAL_PROFILE_AVATAR, PROFILE_SHARING, LAST_PROFILE_FETCH,
       NOTIFICATION_CHANNEL,
       UNIDENTIFIED_ACCESS_MODE,
       FORCE_SMS_SELECTION,
       CAPABILITIES,
       STORAGE_SERVICE_ID, DIRTY,
-      MENTION_SETTING
+      MENTION_SETTING, WALLPAPER, WALLPAPER_URI,
+      MENTION_SETTING,
+      ABOUT, ABOUT_EMOJI
   };
 
   private static final String[] ID_PROJECTION              = new String[]{ID};
-  private static final String[] SEARCH_PROJECTION          = new String[]{ID, SYSTEM_DISPLAY_NAME, PHONE, EMAIL, SYSTEM_PHONE_LABEL, SYSTEM_PHONE_TYPE, REGISTERED, "COALESCE(" + nullIfEmpty(PROFILE_JOINED_NAME) + ", " + nullIfEmpty(PROFILE_GIVEN_NAME) + ") AS " + SEARCH_PROFILE_NAME, "COALESCE(" + nullIfEmpty(SYSTEM_DISPLAY_NAME) + ", " + nullIfEmpty(PROFILE_JOINED_NAME) + ", " + nullIfEmpty(PROFILE_GIVEN_NAME) + ", " + nullIfEmpty(USERNAME) + ") AS " + SORT_NAME};
-  public  static final String[] SEARCH_PROJECTION_NAMES    = new String[]{ID, SYSTEM_DISPLAY_NAME, PHONE, EMAIL, SYSTEM_PHONE_LABEL, SYSTEM_PHONE_TYPE, REGISTERED, SEARCH_PROFILE_NAME, SORT_NAME};
+  private static final String[] SEARCH_PROJECTION          = new String[]{ID, SYSTEM_JOINED_NAME, PHONE, EMAIL, SYSTEM_PHONE_LABEL, SYSTEM_PHONE_TYPE, REGISTERED, ABOUT, ABOUT_EMOJI, "COALESCE(" + nullIfEmpty(PROFILE_JOINED_NAME) + ", " + nullIfEmpty(PROFILE_GIVEN_NAME) + ") AS " + SEARCH_PROFILE_NAME, "COALESCE(" + nullIfEmpty(SYSTEM_JOINED_NAME) + ", " + nullIfEmpty(SYSTEM_GIVEN_NAME) + ", " + nullIfEmpty(PROFILE_JOINED_NAME) + ", " + nullIfEmpty(PROFILE_GIVEN_NAME) + ", " + nullIfEmpty(USERNAME) + ") AS " + SORT_NAME};
+  public  static final String[] SEARCH_PROJECTION_NAMES    = new String[]{ID, SYSTEM_JOINED_NAME, PHONE, EMAIL, SYSTEM_PHONE_LABEL, SYSTEM_PHONE_TYPE, REGISTERED, ABOUT, ABOUT_EMOJI, SEARCH_PROFILE_NAME, SORT_NAME};
   private static final String[] TYPED_RECIPIENT_PROJECTION = Stream.of(RECIPIENT_PROJECTION)
                                                                    .map(columnName -> TABLE_NAME + "." + columnName)
                                                                    .toList().toArray(new String[0]);
 
   static final String[] TYPED_RECIPIENT_PROJECTION_NO_ID = Arrays.copyOfRange(TYPED_RECIPIENT_PROJECTION, 1, TYPED_RECIPIENT_PROJECTION.length);
 
-  private static final String[] MENTION_SEARCH_PROJECTION  = new String[]{ID, removeWhitespace("COALESCE(" + nullIfEmpty(SYSTEM_DISPLAY_NAME) + ", " + nullIfEmpty(PROFILE_JOINED_NAME) + ", " + nullIfEmpty(PROFILE_GIVEN_NAME) + ", " + nullIfEmpty(USERNAME) + ", " + nullIfEmpty(PHONE) + ")") + " AS " + SORT_NAME};
+  private static final String[] MENTION_SEARCH_PROJECTION  = new String[]{ID, removeWhitespace("COALESCE(" + nullIfEmpty(SYSTEM_JOINED_NAME) + ", " + nullIfEmpty(SYSTEM_GIVEN_NAME) + ", " + nullIfEmpty(PROFILE_JOINED_NAME) + ", " + nullIfEmpty(PROFILE_GIVEN_NAME) + ", " + nullIfEmpty(USERNAME) + ", " + nullIfEmpty(PHONE) + ")") + " AS " + SORT_NAME};
 
   public static final String[] CREATE_INDEXS = new String[] {
       "CREATE INDEX IF NOT EXISTS recipient_dirty_index ON " + TABLE_NAME + " (" + DIRTY + ");",
@@ -328,7 +340,9 @@ public class RecipientDatabase extends Database {
                                             DEFAULT_SUBSCRIPTION_ID   + " INTEGER DEFAULT -1, " +
                                             MESSAGE_EXPIRATION_TIME   + " INTEGER DEFAULT 0, " +
                                             REGISTERED                + " INTEGER DEFAULT " + RegisteredState.UNKNOWN.getId() + ", " +
-                                            SYSTEM_DISPLAY_NAME       + " TEXT DEFAULT NULL, " +
+                                            SYSTEM_GIVEN_NAME         + " TEXT DEFAULT NULL, " +
+                                            SYSTEM_FAMILY_NAME        + " TEXT DEFAULT NULL, " +
+                                            SYSTEM_JOINED_NAME        + " TEXT DEFAULT NULL, " +
                                             SYSTEM_PHOTO_URI          + " TEXT DEFAULT NULL, " +
                                             SYSTEM_PHONE_LABEL        + " TEXT DEFAULT NULL, " +
                                             SYSTEM_PHONE_TYPE         + " INTEGER DEFAULT -1, " +
@@ -350,7 +364,11 @@ public class RecipientDatabase extends Database {
                                             STORAGE_PROTO             + " TEXT DEFAULT NULL, " +
                                             CAPABILITIES              + " INTEGER DEFAULT 0, " +
                                             LAST_GV1_MIGRATE_REMINDER + " INTEGER DEFAULT 0, " +
-                                            LAST_SESSION_RESET        + " BLOB DEFAULT NULL);";
+                                            LAST_SESSION_RESET        + " BLOB DEFAULT NULL, " +
+                                            WALLPAPER                 + " BLOB DEFAULT NULL, " +
+                                            WALLPAPER_URI             + " TEXT DEFAULT NULL, " +
+                                            ABOUT                     + " TEXT DEFAULT NULL, " +
+                                            ABOUT_EMOJI               + " TEXT DEFAULT NULL);";
 
   private static final String INSIGHTS_INVITEE_LIST = "SELECT " + TABLE_NAME + "." + ID +
       " FROM " + TABLE_NAME +
@@ -893,7 +911,9 @@ public class RecipientDatabase extends Database {
         RecipientId recipientId = getByStorageKeyOrThrow(update.getNew().getId().getRaw());
 
         if (StorageSyncHelper.profileKeyChanged(update)) {
-          clearProfileKeyCredential(recipientId);
+          ContentValues clearValues = new ContentValues(1);
+          clearValues.putNull(PROFILE_KEY_CREDENTIAL);
+          update(recipientId, clearValues);
         }
 
         try {
@@ -1249,7 +1269,8 @@ public class RecipientDatabase extends Database {
     int     registeredState            = CursorUtil.requireInt(cursor, REGISTERED);
     String  profileKeyString           = CursorUtil.requireString(cursor, PROFILE_KEY);
     String  profileKeyCredentialString = CursorUtil.requireString(cursor, PROFILE_KEY_CREDENTIAL);
-    String  systemDisplayName          = CursorUtil.requireString(cursor, SYSTEM_DISPLAY_NAME);
+    String  systemGivenName            = CursorUtil.requireString(cursor, SYSTEM_GIVEN_NAME);
+    String  systemFamilyName           = CursorUtil.requireString(cursor, SYSTEM_FAMILY_NAME);
     String  systemContactPhoto         = CursorUtil.requireString(cursor, SYSTEM_PHOTO_URI);
     String  systemPhoneLabel           = CursorUtil.requireString(cursor, SYSTEM_PHONE_LABEL);
     String  systemContactUri           = CursorUtil.requireString(cursor, SYSTEM_CONTACT_URI);
@@ -1264,6 +1285,9 @@ public class RecipientDatabase extends Database {
     long    capabilities               = CursorUtil.requireLong(cursor, CAPABILITIES);
     String  storageKeyRaw              = CursorUtil.requireString(cursor, STORAGE_SERVICE_ID);
     int     mentionSettingId           = CursorUtil.requireInt(cursor, MENTION_SETTING);
+    byte[]  wallpaper                  = CursorUtil.requireBlob(cursor, WALLPAPER);
+    String  about                      = CursorUtil.requireString(cursor, ABOUT);
+    String  aboutEmoji                 = CursorUtil.requireString(cursor, ABOUT_EMOJI);
 
     MaterialColor        color;
     byte[]               profileKey           = null;
@@ -1303,6 +1327,16 @@ public class RecipientDatabase extends Database {
 
     byte[] storageKey = storageKeyRaw != null ? Base64.decodeOrThrow(storageKeyRaw) : null;
 
+    ChatWallpaper chatWallpaper = null;
+
+    if (wallpaper != null) {
+      try {
+        chatWallpaper = ChatWallpaperFactory.create(Wallpaper.parseFrom(wallpaper));
+      } catch (InvalidProtocolBufferException e) {
+        Log.w(TAG, "Failed to parse wallpaper.", e);
+      }
+    }
+
     return new RecipientSettings(RecipientId.from(id),
                                  uuid,
                                  username,
@@ -1322,7 +1356,7 @@ public class RecipientDatabase extends Database {
                                  RegisteredState.fromId(registeredState),
                                  profileKey,
                                  profileKeyCredential,
-                                 systemDisplayName,
+                                 ProfileName.fromParts(systemGivenName, systemFamilyName),
                                  systemContactPhoto,
                                  systemPhoneLabel,
                                  systemContactUri,
@@ -1338,6 +1372,9 @@ public class RecipientDatabase extends Database {
                                  InsightsBannerTier.fromId(insightsBannerTier),
                                  storageKey,
                                  MentionSetting.fromId(mentionSettingId),
+                                 chatWallpaper,
+                                 about,
+                                 aboutEmoji,
                                  getSyncExtras(cursor));
   }
 
@@ -1712,7 +1749,7 @@ public class RecipientDatabase extends Database {
 
   public @NonNull List<RecipientId> getSimilarRecipientIds(@NonNull Recipient recipient) {
     SQLiteDatabase db   = databaseHelper.getReadableDatabase();
-    String[] projection = SqlUtil.buildArgs(ID, "COALESCE(" + nullIfEmpty(SYSTEM_DISPLAY_NAME) + ", " + nullIfEmpty(PROFILE_JOINED_NAME) + ") AS checked_name");
+    String[] projection = SqlUtil.buildArgs(ID, "COALESCE(" + nullIfEmpty(SYSTEM_JOINED_NAME) + ", " + nullIfEmpty(PROFILE_JOINED_NAME) + ") AS checked_name");
     String   where      =  "checked_name = ?";
 
     String[] arguments = SqlUtil.buildArgs(recipient.getProfileName().toString());
@@ -1756,6 +1793,16 @@ public class RecipientDatabase extends Database {
     }
   }
 
+  public void setAbout(@NonNull RecipientId id, @Nullable String about, @Nullable String emoji) {
+    ContentValues contentValues = new ContentValues();
+    contentValues.put(ABOUT, about);
+    contentValues.put(ABOUT_EMOJI, emoji);
+
+    if (update(id, contentValues)) {
+      Recipient.live(id).refresh();
+    }
+  }
+
   public void setProfileSharing(@NonNull RecipientId id, @SuppressWarnings("SameParameterValue") boolean enabled) {
     ContentValues contentValues = new ContentValues(1);
     contentValues.put(PROFILE_SHARING, enabled ? 1 : 0);
@@ -1776,6 +1823,134 @@ public class RecipientDatabase extends Database {
     if (update(id, contentValues)) {
       Recipient.live(id).refresh();
     }
+  }
+
+  public void resetAllWallpaper() {
+    SQLiteDatabase                  database      = databaseHelper.getWritableDatabase();
+    String[]                        selection     = SqlUtil.buildArgs(ID, WALLPAPER_URI);
+    String                          where         = WALLPAPER + " IS NOT NULL";
+    List<Pair<RecipientId, String>> idWithWallpaper = new LinkedList<>();
+
+    database.beginTransaction();
+
+    try {
+      try (Cursor cursor = database.query(TABLE_NAME, selection, where, null, null, null, null)) {
+        while (cursor != null && cursor.moveToNext()) {
+          idWithWallpaper.add(new Pair<>(RecipientId.from(CursorUtil.requireInt(cursor, ID)),
+                              CursorUtil.getString(cursor, WALLPAPER_URI).orNull()));
+        }
+      }
+
+      if (idWithWallpaper.isEmpty()) {
+        return;
+      }
+
+      ContentValues values = new ContentValues(2);
+      values.put(WALLPAPER_URI, (String) null);
+      values.put(WALLPAPER, (byte[]) null);
+
+      int rowsUpdated = database.update(TABLE_NAME, values, where, null);
+      if (rowsUpdated == idWithWallpaper.size()) {
+        for (Pair<RecipientId, String> pair : idWithWallpaper) {
+          Recipient.live(pair.first()).refresh();
+          if (pair.second() != null) {
+            WallpaperStorage.onWallpaperDeselected(context, Uri.parse(pair.second()));
+          }
+        }
+      } else {
+        throw new AssertionError("expected " + idWithWallpaper.size() + " but got " + rowsUpdated);
+      }
+
+    } finally {
+      database.setTransactionSuccessful();
+      database.endTransaction();
+    }
+
+  }
+
+  public void setWallpaper(@NonNull RecipientId id, @Nullable ChatWallpaper chatWallpaper) {
+    setWallpaper(id, chatWallpaper != null ? chatWallpaper.serialize() : null);
+  }
+
+  private void setWallpaper(@NonNull RecipientId id, @Nullable Wallpaper wallpaper) {
+    Uri existingWallpaperUri = getWallpaperUri(id);
+
+    ContentValues values = new ContentValues();
+    values.put(WALLPAPER, wallpaper != null ? wallpaper.toByteArray() : null);
+
+    if (wallpaper != null && wallpaper.hasFile()) {
+      values.put(WALLPAPER_URI, wallpaper.getFile().getUri());
+    } else {
+      values.putNull(WALLPAPER_URI);
+    }
+
+    if (update(id, values)) {
+      Recipient.live(id).refresh();
+    }
+
+    if (existingWallpaperUri != null) {
+      WallpaperStorage.onWallpaperDeselected(context, existingWallpaperUri);
+    }
+  }
+
+  public void setDimWallpaperInDarkTheme(@NonNull RecipientId id, boolean enabled) {
+    Wallpaper wallpaper = getWallpaper(id);
+
+    if (wallpaper == null) {
+      throw new IllegalStateException("No wallpaper set for " + id);
+    }
+
+    Wallpaper updated = wallpaper.toBuilder()
+                                 .setDimLevelInDarkTheme(enabled ? ChatWallpaper.FIXED_DIM_LEVEL_FOR_DARK_THEME : 0)
+                                 .build();
+
+    setWallpaper(id, updated);
+  }
+
+  private @Nullable Wallpaper getWallpaper(@NonNull RecipientId id) {
+    SQLiteDatabase db = databaseHelper.getReadableDatabase();
+
+    try (Cursor cursor = db.query(TABLE_NAME, new String[] {WALLPAPER}, ID_WHERE, SqlUtil.buildArgs(id), null, null, null)) {
+      if (cursor.moveToFirst()) {
+        byte[] raw = CursorUtil.requireBlob(cursor, WALLPAPER);
+
+        if (raw != null) {
+          try {
+            return Wallpaper.parseFrom(raw);
+          } catch (InvalidProtocolBufferException e) {
+            return null;
+          }
+        } else {
+          return null;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private @Nullable Uri getWallpaperUri(@NonNull RecipientId id) {
+    Wallpaper wallpaper = getWallpaper(id);
+
+    if (wallpaper != null && wallpaper.hasFile()) {
+      return Uri.parse(wallpaper.getFile().getUri());
+    } else {
+      return null;
+    }
+  }
+
+  public int getWallpaperUriUsageCount(@NonNull Uri uri) {
+    SQLiteDatabase db    = databaseHelper.getReadableDatabase();
+    String         query = WALLPAPER_URI + " = ?";
+    String[]       args  = SqlUtil.buildArgs(uri);
+
+    try (Cursor cursor = db.query(TABLE_NAME, new String[] { "COUNT(*)" }, query, args, null, null, null)) {
+      if (cursor.moveToFirst()) {
+        return cursor.getInt(0);
+      }
+    }
+
+    return 0;
   }
 
   /**
@@ -2077,7 +2252,7 @@ public class RecipientDatabase extends Database {
     SQLiteDatabase    db      = databaseHelper.getReadableDatabase();
     List<RecipientId> results = new LinkedList<>();
 
-    try (Cursor cursor = db.query(TABLE_NAME, ID_PROJECTION, SYSTEM_DISPLAY_NAME + " IS NOT NULL AND " + SYSTEM_DISPLAY_NAME + " != \"\"", null, null, null, null)) {
+    try (Cursor cursor = db.query(TABLE_NAME, ID_PROJECTION, SYSTEM_JOINED_NAME + " IS NOT NULL AND " + SYSTEM_JOINED_NAME + " != \"\"", null, null, null, null)) {
       while (cursor != null && cursor.moveToNext()) {
         results.add(RecipientId.from(cursor.getLong(cursor.getColumnIndexOrThrow(ID))));
       }
@@ -2091,10 +2266,10 @@ public class RecipientDatabase extends Database {
     Map<RecipientId, MaterialColor> updates = new HashMap<>();
 
     db.beginTransaction();
-    try (Cursor cursor = db.query(TABLE_NAME, new String[] {ID, COLOR, SYSTEM_DISPLAY_NAME}, SYSTEM_DISPLAY_NAME + " IS NOT NULL AND " + SYSTEM_DISPLAY_NAME + " != \"\"", null, null, null, null)) {
+    try (Cursor cursor = db.query(TABLE_NAME, new String[] {ID, COLOR, SYSTEM_JOINED_NAME}, SYSTEM_JOINED_NAME + " IS NOT NULL AND " + SYSTEM_JOINED_NAME + " != \"\"", null, null, null, null)) {
       while (cursor != null && cursor.moveToNext()) {
         long          id       = cursor.getLong(cursor.getColumnIndexOrThrow(ID));
-        MaterialColor newColor = updater.update(cursor.getString(cursor.getColumnIndexOrThrow(SYSTEM_DISPLAY_NAME)),
+        MaterialColor newColor = updater.update(cursor.getString(cursor.getColumnIndexOrThrow(SYSTEM_JOINED_NAME)),
                                                 cursor.getString(cursor.getColumnIndexOrThrow(COLOR)));
 
         ContentValues contentValues = new ContentValues(1);
@@ -2115,7 +2290,7 @@ public class RecipientDatabase extends Database {
     String   selection = BLOCKED    + " = ? AND "                                                     +
                          REGISTERED + " = ? AND "                                                     +
                          GROUP_ID   + " IS NULL AND "                                                 +
-                         "(" + SYSTEM_DISPLAY_NAME + " NOT NULL OR " + PROFILE_SHARING + " = ?) AND " +
+                         "(" + SYSTEM_JOINED_NAME + " NOT NULL OR " + PROFILE_SHARING + " = ?) AND " +
                          "(" + SORT_NAME + " NOT NULL OR " + USERNAME + " NOT NULL)";
     String[] args;
 
@@ -2126,7 +2301,7 @@ public class RecipientDatabase extends Database {
       args       = new String[] { "0", String.valueOf(RegisteredState.REGISTERED.getId()), "1", Recipient.self().getId().serialize() };
     }
 
-    String   orderBy   = SORT_NAME + ", " + SYSTEM_DISPLAY_NAME + ", " + SEARCH_PROFILE_NAME + ", " + USERNAME + ", " + PHONE;
+    String   orderBy   = SORT_NAME + ", " + SYSTEM_JOINED_NAME + ", " + SEARCH_PROFILE_NAME + ", " + USERNAME + ", " + PHONE;
 
     return databaseHelper.getReadableDatabase().query(TABLE_NAME, SEARCH_PROJECTION, selection, args, null, null, orderBy);
   }
@@ -2137,7 +2312,7 @@ public class RecipientDatabase extends Database {
     String   selection = BLOCKED     + " = ? AND " +
                          REGISTERED  + " = ? AND " +
                          GROUP_ID    + " IS NULL AND " +
-                         "(" + SYSTEM_DISPLAY_NAME + " NOT NULL OR " + PROFILE_SHARING + " = ?) AND " +
+                         "(" + SYSTEM_JOINED_NAME + " NOT NULL OR " + PROFILE_SHARING + " = ?) AND " +
                          "(" +
                            PHONE     + " GLOB ? OR " +
                            SORT_NAME + " GLOB ? OR " +
@@ -2152,7 +2327,7 @@ public class RecipientDatabase extends Database {
       args       = new String[] { "0", String.valueOf(RegisteredState.REGISTERED.getId()), "1", query, query, query, String.valueOf(Recipient.self().getId().toLong()) };
     }
 
-    String   orderBy   = SORT_NAME + ", " + SYSTEM_DISPLAY_NAME + ", " + SEARCH_PROFILE_NAME + ", " + PHONE;
+    String   orderBy   = SORT_NAME + ", " + SYSTEM_JOINED_NAME + ", " + SEARCH_PROFILE_NAME + ", " + PHONE;
 
     return databaseHelper.getReadableDatabase().query(TABLE_NAME, SEARCH_PROJECTION, selection, args, null, null, orderBy);
   }
@@ -2161,10 +2336,10 @@ public class RecipientDatabase extends Database {
     String   selection = BLOCKED    + " = ? AND " +
                          REGISTERED + " != ? AND " +
                          GROUP_ID   + " IS NULL AND " +
-                         SYSTEM_DISPLAY_NAME + " NOT NULL AND " +
+                         SYSTEM_CONTACT_URI + " NOT NULL AND " +
                          "(" + PHONE + " NOT NULL OR " + EMAIL + " NOT NULL)";
     String[] args      = new String[] { "0", String.valueOf(RegisteredState.REGISTERED.getId()) };
-    String   orderBy   = SYSTEM_DISPLAY_NAME + ", " + PHONE;
+    String   orderBy   = SYSTEM_JOINED_NAME + ", " + PHONE;
 
     return databaseHelper.getReadableDatabase().query(TABLE_NAME, SEARCH_PROJECTION, selection, args, null, null, orderBy);
   }
@@ -2175,15 +2350,15 @@ public class RecipientDatabase extends Database {
     String   selection = BLOCKED    + " = ? AND " +
                          REGISTERED + " != ? AND " +
                          GROUP_ID   + " IS NULL AND " +
-                         SYSTEM_DISPLAY_NAME + " NOT NULL AND " +
+                         SYSTEM_CONTACT_URI + " NOT NULL AND " +
                          "(" + PHONE + " NOT NULL OR " + EMAIL + " NOT NULL) AND " +
                          "(" +
-                           PHONE               + " GLOB ? OR " +
-                           EMAIL               + " GLOB ? OR " +
-                           SYSTEM_DISPLAY_NAME + " GLOB ?" +
+                           PHONE              + " GLOB ? OR " +
+                           EMAIL              + " GLOB ? OR " +
+                           SYSTEM_JOINED_NAME + " GLOB ?" +
                          ")";
     String[] args      = new String[] { "0", String.valueOf(RegisteredState.REGISTERED.getId()), query, query, query };
-    String   orderBy   = SYSTEM_DISPLAY_NAME + ", " + PHONE;
+    String   orderBy   = SYSTEM_JOINED_NAME + ", " + PHONE;
 
     return databaseHelper.getReadableDatabase().query(TABLE_NAME, SEARCH_PROJECTION, selection, args, null, null, orderBy);
   }
@@ -2260,7 +2435,7 @@ public class RecipientDatabase extends Database {
     String   selection = REGISTERED + " = ? AND " +
                          GROUP_ID   + " IS NULL AND " +
                          ID         + " != ? AND " +
-                         "(" + SYSTEM_DISPLAY_NAME + " NOT NULL OR " + ID + " IN (" + subquery + "))";
+                         "(" + SYSTEM_CONTACT_URI + " NOT NULL OR " + ID + " IN (" + subquery + "))";
     String[] args      = new String[] { String.valueOf(RegisteredState.REGISTERED.getId()), Recipient.self().getId().serialize() };
 
     List<Recipient> recipients = new ArrayList<>();
@@ -2560,7 +2735,9 @@ public class RecipientDatabase extends Database {
     uuidValues.put(DEFAULT_SUBSCRIPTION_ID, e164Settings.getDefaultSubscriptionId().or(-1));
     uuidValues.put(MESSAGE_EXPIRATION_TIME, uuidSettings.getExpireMessages() > 0 ? uuidSettings.getExpireMessages() : e164Settings.getExpireMessages());
     uuidValues.put(REGISTERED, RegisteredState.REGISTERED.getId());
-    uuidValues.put(SYSTEM_DISPLAY_NAME, e164Settings.getSystemDisplayName());
+    uuidValues.put(SYSTEM_GIVEN_NAME, e164Settings.getSystemProfileName().getGivenName());
+    uuidValues.put(SYSTEM_FAMILY_NAME, e164Settings.getSystemProfileName().getFamilyName());
+    uuidValues.put(SYSTEM_JOINED_NAME, e164Settings.getSystemProfileName().toString());
     uuidValues.put(SYSTEM_PHOTO_URI, e164Settings.getSystemContactPhotoUri());
     uuidValues.put(SYSTEM_PHONE_LABEL, e164Settings.getSystemPhoneLabel());
     uuidValues.put(SYSTEM_CONTACT_URI, e164Settings.getSystemContactUri());
@@ -2671,14 +2848,16 @@ public class RecipientDatabase extends Database {
     }
 
     public void setSystemContactInfo(@NonNull RecipientId id,
-                                     @Nullable String displayName,
+                                     @NonNull ProfileName systemProfileName,
                                      @Nullable String photoUri,
                                      @Nullable String systemPhoneLabel,
                                      int systemPhoneType,
                                      @Nullable String systemContactUri)
     {
       ContentValues dirtyQualifyingValues = new ContentValues();
-      dirtyQualifyingValues.put(SYSTEM_DISPLAY_NAME, displayName);
+      dirtyQualifyingValues.put(SYSTEM_GIVEN_NAME, systemProfileName.getGivenName());
+      dirtyQualifyingValues.put(SYSTEM_FAMILY_NAME, systemProfileName.getFamilyName());
+      dirtyQualifyingValues.put(SYSTEM_JOINED_NAME, systemProfileName.toString());
 
       if (update(id, dirtyQualifyingValues)) {
         markDirty(id, DirtyState.UPDATE);
@@ -2690,11 +2869,12 @@ public class RecipientDatabase extends Database {
       refreshQualifyingValues.put(SYSTEM_PHONE_TYPE, systemPhoneType);
       refreshQualifyingValues.put(SYSTEM_CONTACT_URI, systemContactUri);
 
+      String  joinedName    = systemProfileName.toString();
       boolean updatedValues = update(id, refreshQualifyingValues);
-      boolean updatedColor  = displayName != null && setColorIfNotSetInternal(id, ContactColors.generateFor(displayName));
+      boolean updatedColor  = !TextUtils.isEmpty(joinedName) && setColorIfNotSetInternal(id, ContactColors.generateFor(joinedName));
 
       if (updatedValues || updatedColor) {
-        pendingContactInfoMap.put(id, new PendingContactInfo(displayName, photoUri, systemPhoneLabel, systemContactUri));
+        pendingContactInfoMap.put(id, new PendingContactInfo(systemProfileName, photoUri, systemPhoneLabel, systemContactUri));
       }
 
       ContentValues otherValues = new ContentValues();
@@ -2729,7 +2909,9 @@ public class RecipientDatabase extends Database {
       ContentValues values = new ContentValues(5);
 
       values.put(SYSTEM_INFO_PENDING, 0);
-      values.put(SYSTEM_DISPLAY_NAME, (String) null);
+      values.put(SYSTEM_GIVEN_NAME, (String) null);
+      values.put(SYSTEM_FAMILY_NAME, (String) null);
+      values.put(SYSTEM_JOINED_NAME, (String) null);
       values.put(SYSTEM_PHOTO_URI, (String) null);
       values.put(SYSTEM_PHONE_LABEL, (String) null);
       values.put(SYSTEM_CONTACT_URI, (String) null);
@@ -2770,7 +2952,7 @@ public class RecipientDatabase extends Database {
     private final RegisteredState                 registered;
     private final byte[]                          profileKey;
     private final ProfileKeyCredential            profileKeyCredential;
-    private final String                          systemDisplayName;
+    private final ProfileName                     systemProfileName;
     private final String                          systemContactPhoto;
     private final String                          systemPhoneLabel;
     private final String                          systemContactUri;
@@ -2788,6 +2970,9 @@ public class RecipientDatabase extends Database {
     private final InsightsBannerTier              insightsBannerTier;
     private final byte[]                          storageId;
     private final MentionSetting                  mentionSetting;
+    private final ChatWallpaper                   wallpaper;
+    private final String                          about;
+    private final String                          aboutEmoji;
     private final SyncExtras                      syncExtras;
 
     RecipientSettings(@NonNull RecipientId id,
@@ -2809,7 +2994,7 @@ public class RecipientDatabase extends Database {
                       @NonNull  RegisteredState registered,
                       @Nullable byte[] profileKey,
                       @Nullable ProfileKeyCredential profileKeyCredential,
-                      @Nullable String systemDisplayName,
+                      @NonNull ProfileName systemProfileName,
                       @Nullable String systemContactPhoto,
                       @Nullable String systemPhoneLabel,
                       @Nullable String systemContactUri,
@@ -2825,6 +3010,9 @@ public class RecipientDatabase extends Database {
                       @NonNull InsightsBannerTier insightsBannerTier,
                       @Nullable byte[] storageId,
                       @NonNull MentionSetting mentionSetting,
+                      @Nullable ChatWallpaper wallpaper,
+                      @Nullable String about,
+                      @Nullable String aboutEmoji,
                       @NonNull SyncExtras syncExtras)
     {
       this.id                          = id;
@@ -2846,7 +3034,7 @@ public class RecipientDatabase extends Database {
       this.registered                  = registered;
       this.profileKey                  = profileKey;
       this.profileKeyCredential        = profileKeyCredential;
-      this.systemDisplayName           = systemDisplayName;
+      this.systemProfileName           = systemProfileName;
       this.systemContactPhoto          = systemContactPhoto;
       this.systemPhoneLabel            = systemPhoneLabel;
       this.systemContactUri            = systemContactUri;
@@ -2864,6 +3052,9 @@ public class RecipientDatabase extends Database {
       this.insightsBannerTier          = insightsBannerTier;
       this.storageId                   = storageId;
       this.mentionSetting              = mentionSetting;
+      this.wallpaper                   = wallpaper;
+      this.about                       = about;
+      this.aboutEmoji                  = aboutEmoji;
       this.syncExtras                  = syncExtras;
     }
 
@@ -2947,8 +3138,8 @@ public class RecipientDatabase extends Database {
       return profileKeyCredential;
     }
 
-    public @Nullable String getSystemDisplayName() {
-      return systemDisplayName;
+    public @NonNull ProfileName getSystemProfileName() {
+      return systemProfileName;
     }
 
     public @Nullable String getSystemContactPhotoUri() {
@@ -3009,6 +3200,18 @@ public class RecipientDatabase extends Database {
 
     public @NonNull MentionSetting getMentionSetting() {
       return mentionSetting;
+    }
+
+    public @Nullable ChatWallpaper getWallpaper() {
+      return wallpaper;
+    }
+
+    public @Nullable String getAbout() {
+      return about;
+    }
+
+    public @Nullable String getAboutEmoji() {
+      return aboutEmoji;
     }
 
     public @NonNull SyncExtras getSyncExtras() {
@@ -3123,13 +3326,13 @@ public class RecipientDatabase extends Database {
 
   private static class PendingContactInfo {
 
-    private final String displayName;
-    private final String photoUri;
-    private final String phoneLabel;
-    private final String contactUri;
+    private final ProfileName profileName;
+    private final String      photoUri;
+    private final String      phoneLabel;
+    private final String      contactUri;
 
-    private PendingContactInfo(String displayName, String photoUri, String phoneLabel, String contactUri) {
-      this.displayName = displayName;
+    private PendingContactInfo(@NonNull ProfileName systemProfileName, String photoUri, String phoneLabel, String contactUri) {
+      this.profileName = systemProfileName;
       this.photoUri    = photoUri;
       this.phoneLabel  = phoneLabel;
       this.contactUri  = contactUri;

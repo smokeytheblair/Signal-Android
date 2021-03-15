@@ -8,6 +8,7 @@ import androidx.annotation.StringRes;
 
 import com.annimon.stream.Stream;
 
+import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
@@ -21,7 +22,6 @@ import org.thoughtcrime.securesms.database.model.ReactionRecord;
 import org.thoughtcrime.securesms.reactions.ReactionDetails;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.sms.MessageSender;
-import org.thoughtcrime.securesms.util.Util;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,15 +32,13 @@ final class ReactWithAnyEmojiRepository {
 
   private static final String TAG = Log.tag(ReactWithAnyEmojiRepository.class);
 
-  private static final String RECENT_STORAGE_KEY = "reactions_recent_emoji";
-
-  private final Context              context;
-  private final RecentEmojiPageModel recentEmojiPageModel;
+  private final Context                     context;
+  private final RecentEmojiPageModel        recentEmojiPageModel;
   private final List<ReactWithAnyEmojiPage> emojiPages;
 
-  ReactWithAnyEmojiRepository(@NonNull Context context) {
+  ReactWithAnyEmojiRepository(@NonNull Context context, @NonNull String storageKey) {
     this.context              = context;
-    this.recentEmojiPageModel = new RecentEmojiPageModel(context, RECENT_STORAGE_KEY);
+    this.recentEmojiPageModel = new RecentEmojiPageModel(context, storageKey);
     this.emojiPages           = new LinkedList<>();
 
     emojiPages.addAll(Stream.of(EmojiUtil.getDisplayPages())
@@ -82,7 +80,7 @@ final class ReactWithAnyEmojiRepository {
           MessageSender.sendReactionRemoval(context, messageRecord.getId(), messageRecord.isMms(), oldRecord);
         } else {
           MessageSender.sendNewReaction(context, messageRecord.getId(), messageRecord.isMms(), emoji);
-          Util.runOnMain(() -> recentEmojiPageModel.onCodePointSelected(emoji));
+          ThreadUtil.runOnMain(() -> recentEmojiPageModel.onCodePointSelected(emoji));
         }
       } catch (NoSuchMessageException e) {
         Log.w(TAG, "Message not found! Ignoring.");

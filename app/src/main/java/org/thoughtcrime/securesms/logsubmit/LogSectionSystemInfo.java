@@ -17,6 +17,7 @@ import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.util.AppSignatureUtil;
 import org.thoughtcrime.securesms.util.ByteUnit;
 import org.thoughtcrime.securesms.util.CensorshipUtil;
+import org.thoughtcrime.securesms.util.DeviceProperties;
 import org.thoughtcrime.securesms.util.ServiceUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.Util;
@@ -54,10 +55,12 @@ public class LogSectionSystemInfo implements LogSection {
     builder.append("ABIs          : ").append(TextUtils.join(", ", getSupportedAbis())).append("\n");
     builder.append("Memory        : ").append(getMemoryUsage()).append("\n");
     builder.append("Memclass      : ").append(getMemoryClass(context)).append("\n");
+    builder.append("MemInfo       : ").append(getMemoryInfo(context)).append("\n");
     builder.append("OS Host       : ").append(Build.HOST).append("\n");
     builder.append("Censored      : ").append(CensorshipUtil.isCensored(context)).append("\n");
     builder.append("Play Services : ").append(getPlayServicesString(context)).append("\n");
     builder.append("FCM           : ").append(!TextSecurePreferences.isFcmDisabled(context)).append("\n");
+    builder.append("BkgRestricted : ").append(Build.VERSION.SDK_INT >= 28 ? DeviceProperties.isBackgroundRestricted(context) : "N/A").append("\n");
     builder.append("Locale        : ").append(Locale.getDefault().toString()).append("\n");
     builder.append("Linked Devices: ").append(TextSecurePreferences.isMultiDevice(context)).append("\n");
     builder.append("First Version : ").append(TextSecurePreferences.getFirstInstallVersion(context)).append("\n");
@@ -71,7 +74,8 @@ public class LogSectionSystemInfo implements LogSection {
              .append(BuildConfig.CANONICAL_VERSION_CODE)
              .append(", ")
              .append(Util.getManifestApkVersion(context))
-             .append(")\n");
+             .append(") (")
+             .append(BuildConfig.GIT_HASH).append(") \n");
     } catch (PackageManager.NameNotFoundException nnfe) {
       builder.append("Unknown\n");
     }
@@ -100,6 +104,12 @@ public class LogSectionSystemInfo implements LogSection {
     }
 
     return activityManager.getMemoryClass() + lowMem;
+  }
+
+  private static @NonNull String getMemoryInfo(Context context) {
+    ActivityManager.MemoryInfo info = DeviceProperties.getMemoryInfo(context);
+    return String.format(Locale.US, "availMem: %d mb, totalMem: %d mb, threshold: %d mb, lowMemory: %b",
+                         ByteUnit.BYTES.toMegabytes(info.availMem), ByteUnit.BYTES.toMegabytes(info.totalMem), ByteUnit.BYTES.toMegabytes(info.threshold), info.lowMemory);
   }
 
   private static @NonNull Iterable<String> getSupportedAbis() {

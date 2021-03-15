@@ -105,12 +105,12 @@ public class PushMediaSendJob extends PushSendJob {
 
   @Override
   public void onPushSend()
-      throws RetryLaterException, MmsException, NoSuchMessageException,
-             UndeliverableMessageException
+      throws IOException, MmsException, NoSuchMessageException, UndeliverableMessageException
   {
     ExpiringMessageManager expirationManager = ApplicationContext.getInstance(context).getExpiringMessageManager();
     MessageDatabase        database          = DatabaseFactory.getMmsDatabase(context);
     OutgoingMediaMessage   message           = database.getOutgoingMessage(messageId);
+    long                   threadId          = database.getMessageRecord(messageId).getThreadId();
 
     if (database.isSent(messageId)) {
       warn(TAG, String.valueOf(message.getSentTimeMillis()), "Message " + messageId + " was already sent. Ignoring.");
@@ -118,7 +118,7 @@ public class PushMediaSendJob extends PushSendJob {
     }
 
     try {
-      log(TAG, String.valueOf(message.getSentTimeMillis()), "Sending message: " + messageId);
+      log(TAG, String.valueOf(message.getSentTimeMillis()), "Sending message: " + messageId + ", Recipient: " + message.getRecipient().getId() + ", Thread: " + threadId);
 
       RecipientUtil.shareProfileIfFirstSecureMessage(context, message.getRecipient());
 
@@ -129,7 +129,7 @@ public class PushMediaSendJob extends PushSendJob {
       boolean unidentified = deliver(message);
 
       database.markAsSent(messageId, true);
-      markAttachmentsUploaded(messageId, message.getAttachments());
+      markAttachmentsUploaded(messageId, message);
       database.markUnidentified(messageId, unidentified);
 
       if (recipient.isSelf()) {
@@ -176,20 +176,13 @@ public class PushMediaSendJob extends PushSendJob {
   }
 
   @Override
-  public boolean onShouldRetry(@NonNull Exception exception) {
-    if (exception instanceof RetryLaterException) return true;
-    return false;
-  }
-
-  @Override
   public void onFailure() {
     DatabaseFactory.getMmsDatabase(context).markAsSentFailed(messageId);
     notifyMediaMessageDeliveryFailed(context, messageId);
   }
 
   private boolean deliver(OutgoingMediaMessage message)
-      throws RetryLaterException, InsecureFallbackApprovalException, UntrustedIdentityException,
-             UndeliverableMessageException
+      throws IOException, InsecureFallbackApprovalException, UntrustedIdentityException, UndeliverableMessageException
   {
     if (message.getRecipient() == null) {
       throw new UndeliverableMessageException("No destination address.");
@@ -239,9 +232,6 @@ public class PushMediaSendJob extends PushSendJob {
       throw new UndeliverableMessageException(e);
     } catch (ServerRejectedException e) {
       throw new UndeliverableMessageException(e);
-    } catch (IOException e) {
-      warn(TAG, String.valueOf(message.getSentTimeMillis()), e);
-      throw new RetryLaterException(e);
     }
   }
 
