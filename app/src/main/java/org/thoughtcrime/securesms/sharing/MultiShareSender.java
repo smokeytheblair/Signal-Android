@@ -10,13 +10,11 @@ import androidx.core.util.Consumer;
 
 import com.annimon.stream.Stream;
 
+import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.TransportOption;
 import org.thoughtcrime.securesms.TransportOptions;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
-import org.thoughtcrime.securesms.database.StickerDatabase;
 import org.thoughtcrime.securesms.database.ThreadDatabase;
-import org.thoughtcrime.securesms.database.model.StickerRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.mediasend.Media;
 import org.thoughtcrime.securesms.mms.OutgoingMediaMessage;
@@ -24,10 +22,8 @@ import org.thoughtcrime.securesms.mms.SlideDeck;
 import org.thoughtcrime.securesms.mms.SlideFactory;
 import org.thoughtcrime.securesms.mms.StickerSlide;
 import org.thoughtcrime.securesms.recipients.Recipient;
-import org.thoughtcrime.securesms.recipients.RecipientFormattingException;
 import org.thoughtcrime.securesms.sms.MessageSender;
 import org.thoughtcrime.securesms.sms.OutgoingTextMessage;
-import org.thoughtcrime.securesms.stickers.StickerLocator;
 import org.thoughtcrime.securesms.util.MessageUtil;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.util.concurrent.SimpleTask;
@@ -36,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * MultiShareSender encapsulates send logic (stolen from {@link org.thoughtcrime.securesms.conversation.ConversationActivity}
@@ -71,7 +68,7 @@ public final class MultiShareSender {
       TransportOption transport      = resolveTransportOption(context, recipient);
       boolean         forceSms       = recipient.isForceSmsSelection() && transport.isSms();
       int             subscriptionId = transport.getSimSubscriptionId().or(-1);
-      long            expiresIn      = recipient.getExpireMessages() * 1000L;
+      long            expiresIn      = TimeUnit.SECONDS.toMillis(recipient.getExpiresInSeconds());
       boolean         needsSplit     = !transport.isSms() &&
                                        message != null    &&
                                        message.length() > transport.calculateCharacters(message).maxPrimaryMessageSize;
@@ -92,6 +89,10 @@ public final class MultiShareSender {
         sendTextMessage(context, multiShareArgs, recipient, shareContactAndThread.getThreadId() ,forceSms, expiresIn, subscriptionId);
         results.add(new MultiShareSendResult(shareContactAndThread, MultiShareSendResult.Type.SUCCESS));
       }
+
+      // XXX We must do this to avoid sending out messages to the same recipient with the same
+      //     sentTimestamp. If we do this, they'll be considered dupes by the receiver.
+      ThreadUtil.sleep(5);
     }
 
     return new MultiShareSendResultCollection(results);

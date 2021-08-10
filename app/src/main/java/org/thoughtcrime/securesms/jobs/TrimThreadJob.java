@@ -18,9 +18,11 @@ package org.thoughtcrime.securesms.jobs;
 
 import androidx.annotation.NonNull;
 
+import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.ThreadDatabase;
+import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.keyvalue.KeepMessagesDuration;
@@ -30,11 +32,15 @@ public class TrimThreadJob extends BaseJob {
 
   public static final String KEY = "TrimThreadJob";
 
-  private static final String TAG = TrimThreadJob.class.getSimpleName();
+  private static final String TAG = Log.tag(TrimThreadJob.class);
 
   private static final String KEY_THREAD_ID = "thread_id";
 
   private long threadId;
+
+  public static void enqueueAsync(long threadId) {
+    SignalExecutors.BOUNDED.execute(() -> ApplicationDependencies.getJobManager().add(new TrimThreadJob(threadId)));
+  }
 
   public TrimThreadJob(long threadId) {
     this(new Job.Parameters.Builder().setQueue("TrimThreadJob").build(), threadId);

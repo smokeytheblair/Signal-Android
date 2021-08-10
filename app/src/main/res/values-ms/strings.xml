@@ -53,7 +53,7 @@
   <string name="DraftDatabase_Draft_quote_snippet">(balas)</string>
   <!--AttachmentKeyboard-->
   <string name="AttachmentKeyboard_gallery">Galeri</string>
-  <string name="AttachmentKeyboard_gif">GIF</string>
+  <!-- Removed by excludeNonTranslatables <string name="AttachmentKeyboard_gif">GIF</string> -->
   <string name="AttachmentKeyboard_file">Fail</string>
   <string name="AttachmentKeyboard_contact">Kenalan</string>
   <string name="AttachmentKeyboard_location">Lokasi</string>
@@ -75,7 +75,7 @@
   <string name="BlockUnblockDialog_you_will_be_able_to_call_and_message_each_other">Anda akan dapat menghantar mesej dan membuat panggilan satu sama lain.</string>
   <!-- Removed by excludeNonTranslatables <string name="BlockUnblockDialog_unblock">Nyahsekat</string> -->
   <string name="BlockUnblockDialog_block">Sekat</string>
-  <string name="BlockUnblockDialog_block_and_delete">Sekat dan Padam</string>
+  <!-- Removed by excludeNonTranslatables <string name="BlockUnblockDialog_block_and_delete">Sekat dan Padam</string> -->
   <!--BucketedThreadMedia-->
   <string name="BucketedThreadMedia_Today">Hari ini</string>
   <string name="BucketedThreadMedia_Yesterday">Semalam</string>
@@ -503,9 +503,9 @@
   <string name="DeviceActivity_signal_needs_the_camera_permission_in_order_to_scan_a_qr_code">Signal memerlukan kebenaran Kamera untuk mengimbas kod QR, tetapi telah ditolak secara kekal. Sila terus ke menu tetapan aplikasi, pilih \"Kebenaran\", dan dayakan \"Kamera\".</string>
   <string name="DeviceActivity_unable_to_scan_a_qr_code_without_the_camera_permission">Tidak dapat mengimbas kod QR tanpa kebenaran Kamera</string>
   <!--ExpirationDialog-->
-  <string name="ExpirationDialog_disappearing_messages">Mesej hilang</string>
-  <string name="ExpirationDialog_your_messages_will_not_expire">Mesej anda tidak akan tamat tempoh.</string>
-  <string name="ExpirationDialog_your_messages_will_disappear_s_after_they_have_been_seen">Mesej yang diterima dan dihantar dalam perbualan ini akan hilang pada %s selepas dibaca.</string>
+  <!-- Removed by excludeNonTranslatables <string name="ExpirationDialog_disappearing_messages">Mesej hilang</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ExpirationDialog_your_messages_will_not_expire">Mesej anda tidak akan tamat tempoh.</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ExpirationDialog_your_messages_will_disappear_s_after_they_have_been_seen">Mesej yang diterima dan dihantar dalam perbualan ini akan hilang pada %s selepas dibaca.</string> -->
   <!--PassphrasePromptActivity-->
   <string name="PassphrasePromptActivity_enter_passphrase">Masukkan frasa laluan</string>
   <string name="PassphrasePromptActivity_watermark_content_description">ikon Signal</string>
@@ -534,7 +534,7 @@
   <string name="RatingManager_rate_now">Nilaikan sekarang!</string>
   <string name="RatingManager_no_thanks">Tidak, terima kasih</string>
   <string name="RatingManager_later">Nanti</string>
-  <string name="RatingManager_whoops_the_play_store_app_does_not_appear_to_be_installed">Whoops, aplikasi Play Store tidak kelihatan dipasang pada peranti anda.</string>
+  <!-- Removed by excludeNonTranslatables <string name="RatingManager_whoops_the_play_store_app_does_not_appear_to_be_installed">Whoops, aplikasi Play Store tidak kelihatan dipasang pada peranti anda.</string> -->
   <!--ReactionsBottomSheetDialogFragment-->
   <!--ReactionsConversationView-->
   <!--ReactionsRecipientAdapter-->
@@ -760,14 +760,14 @@ Menerima mesej pertukaran kunci untuk versi protokol yang tidak sah.</string>
   <string name="MessageNotifier_unknown_contact_message">Kenalan</string>
   <string name="MessageNotifier_this_message_was_deleted">Mesej ini telah dipadam.</string>
   <!--Notification Channels-->
-  <string name="NotificationChannel_messages">Lalai</string>
+  <!-- Removed by excludeNonTranslatables <string name="NotificationChannel_messages">Lalai</string> -->
   <string name="NotificationChannel_calls">Panggilan</string>
   <string name="NotificationChannel_failures">Kegagalan</string>
   <string name="NotificationChannel_backups">Sandaran</string>
   <string name="NotificationChannel_locked_status">Status kunci</string>
   <string name="NotificationChannel_app_updates">Kemas kini aplikasi</string>
   <string name="NotificationChannel_other">Lain-lain</string>
-  <string name="NotificationChannel_group_messages">Mesej</string>
+  <!-- Removed by excludeNonTranslatables <string name="NotificationChannel_group_messages">Mesej</string> -->
   <string name="NotificationChannel_missing_display_name">Tidak diketahui</string>
   <!--ProfileEditNameFragment-->
   <!--QuickResponseService-->
@@ -947,7 +947,7 @@ Menerima mesej pertukaran kunci untuk versi protokol yang tidak sah.</string>
     <item quantity="other">%d lain-lain</item>
   </plurals>
   <!--giphy_activity-->
-  <string name="giphy_activity_toolbar__search_gifs_and_stickers">Mencari GIFs dan pelekat</string>
+  <!-- Removed by excludeNonTranslatables <string name="giphy_activity_toolbar__search_gifs_and_stickers">Mencari GIFs dan pelekat</string> -->
   <!--giphy_fragment-->
   <string name="giphy_fragment__nothing_found">Tiada apa-apa dicari</string>
   <!--log_submit_activity-->
@@ -959,7 +959,7 @@ Menerima mesej pertukaran kunci untuk versi protokol yang tidak sah.</string>
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__button_submit">Hantar</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__button_got_it">Faham</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__button_compose_email">Mengarang e-mel</string> -->
-  <string name="log_submit_activity__this_log_will_be_posted_online">Log ini akan dihantarskan secara terbuka dalam talian untuk penyumbang lihat, anda boleh memeriksa dan mengeditnya sebelum menghantar.</string>
+  <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__this_log_will_be_posted_online">Log ini akan dihantarskan secara terbuka dalam talian untuk penyumbang lihat, anda boleh memeriksa dan mengeditnya sebelum menghantar.</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__loading_logs">Memuatkan log…</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__uploading_logs">Memuat naik log-log…</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__choose_email_app">Memilih aplikasi e-mel</string> -->
@@ -1071,10 +1071,10 @@ Menerima mesej pertukaran kunci untuk versi protokol yang tidak sah.</string>
   <string name="arrays__use_default">Gunakan lalai</string>
   <string name="arrays__use_custom">Gunakan tersuai</string>
   <string name="arrays__mute_for_one_hour">Bisukan untuk 1 jam</string>
-  <string name="arrays__mute_for_two_hours">Bisukan untuk 2 jam</string>
+  <!-- Removed by excludeNonTranslatables <string name="arrays__mute_for_two_hours">Bisukan untuk 2 jam</string> -->
   <string name="arrays__mute_for_one_day">Bisukan untuk 1 hari</string>
   <string name="arrays__mute_for_seven_days">Bisukan untuk 7 hari</string>
-  <string name="arrays__mute_for_one_year">Bisukan untuk 1 tahun</string>
+  <!-- Removed by excludeNonTranslatables <string name="arrays__mute_for_one_year">Bisukan untuk 1 tahun</string> -->
   <string name="arrays__settings_default">Tetapan lalai</string>
   <string name="arrays__enabled">Didayakan</string>
   <string name="arrays__disabled">Diyahdayakan</string>
@@ -1178,7 +1178,7 @@ Menerima mesej pertukaran kunci untuk versi protokol yang tidak sah.</string>
   <string name="preferences__if_read_receipts_are_disabled_you_wont_be_able_to_see_read_receipts">Jika resit baca dinyahdayakan, anda tidak akan dapat melihat resit baca dari orang lain.</string>
   <string name="preferences__typing_indicators">Penunjuk menaip</string>
   <string name="preferences__if_typing_indicators_are_disabled_you_wont_be_able_to_see_typing_indicators">Jika penunjuk menaip dinyahdayakan, anda tidak akan dapat melihat penunjuk menaip dari orang lain.</string>
-  <string name="preferences__request_keyboard_to_disable_personalized_learning">Meminta papan kekunci untuk menyahdayakan pembelajaran peribadi</string>
+  <!-- Removed by excludeNonTranslatables <string name="preferences__request_keyboard_to_disable_personalized_learning">Meminta papan kekunci untuk menyahdayakan pembelajaran peribadi</string> -->
   <!-- Removed by excludeNonTranslatables <string name="preferences_app_protection__blocked_contacts">Kenalan disekat</string> -->
   <string name="preferences_chats__when_using_mobile_data">Semasa mengguna data mudah alih</string>
   <string name="preferences_chats__when_using_wifi">Semasa mengguna WI-Fi</string>

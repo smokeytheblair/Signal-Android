@@ -58,7 +58,7 @@
   <string name="DraftDatabase_Draft_quote_snippet">(jibu)</string>
   <!--AttachmentKeyboard-->
   <string name="AttachmentKeyboard_gallery">Picha</string>
-  <string name="AttachmentKeyboard_gif">GIF</string>
+  <!-- Removed by excludeNonTranslatables <string name="AttachmentKeyboard_gif">GIF</string> -->
   <string name="AttachmentKeyboard_file">Faili</string>
   <string name="AttachmentKeyboard_contact">Mwasiliani</string>
   <string name="AttachmentKeyboard_location">Eneo</string>
@@ -81,7 +81,7 @@
   <string name="BlockUnblockDialog_group_members_will_be_able_to_add_you">Washiriki wa kikundi wataweza kukuongeza kwenye kundi hili tena.</string>
   <!-- Removed by excludeNonTranslatables <string name="BlockUnblockDialog_unblock">Fungua</string> -->
   <string name="BlockUnblockDialog_block">Zuia</string>
-  <string name="BlockUnblockDialog_block_and_delete">Zuia na Futa</string>
+  <!-- Removed by excludeNonTranslatables <string name="BlockUnblockDialog_block_and_delete">Zuia na Futa</string> -->
   <!--BucketedThreadMedia-->
   <string name="BucketedThreadMedia_Today">Leo</string>
   <string name="BucketedThreadMedia_Yesterday">Jana</string>
@@ -381,15 +381,15 @@
   <!-- Removed by excludeNonTranslatables <string name="ManageGroupActivity_none">Hakuna</string> -->
   <!--GroupMentionSettingDialog-->
   <!--ManageRecipientActivity-->
-  <string name="ManageRecipientActivity_disappearing_messages">Jumbe zinazotoweka</string>
-  <string name="ManageRecipientActivity_block">Zuia</string>
-  <string name="ManageRecipientActivity_unblock">Fungua</string>
-  <string name="ManageRecipientActivity_view_safety_number">Tazama nambari ya usalama</string>
-  <string name="ManageRecipientActivity_mute_notifications">Zima arifa</string>
-  <string name="ManageRecipientActivity_custom_notifications">Taarifa kaida</string>
-  <string name="ManageRecipientActivity_off">Zima</string>
-  <string name="ManageRecipientActivity_on">Washwa</string>
-  <string name="ManageRecipientActivity_message_description">Ujumbe</string>
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_disappearing_messages">Jumbe zinazotoweka</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_block">Zuia</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_unblock">Fungua</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_view_safety_number">Tazama nambari ya usalama</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_mute_notifications">Zima arifa</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_custom_notifications">Taarifa kaida</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_off">Zima</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_on">Washwa</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ManageRecipientActivity_message_description">Ujumbe</string> -->
   <!--CustomNotificationsDialogFragment-->
   <string name="CustomNotificationsDialogFragment__custom_notifications">Taarifa kaida</string>
   <string name="CustomNotificationsDialogFragment__messages">Jumbe</string>
@@ -597,9 +597,9 @@
 Signal inahitaji ruhusa ya Kamera ili kuskani msimbo wa QR, lakini imekataliwa kabisa. Tafadhali endelea kwenye mipangilio ya programu, chagua \"Ruhusa\", na uwezeshe \"Kamera\".</string>
   <string name="DeviceActivity_unable_to_scan_a_qr_code_without_the_camera_permission">Imeshindwa kuskani msimbo wa QR bila ruhusa ya Kamera</string>
   <!--ExpirationDialog-->
-  <string name="ExpirationDialog_disappearing_messages">Jumbe zinazopotea</string>
-  <string name="ExpirationDialog_your_messages_will_not_expire">Ujumbe wako hautopitwa na wakati</string>
-  <string name="ExpirationDialog_your_messages_will_disappear_s_after_they_have_been_seen">Ujumbe utakaotumwa na kupokewa kwenye gumzo hili utatoweka %s baada ya kuonekana.</string>
+  <!-- Removed by excludeNonTranslatables <string name="ExpirationDialog_disappearing_messages">Jumbe zinazopotea</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ExpirationDialog_your_messages_will_not_expire">Ujumbe wako hautopitwa na wakati</string> -->
+  <!-- Removed by excludeNonTranslatables <string name="ExpirationDialog_your_messages_will_disappear_s_after_they_have_been_seen">Ujumbe utakaotumwa na kupokewa kwenye gumzo hili utatoweka %s baada ya kuonekana.</string> -->
   <!--PassphrasePromptActivity-->
   <string name="PassphrasePromptActivity_enter_passphrase">Ingiza nenosiri</string>
   <string name="PassphrasePromptActivity_watermark_content_description">Signal ikoni</string>
@@ -631,7 +631,7 @@ Signal inahitaji ruhusa ya Kamera ili kuskani msimbo wa QR, lakini imekataliwa k
   <string name="RatingManager_rate_now">Tathmini sasa</string>
   <string name="RatingManager_no_thanks">Hapana nashukuru</string>
   <string name="RatingManager_later">Baadaye</string>
-  <string name="RatingManager_whoops_the_play_store_app_does_not_appear_to_be_installed">Duh, programu ya Play Store inaonekana haijasakinishwa kwenye kifaa chako.</string>
+  <!-- Removed by excludeNonTranslatables <string name="RatingManager_whoops_the_play_store_app_does_not_appear_to_be_installed">Duh, programu ya Play Store inaonekana haijasakinishwa kwenye kifaa chako.</string> -->
   <!--ReactionsBottomSheetDialogFragment-->
   <!--ReactionsConversationView-->
   <string name="ReactionsConversationView_plus">+%1$d</string>
@@ -891,14 +891,14 @@ nambari yako ya simu</string>
   <string name="MessageNotifier_reacted_s_to_your_sticker">Ametoa hisia%1$s kwa kibandiko chako.</string>
   <string name="MessageNotifier_this_message_was_deleted">Ujumbe huu umefutwa</string>
   <!--Notification Channels-->
-  <string name="NotificationChannel_messages">Chaguo Msingi</string>
+  <!-- Removed by excludeNonTranslatables <string name="NotificationChannel_messages">Chaguo Msingi</string> -->
   <string name="NotificationChannel_calls">Simu</string>
   <string name="NotificationChannel_failures">Zilizoshindwa</string>
   <string name="NotificationChannel_backups">Nakalahifadhi</string>
   <string name="NotificationChannel_locked_status">Funga hali</string>
   <string name="NotificationChannel_app_updates">Sasisho za programu</string>
   <string name="NotificationChannel_other">ingine</string>
-  <string name="NotificationChannel_group_messages">Jumbe</string>
+  <!-- Removed by excludeNonTranslatables <string name="NotificationChannel_group_messages">Jumbe</string> -->
   <string name="NotificationChannel_missing_display_name">Isiyojulikana</string>
   <!--ProfileEditNameFragment-->
   <!-- Removed by excludeNonTranslatables <string name="ProfileEditNameFragment_successfully_set_profile_name">Jina lako la wasifa limefanikiwa kuwekwa.</string> -->
@@ -1102,7 +1102,7 @@ nambari yako ya simu</string>
     <item quantity="other">%d Wengine</item>
   </plurals>
   <!--giphy_activity-->
-  <string name="giphy_activity_toolbar__search_gifs_and_stickers">Tafuta GIF na vibandiko</string>
+  <!-- Removed by excludeNonTranslatables <string name="giphy_activity_toolbar__search_gifs_and_stickers">Tafuta GIF na vibandiko</string> -->
   <!--giphy_fragment-->
   <string name="giphy_fragment__nothing_found">Hakuna kilichopatikana</string>
   <!--log_submit_activity-->
@@ -1114,7 +1114,7 @@ nambari yako ya simu</string>
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__button_submit">Tuma</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__button_got_it">Nimeelewa</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__button_compose_email">Tunga barua pepe</string> -->
-  <string name="log_submit_activity__this_log_will_be_posted_online">Faili hii itawekwa hadharani mkondoni ili wachangiaji watazame, unaweza kuikagua na kuihariri kabla ya kuiwasilisha.</string>
+  <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__this_log_will_be_posted_online">Faili hii itawekwa hadharani mkondoni ili wachangiaji watazame, unaweza kuikagua na kuihariri kabla ya kuiwasilisha.</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__loading_logs">Inapakia logi</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__uploading_logs">Inapakia logi</string> -->
   <!-- Removed by excludeNonTranslatables <string name="log_submit_activity__choose_email_app">Chagua program ya barua pepe</string> -->
@@ -1220,10 +1220,10 @@ nambari yako ya simu</string>
   <string name="arrays__use_default">Tumia chaguo msingi</string>
   <string name="arrays__use_custom">Tumia kaida</string>
   <string name="arrays__mute_for_one_hour">Zima kwa saa 1</string>
-  <string name="arrays__mute_for_two_hours">Zima kwa masaa 2</string>
+  <!-- Removed by excludeNonTranslatables <string name="arrays__mute_for_two_hours">Zima kwa masaa 2</string> -->
   <string name="arrays__mute_for_one_day">Zima kwa siku 1</string>
   <string name="arrays__mute_for_seven_days">Zima kwa siku 7</string>
-  <string name="arrays__mute_for_one_year">Zima kwa mwaka 1</string>
+  <!-- Removed by excludeNonTranslatables <string name="arrays__mute_for_one_year">Zima kwa mwaka 1</string> -->
   <string name="arrays__settings_default">Mipangilio chaguo msingi</string>
   <string name="arrays__enabled">Imewezeshwa</string>
   <string name="arrays__disabled">Imelemazwa</string>
@@ -1329,7 +1329,7 @@ nambari yako ya simu</string>
   <string name="preferences__if_read_receipts_are_disabled_you_wont_be_able_to_see_read_receipts">Ikiwa jumbe zilizosomwa zimemalemezwa, hutaweza kuona jumbe zilizosomwa kutoka kwa wengine</string>
   <string name="preferences__typing_indicators">Viashiria vya kucharaza</string>
   <string name="preferences__if_typing_indicators_are_disabled_you_wont_be_able_to_see_typing_indicators">Ikiwa viashiria vya kucharaza vimelemazwa, hutaweza kuona viashiria vya kucharaza kutoka kwa wengine.</string>
-  <string name="preferences__request_keyboard_to_disable_personalized_learning">Omba kibaobonye kulemaza kujifunza kwa kibinafsi</string>
+  <!-- Removed by excludeNonTranslatables <string name="preferences__request_keyboard_to_disable_personalized_learning">Omba kibaobonye kulemaza kujifunza kwa kibinafsi</string> -->
   <!-- Removed by excludeNonTranslatables <string name="preferences_app_protection__blocked_contacts">Wawasiliani waliozuiliwa</string> -->
   <string name="preferences_chats__when_using_mobile_data">Wakati unatumia mtandao wa simu</string>
   <string name="preferences_chats__when_using_wifi">Wakati unatumia WiFi</string>

@@ -2,6 +2,7 @@ package org.thoughtcrime.securesms.components.webrtc;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Pair;
 
 import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
@@ -14,6 +15,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.annimon.stream.Stream;
 
+import org.signal.core.util.ThreadUtil;
 import org.thoughtcrime.securesms.components.sensors.DeviceOrientationMonitor;
 import org.thoughtcrime.securesms.components.sensors.Orientation;
 import org.thoughtcrime.securesms.database.IdentityDatabase;
@@ -41,7 +43,9 @@ public class WebRtcCallViewModel extends ViewModel {
   private final MutableLiveData<Boolean>                       microphoneEnabled         = new MutableLiveData<>(true);
   private final MutableLiveData<Boolean>                       isInPipMode               = new MutableLiveData<>(false);
   private final MutableLiveData<WebRtcControls>                webRtcControls            = new MutableLiveData<>(WebRtcControls.NONE);
-  private final LiveData<WebRtcControls>                       realWebRtcControls        = LiveDataUtil.combineLatest(isInPipMode, webRtcControls, this::getRealWebRtcControls);
+  private final MutableLiveData<WebRtcControls.FoldableState>  foldableState             = new MutableLiveData<>(WebRtcControls.FoldableState.flat());
+  private final LiveData<WebRtcControls>                       controlsWithFoldableState = LiveDataUtil.combineLatest(foldableState, webRtcControls, this::updateControlsFoldableState);
+  private final LiveData<WebRtcControls>                       realWebRtcControls        = LiveDataUtil.combineLatest(isInPipMode, controlsWithFoldableState, this::getRealWebRtcControls);
   private final SingleLiveEvent<Event>                         events                    = new SingleLiveEvent<Event>();
   private final MutableLiveData<Long>                          elapsed                   = new MutableLiveData<>(-1L);
   private final MutableLiveData<LiveRecipient>                 liveRecipient             = new MutableLiveData<>(Recipient.UNKNOWN.live());
@@ -53,6 +57,8 @@ public class WebRtcCallViewModel extends ViewModel {
   private final LiveData<List<GroupMemberEntry.FullMember>>    groupMembers              = LiveDataUtil.skip(Transformations.switchMap(groupRecipient, r -> Transformations.distinctUntilChanged(new LiveGroup(r.requireGroupId()).getFullMembers())), 1);
   private final LiveData<Boolean>                              shouldShowSpeakerHint     = Transformations.map(participantsState, this::shouldShowSpeakerHint);
   private final LiveData<Orientation>                          orientation;
+  private final MutableLiveData<Boolean>                       isLandscapeEnabled        = new MutableLiveData<>();
+  private final LiveData<Integer>                              controlsRotation;
 
   private boolean               canDisplayTooltipIfNeeded = true;
   private boolean               hasEnabledLocalVideo      = false;
@@ -61,23 +67,30 @@ public class WebRtcCallViewModel extends ViewModel {
   private boolean               answerWithVideoAvailable  = false;
   private Runnable              elapsedTimeRunnable       = this::handleTick;
   private boolean               canEnterPipMode           = false;
-  private List<CallParticipant> previousParticipantsList = Collections.emptyList();
-  private boolean               callStarting             = false;
+  private List<CallParticipant> previousParticipantsList  = Collections.emptyList();
+  private boolean               callStarting              = false;
+  private boolean               switchOnFirstScreenShare  = true;
+  private boolean               showScreenShareTip        = true;
 
   private final WebRtcCallRepository repository = new WebRtcCallRepository(ApplicationDependencies.getApplication());
 
   private WebRtcCallViewModel(@NonNull DeviceOrientationMonitor deviceOrientationMonitor) {
-    orientation = LiveDataUtil.combineLatest(deviceOrientationMonitor.getOrientation(), webRtcControls, (deviceOrientation, controls) -> {
-      if (controls.canRotateControls()) {
-        return deviceOrientation;
-      } else {
-        return Orientation.PORTRAIT_BOTTOM_EDGE;
-      }
-    });
+    orientation      = deviceOrientationMonitor.getOrientation();
+    controlsRotation = LiveDataUtil.combineLatest(Transformations.distinctUntilChanged(isLandscapeEnabled),
+                                                  Transformations.distinctUntilChanged(orientation),
+                                                  this::resolveRotation);
+  }
+
+  public LiveData<Integer> getControlsRotation() {
+    return controlsRotation;
   }
 
   public LiveData<Orientation> getOrientation() {
     return Transformations.distinctUntilChanged(orientation);
+  }
+
+  public LiveData<Pair<Orientation, Boolean>> getOrientationAndLandscapeEnabled() {
+    return LiveDataUtil.combineLatest(orientation, isLandscapeEnabled, Pair::new);
   }
 
   public LiveData<Boolean> getMicrophoneEnabled() {
@@ -94,6 +107,12 @@ public class WebRtcCallViewModel extends ViewModel {
 
   public void setRecipient(@NonNull Recipient recipient) {
     liveRecipient.setValue(recipient.live());
+  }
+
+  public void setFoldableState(@NonNull WebRtcControls.FoldableState foldableState) {
+    this.foldableState.postValue(foldableState);
+
+    ThreadUtil.runOnMain(() -> participantsState.setValue(CallParticipantsState.update(participantsState.getValue(), foldableState)));
   }
 
   public LiveData<Event> getEvents() {
@@ -144,13 +163,26 @@ public class WebRtcCallViewModel extends ViewModel {
     participantsState.setValue(CallParticipantsState.update(participantsState.getValue(), isInPipMode));
   }
 
+  public void setIsLandscapeEnabled(boolean isLandscapeEnabled) {
+    this.isLandscapeEnabled.postValue(isLandscapeEnabled);
+  }
+
   @MainThread
   public void setIsViewingFocusedParticipant(@NonNull CallParticipantsState.SelectedPage page) {
     if (page == CallParticipantsState.SelectedPage.FOCUSED) {
       SignalStore.tooltips().markGroupCallSpeakerViewSeen();
     }
 
-    //noinspection ConstantConditions
+    CallParticipantsState state = participantsState.getValue();
+    if (state != null &&
+        showScreenShareTip &&
+        state.getFocusedParticipant().isScreenSharing() &&
+        state.isViewingFocusedParticipant() &&
+        page == CallParticipantsState.SelectedPage.GRID) {
+      showScreenShareTip = false;
+      events.setValue(new Event.ShowSwipeToSpeakerHint());
+    }
+
     participantsState.setValue(CallParticipantsState.update(participantsState.getValue(), page));
   }
 
@@ -179,8 +211,16 @@ public class WebRtcCallViewModel extends ViewModel {
 
     microphoneEnabled.setValue(localParticipant.isMicrophoneEnabled());
 
-    //noinspection ConstantConditions
-    participantsState.setValue(CallParticipantsState.update(participantsState.getValue(), webRtcViewModel, enableVideo));
+    CallParticipantsState state = participantsState.getValue();
+    if (state != null) {
+      boolean wasScreenSharing = state.getFocusedParticipant().isScreenSharing();
+      CallParticipantsState newState = CallParticipantsState.update(state, webRtcViewModel, enableVideo);
+      participantsState.setValue(newState);
+      if (switchOnFirstScreenShare && !wasScreenSharing && newState.getFocusedParticipant().isScreenSharing()) {
+        switchOnFirstScreenShare = false;
+        events.setValue(new Event.SwitchToSpeaker());
+      }
+    }
 
     if (webRtcViewModel.getGroupState().isConnected()) {
       if (!containsPlaceholders(previousParticipantsList)) {
@@ -223,6 +263,23 @@ public class WebRtcCallViewModel extends ViewModel {
     if (canDisplayTooltipIfNeeded && webRtcViewModel.isRemoteVideoEnabled() && !hasEnabledLocalVideo) {
       canDisplayTooltipIfNeeded = false;
       events.setValue(new Event.ShowVideoTooltip());
+    }
+  }
+
+  private int resolveRotation(boolean isLandscapeEnabled, @NonNull Orientation orientation) {
+    if (isLandscapeEnabled) {
+      return 0;
+    }
+
+    switch (orientation) {
+      case LANDSCAPE_LEFT_EDGE:
+        return 90;
+      case LANDSCAPE_RIGHT_EDGE:
+        return -90;
+      case PORTRAIT_BOTTOM_EDGE:
+        return 0;
+      default:
+        throw new AssertionError();
     }
   }
 
@@ -301,7 +358,12 @@ public class WebRtcCallViewModel extends ViewModel {
                                                callState,
                                                groupCallState,
                                                audioOutput,
-                                               participantLimit));
+                                               participantLimit,
+                                               WebRtcControls.FoldableState.flat()));
+  }
+
+  private @NonNull WebRtcControls updateControlsFoldableState(@NonNull WebRtcControls.FoldableState foldableState, @NonNull WebRtcControls controls) {
+    return controls.withFoldableState(foldableState);
   }
 
   private @NonNull WebRtcControls getRealWebRtcControls(boolean isInPipMode, @NonNull WebRtcControls controls) {
@@ -393,6 +455,12 @@ public class WebRtcCallViewModel extends ViewModel {
       public @NonNull List<IdentityDatabase.IdentityRecord> getIdentityRecords() {
         return identityRecords;
       }
+    }
+
+    public static class SwitchToSpeaker extends Event {
+    }
+
+    public static class ShowSwipeToSpeakerHint extends Event {
     }
   }
 

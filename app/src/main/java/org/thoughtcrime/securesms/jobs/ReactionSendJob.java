@@ -12,11 +12,15 @@ import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
 import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.MessageDatabase;
 import org.thoughtcrime.securesms.database.NoSuchMessageException;
+import org.thoughtcrime.securesms.database.model.MessageId;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.ReactionRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
+import org.thoughtcrime.securesms.net.NotPushRegisteredException;
+import org.thoughtcrime.securesms.messages.GroupSendUtil;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.RecipientUtil;
@@ -24,6 +28,7 @@ import org.thoughtcrime.securesms.transport.RetryLaterException;
 import org.thoughtcrime.securesms.util.GroupUtil;
 import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
+import org.whispersystems.signalservice.api.crypto.ContentHint;
 import org.whispersystems.signalservice.api.crypto.UnidentifiedAccessPair;
 import org.whispersystems.signalservice.api.crypto.UntrustedIdentityException;
 import org.whispersystems.signalservice.api.messages.SendMessageResult;
@@ -133,6 +138,10 @@ public class ReactionSendJob extends BaseJob {
 
   @Override
   protected void onRun() throws Exception {
+    if (!Recipient.self().isRegistered()) {
+      throw new NotPushRegisteredException();
+    }
+
     MessageDatabase db;
     MessageRecord     message;
 
@@ -163,6 +172,11 @@ public class ReactionSendJob extends BaseJob {
       throw new AssertionError("We have a message, but couldn't find the thread!");
     }
 
+    if (conversationRecipient.isPushV1Group() || conversationRecipient.isMmsGroup()) {
+      Log.w(TAG, "Cannot send reactions to legacy groups.");
+      return;
+    }
+
     List<Recipient> destinations = Stream.of(recipients).map(Recipient::resolved).toList();
     List<Recipient> completions  = deliver(conversationRecipient, destinations, targetAuthor, targetSentTimestamp);
 
@@ -181,6 +195,7 @@ public class ReactionSendJob extends BaseJob {
   @Override
   protected boolean onShouldRetry(@NonNull Exception e) {
     if (e instanceof ServerRejectedException) return false;
+    if (e instanceof NotPushRegisteredException) return false;
     return e instanceof IOException ||
            e instanceof RetryLaterException;
   }
@@ -210,20 +225,24 @@ public class ReactionSendJob extends BaseJob {
   private @NonNull List<Recipient> deliver(@NonNull Recipient conversationRecipient, @NonNull List<Recipient> destinations, @NonNull Recipient targetAuthor, long targetSentTimestamp)
       throws IOException, UntrustedIdentityException
   {
-    SignalServiceMessageSender             messageSender      = ApplicationDependencies.getSignalServiceMessageSender();
-    List<SignalServiceAddress>             addresses          = RecipientUtil.toSignalServiceAddressesFromResolved(context, destinations);
-    List<Optional<UnidentifiedAccessPair>> unidentifiedAccess = UnidentifiedAccessUtil.getAccessFor(context, destinations);;
-    SignalServiceDataMessage.Builder       dataMessage        = SignalServiceDataMessage.newBuilder()
-                                                                                        .withTimestamp(System.currentTimeMillis())
-                                                                                        .withReaction(buildReaction(context, reaction, remove, targetAuthor, targetSentTimestamp));
+    SignalServiceDataMessage.Builder dataMessageBuilder = SignalServiceDataMessage.newBuilder()
+                                                                                  .withTimestamp(System.currentTimeMillis())
+                                                                                  .withReaction(buildReaction(context, reaction, remove, targetAuthor, targetSentTimestamp));
 
     if (conversationRecipient.isGroup()) {
-      GroupUtil.setDataMessageGroupContext(context, dataMessage, conversationRecipient.requireGroupId().requirePush());
+      GroupUtil.setDataMessageGroupContext(context, dataMessageBuilder, conversationRecipient.requireGroupId().requirePush());
     }
 
-    List<SendMessageResult> results = messageSender.sendMessage(addresses, unidentifiedAccess, false, dataMessage.build());
+    SignalServiceDataMessage dataMessage = dataMessageBuilder.build();
+    List<SendMessageResult>  results     = GroupSendUtil.sendResendableDataMessage(context,
+                                                                                   conversationRecipient.getGroupId().transform(GroupId::requireV2).orNull(),
+                                                                                   destinations,
+                                                                                   false,
+                                                                                   ContentHint.RESENDABLE,
+                                                                                   new MessageId(messageId, isMms),
+                                                                                   dataMessage);
 
-    return GroupSendJobHelper.getCompletedSends(context, results);
+    return GroupSendJobHelper.getCompletedSends(destinations, results);
   }
 
   private static SignalServiceDataMessage.Reaction buildReaction(@NonNull Context context,

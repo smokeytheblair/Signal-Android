@@ -13,12 +13,14 @@ import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
+import org.thoughtcrime.securesms.net.NotPushRegisteredException;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.RecipientUtil;
 import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
+import org.whispersystems.signalservice.api.crypto.ContentHint;
 import org.whispersystems.signalservice.api.crypto.UntrustedIdentityException;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentStream;
@@ -37,7 +39,7 @@ public class PushGroupUpdateJob extends BaseJob {
 
   public static final String KEY = "PushGroupUpdateJob";
 
-  private static final String TAG = PushGroupUpdateJob.class.getSimpleName();
+  private static final String TAG = Log.tag(PushGroupUpdateJob.class);
 
   private static final String KEY_SOURCE   = "source";
   private static final String KEY_GROUP_ID = "group_id";
@@ -76,6 +78,10 @@ public class PushGroupUpdateJob extends BaseJob {
 
   @Override
   public void onRun() throws IOException, UntrustedIdentityException {
+    if (!Recipient.self().isRegistered()) {
+      throw new NotPushRegisteredException();
+    }
+
     GroupDatabase           groupDatabase = DatabaseFactory.getGroupDatabase(context);
     Optional<GroupRecord>   record        = groupDatabase.getGroup(groupId);
     SignalServiceAttachment avatar        = null;
@@ -113,15 +119,16 @@ public class PushGroupUpdateJob extends BaseJob {
     SignalServiceDataMessage message = SignalServiceDataMessage.newBuilder()
                                                                .asGroupMessage(groupContext)
                                                                .withTimestamp(System.currentTimeMillis())
-                                                               .withExpiration(groupRecipient.getExpireMessages())
+                                                               .withExpiration(groupRecipient.getExpiresInSeconds())
                                                                .build();
 
     SignalServiceMessageSender messageSender = ApplicationDependencies.getSignalServiceMessageSender();
     Recipient                  recipient     = Recipient.resolved(source);
 
-    messageSender.sendMessage(RecipientUtil.toSignalServiceAddress(context, recipient),
-                              UnidentifiedAccessUtil.getAccessFor(context, recipient),
-                              message);
+    messageSender.sendDataMessage(RecipientUtil.toSignalServiceAddress(context, recipient),
+                                  UnidentifiedAccessUtil.getAccessFor(context, recipient),
+                                  ContentHint.DEFAULT,
+                                  message);
   }
 
   @Override

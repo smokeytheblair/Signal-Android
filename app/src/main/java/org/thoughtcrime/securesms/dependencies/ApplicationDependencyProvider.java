@@ -6,14 +6,14 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 
 import org.signal.core.util.concurrent.SignalExecutors;
-import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.components.TypingStatusRepository;
 import org.thoughtcrime.securesms.components.TypingStatusSender;
+import org.thoughtcrime.securesms.crypto.ReentrantSessionLock;
 import org.thoughtcrime.securesms.crypto.storage.SignalProtocolStoreImpl;
-import org.thoughtcrime.securesms.crypto.DatabaseSessionLock;
 import org.thoughtcrime.securesms.database.DatabaseObserver;
 import org.thoughtcrime.securesms.database.JobDatabase;
+import org.thoughtcrime.securesms.database.PendingRetryReceiptCache;
 import org.thoughtcrime.securesms.jobmanager.JobManager;
 import org.thoughtcrime.securesms.jobmanager.JobMigrator;
 import org.thoughtcrime.securesms.jobmanager.impl.FactoryJobPredicate;
@@ -33,14 +33,19 @@ import org.thoughtcrime.securesms.megaphone.MegaphoneRepository;
 import org.thoughtcrime.securesms.messages.BackgroundMessageRetriever;
 import org.thoughtcrime.securesms.messages.IncomingMessageObserver;
 import org.thoughtcrime.securesms.messages.IncomingMessageProcessor;
-import org.thoughtcrime.securesms.net.PipeConnectivityListener;
-import org.thoughtcrime.securesms.notifications.DefaultMessageNotifier;
+import org.thoughtcrime.securesms.net.SignalWebSocketHealthMonitor;
 import org.thoughtcrime.securesms.notifications.MessageNotifier;
 import org.thoughtcrime.securesms.notifications.OptimizedMessageNotifier;
+import org.thoughtcrime.securesms.payments.MobileCoinConfig;
+import org.thoughtcrime.securesms.payments.Payments;
 import org.thoughtcrime.securesms.push.SecurityEventListener;
 import org.thoughtcrime.securesms.push.SignalServiceNetworkAccess;
 import org.thoughtcrime.securesms.recipients.LiveRecipientCache;
+import org.thoughtcrime.securesms.revealable.ViewOnceMessageManager;
+import org.thoughtcrime.securesms.service.ExpiringMessageManager;
+import org.thoughtcrime.securesms.service.PendingRetryReceiptManager;
 import org.thoughtcrime.securesms.service.TrimThreadsByDateManager;
+import org.thoughtcrime.securesms.service.webrtc.SignalCallManager;
 import org.thoughtcrime.securesms.shakereport.ShakeToReport;
 import org.thoughtcrime.securesms.util.AlarmSleepTimer;
 import org.thoughtcrime.securesms.util.AppForegroundObserver;
@@ -53,11 +58,14 @@ import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceAccountManager;
 import org.whispersystems.signalservice.api.SignalServiceMessageReceiver;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
+import org.whispersystems.signalservice.api.SignalWebSocket;
 import org.whispersystems.signalservice.api.groupsv2.ClientZkOperations;
 import org.whispersystems.signalservice.api.groupsv2.GroupsV2Operations;
 import org.whispersystems.signalservice.api.util.CredentialsProvider;
 import org.whispersystems.signalservice.api.util.SleepTimer;
 import org.whispersystems.signalservice.api.util.UptimeSleepTimer;
+import org.whispersystems.signalservice.api.websocket.WebSocketFactory;
+import org.whispersystems.signalservice.internal.websocket.WebSocketConnection;
 
 import java.util.UUID;
 
@@ -66,23 +74,14 @@ import java.util.UUID;
  */
 public class ApplicationDependencyProvider implements ApplicationDependencies.Provider {
 
-  private static final String TAG = Log.tag(ApplicationDependencyProvider.class);
-
-  private final Application              context;
-  private final PipeConnectivityListener pipeListener;
+  private final Application context;
 
   public ApplicationDependencyProvider(@NonNull Application context) {
-    this.context      = context;
-    this.pipeListener = new PipeConnectivityListener(context);
+    this.context = context;
   }
 
   private @NonNull ClientZkOperations provideClientZkOperations() {
     return ClientZkOperations.create(provideSignalServiceNetworkAccess().getConfiguration(context));
-  }
-
-  @Override
-  public @NonNull PipeConnectivityListener providePipeListener() {
-    return pipeListener;
   }
 
   @Override
@@ -100,15 +99,13 @@ public class ApplicationDependencyProvider implements ApplicationDependencies.Pr
   }
 
   @Override
-  public @NonNull SignalServiceMessageSender provideSignalServiceMessageSender() {
+  public @NonNull SignalServiceMessageSender provideSignalServiceMessageSender(@NonNull SignalWebSocket signalWebSocket) {
       return new SignalServiceMessageSender(provideSignalServiceNetworkAccess().getConfiguration(context),
                                             new DynamicCredentialsProvider(context),
                                             new SignalProtocolStoreImpl(context),
-                                            DatabaseSessionLock.INSTANCE,
+                                            ReentrantSessionLock.INSTANCE,
                                             BuildConfig.SIGNAL_AGENT,
-                                            TextSecurePreferences.isMultiDevice(context),
-                                            Optional.fromNullable(IncomingMessageObserver.getPipe()),
-                                            Optional.fromNullable(IncomingMessageObserver.getUnidentifiedPipe()),
+                                            signalWebSocket,
                                             Optional.of(new SecurityEventListener(context)),
                                             provideClientZkOperations().getProfileOperations(),
                                             SignalExecutors.newCachedBoundedExecutor("signal-messages", 1, 16),
@@ -118,13 +115,9 @@ public class ApplicationDependencyProvider implements ApplicationDependencies.Pr
 
   @Override
   public @NonNull SignalServiceMessageReceiver provideSignalServiceMessageReceiver() {
-    SleepTimer sleepTimer = TextSecurePreferences.isFcmDisabled(context) ? new AlarmSleepTimer(context)
-                                                                         : new UptimeSleepTimer();
     return new SignalServiceMessageReceiver(provideSignalServiceNetworkAccess().getConfiguration(context),
                                             new DynamicCredentialsProvider(context),
                                             BuildConfig.SIGNAL_AGENT,
-                                            pipeListener,
-                                            sleepTimer,
                                             provideClientZkOperations().getProfileOperations(),
                                             FeatureFlags.okHttpAutomaticRetry());
   }
@@ -180,7 +173,7 @@ public class ApplicationDependencyProvider implements ApplicationDependencies.Pr
 
   @Override
   public @NonNull MessageNotifier provideMessageNotifier() {
-    return new OptimizedMessageNotifier(new DefaultMessageNotifier());
+    return new OptimizedMessageNotifier(context);
   }
 
   @Override
@@ -191,6 +184,16 @@ public class ApplicationDependencyProvider implements ApplicationDependencies.Pr
   @Override
   public @NonNull TrimThreadsByDateManager provideTrimThreadsByDateManager() {
     return new TrimThreadsByDateManager(context);
+  }
+
+  @Override
+  public @NonNull ViewOnceMessageManager provideViewOnceMessageManager() {
+    return new ViewOnceMessageManager(context);
+  }
+
+  @Override
+  public @NonNull ExpiringMessageManager provideExpiringMessageManager() {
+    return new ExpiringMessageManager(context);
   }
 
   @Override
@@ -208,6 +211,18 @@ public class ApplicationDependencyProvider implements ApplicationDependencies.Pr
     return new DatabaseObserver(context);
   }
 
+  @SuppressWarnings("ConstantConditions")
+  @Override
+  public @NonNull Payments providePayments(@NonNull SignalServiceAccountManager signalServiceAccountManager) {
+    MobileCoinConfig network;
+
+    if      (BuildConfig.MOBILE_COIN_ENVIRONMENT.equals("mainnet")) network = MobileCoinConfig.getMainNet(signalServiceAccountManager);
+    else if (BuildConfig.MOBILE_COIN_ENVIRONMENT.equals("testnet")) network = MobileCoinConfig.getTestNet(signalServiceAccountManager);
+    else throw new AssertionError("Unknown network " + BuildConfig.MOBILE_COIN_ENVIRONMENT);
+
+    return new Payments(network);
+  }
+
   @Override
   public @NonNull ShakeToReport provideShakeToReport() {
     return new ShakeToReport(context);
@@ -216,6 +231,54 @@ public class ApplicationDependencyProvider implements ApplicationDependencies.Pr
   @Override
   public @NonNull AppForegroundObserver provideAppForegroundObserver() {
     return new AppForegroundObserver();
+  }
+
+  @Override
+  public @NonNull SignalCallManager provideSignalCallManager() {
+    return new SignalCallManager(context);
+  }
+
+  @Override
+  public @NonNull PendingRetryReceiptManager providePendingRetryReceiptManager() {
+    return new PendingRetryReceiptManager(context);
+  }
+
+  @Override
+  public @NonNull PendingRetryReceiptCache providePendingRetryReceiptCache() {
+    return new PendingRetryReceiptCache(context);
+  }
+
+  @Override
+  public @NonNull SignalWebSocket provideSignalWebSocket() {
+    SleepTimer                   sleepTimer      = TextSecurePreferences.isFcmDisabled(context) ? new AlarmSleepTimer(context) : new UptimeSleepTimer();
+    SignalWebSocketHealthMonitor healthMonitor   = new SignalWebSocketHealthMonitor(context, sleepTimer);
+    SignalWebSocket              signalWebSocket = new SignalWebSocket(provideWebSocketFactory(healthMonitor));
+
+    healthMonitor.monitor(signalWebSocket);
+
+    return signalWebSocket;
+  }
+
+  private @NonNull WebSocketFactory provideWebSocketFactory(@NonNull SignalWebSocketHealthMonitor healthMonitor) {
+    return new WebSocketFactory() {
+      @Override
+      public WebSocketConnection createWebSocket() {
+        return new WebSocketConnection("normal",
+                                       provideSignalServiceNetworkAccess().getConfiguration(context),
+                                       Optional.of(new DynamicCredentialsProvider(context)),
+                                       BuildConfig.SIGNAL_AGENT,
+                                       healthMonitor);
+      }
+
+      @Override
+      public WebSocketConnection createUnidentifiedWebSocket() {
+        return new WebSocketConnection("unidentified",
+                                       provideSignalServiceNetworkAccess().getConfiguration(context),
+                                       Optional.absent(),
+                                       BuildConfig.SIGNAL_AGENT,
+                                       healthMonitor);
+      }
+    };
   }
 
   private static class DynamicCredentialsProvider implements CredentialsProvider {

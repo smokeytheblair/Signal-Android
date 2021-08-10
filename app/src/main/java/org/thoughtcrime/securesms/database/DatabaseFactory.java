@@ -31,6 +31,7 @@ import org.thoughtcrime.securesms.crypto.MasterSecret;
 import org.thoughtcrime.securesms.database.helpers.ClassicOpenHelper;
 import org.thoughtcrime.securesms.database.helpers.SQLCipherMigrationHelper;
 import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
+import org.thoughtcrime.securesms.database.model.AvatarPickerDatabase;
 import org.thoughtcrime.securesms.migrations.LegacyMigrationJob;
 import org.thoughtcrime.securesms.util.SqlUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
@@ -41,28 +42,36 @@ public class DatabaseFactory {
 
   private static volatile DatabaseFactory instance;
 
-  private final SQLCipherOpenHelper     databaseHelper;
-  private final SmsDatabase             sms;
-  private final MmsDatabase             mms;
-  private final AttachmentDatabase      attachments;
-  private final MediaDatabase           media;
-  private final ThreadDatabase          thread;
-  private final MmsSmsDatabase          mmsSmsDatabase;
-  private final IdentityDatabase        identityDatabase;
-  private final DraftDatabase           draftDatabase;
-  private final PushDatabase            pushDatabase;
-  private final GroupDatabase           groupDatabase;
-  private final RecipientDatabase       recipientDatabase;
-  private final ContactsDatabase        contactsDatabase;
-  private final GroupReceiptDatabase    groupReceiptDatabase;
-  private final OneTimePreKeyDatabase   preKeyDatabase;
-  private final SignedPreKeyDatabase    signedPreKeyDatabase;
-  private final SessionDatabase         sessionDatabase;
-  private final SearchDatabase          searchDatabase;
-  private final StickerDatabase         stickerDatabase;
-  private final StorageKeyDatabase      storageKeyDatabase;
-  private final RemappedRecordsDatabase remappedRecordsDatabase;
-  private final MentionDatabase         mentionDatabase;
+  private final SQLCipherOpenHelper         databaseHelper;
+  private final SmsDatabase                 sms;
+  private final MmsDatabase                 mms;
+  private final AttachmentDatabase          attachments;
+  private final MediaDatabase               media;
+  private final ThreadDatabase              thread;
+  private final MmsSmsDatabase              mmsSmsDatabase;
+  private final IdentityDatabase            identityDatabase;
+  private final DraftDatabase               draftDatabase;
+  private final PushDatabase                pushDatabase;
+  private final GroupDatabase               groupDatabase;
+  private final RecipientDatabase           recipientDatabase;
+  private final ContactsDatabase            contactsDatabase;
+  private final GroupReceiptDatabase        groupReceiptDatabase;
+  private final OneTimePreKeyDatabase       preKeyDatabase;
+  private final SignedPreKeyDatabase        signedPreKeyDatabase;
+  private final SessionDatabase             sessionDatabase;
+  private final SenderKeyDatabase           senderKeyDatabase;
+  private final SenderKeySharedDatabase     senderKeySharedDatabase;
+  private final PendingRetryReceiptDatabase pendingRetryReceiptDatabase;
+  private final SearchDatabase              searchDatabase;
+  private final StickerDatabase             stickerDatabase;
+  private final UnknownStorageIdDatabase    storageIdDatabase;
+  private final RemappedRecordsDatabase     remappedRecordsDatabase;
+  private final MentionDatabase             mentionDatabase;
+  private final PaymentDatabase             paymentDatabase;
+  private final ChatColorsDatabase          chatColorsDatabase;
+  private final EmojiSearchDatabase         emojiSearchDatabase;
+  private final MessageSendLogDatabase      messageSendLogDatabase;
+  private final AvatarPickerDatabase        avatarPickerDatabase;
 
   public static DatabaseFactory getInstance(Context context) {
     if (instance == null) {
@@ -145,6 +154,18 @@ public class DatabaseFactory {
     return getInstance(context).sessionDatabase;
   }
 
+  public static SenderKeyDatabase getSenderKeyDatabase(Context context) {
+    return getInstance(context).senderKeyDatabase;
+  }
+
+  public static SenderKeySharedDatabase getSenderKeySharedDatabase(Context context) {
+    return getInstance(context).senderKeySharedDatabase;
+  }
+
+  public static PendingRetryReceiptDatabase getPendingRetryReceiptDatabase(Context context) {
+    return getInstance(context).pendingRetryReceiptDatabase;
+  }
+
   public static SearchDatabase getSearchDatabase(Context context) {
     return getInstance(context).searchDatabase;
   }
@@ -153,8 +174,8 @@ public class DatabaseFactory {
     return getInstance(context).stickerDatabase;
   }
 
-  public static StorageKeyDatabase getStorageKeyDatabase(Context context) {
-    return getInstance(context).storageKeyDatabase;
+  public static UnknownStorageIdDatabase getUnknownStorageIdDatabase(Context context) {
+    return getInstance(context).storageIdDatabase;
   }
 
   static RemappedRecordsDatabase getRemappedRecordsDatabase(Context context) {
@@ -165,6 +186,26 @@ public class DatabaseFactory {
     return getInstance(context).mentionDatabase;
   }
 
+  public static PaymentDatabase getPaymentDatabase(Context context) {
+    return getInstance(context).paymentDatabase;
+  }
+
+  public static ChatColorsDatabase getChatColorsDatabase(Context context) {
+    return getInstance(context).chatColorsDatabase;
+  }
+
+  public static EmojiSearchDatabase getEmojiSearchDatabase(Context context) {
+    return getInstance(context).emojiSearchDatabase;
+  }
+
+  public static MessageSendLogDatabase getMessageLogDatabase(Context context) {
+    return getInstance(context).messageSendLogDatabase;
+  }
+
+  public static AvatarPickerDatabase getAvatarPickerDatabase(Context context) {
+    return getInstance(context).avatarPickerDatabase;
+  }
+
   public static SQLiteDatabase getBackupDatabase(Context context) {
     return getInstance(context).databaseHelper.getReadableDatabase().getSqlCipherDatabase();
   }
@@ -173,6 +214,8 @@ public class DatabaseFactory {
     synchronized (lock) {
       getInstance(context).databaseHelper.onUpgrade(database, database.getVersion(), -1);
       getInstance(context).databaseHelper.markCurrent(database);
+      getInstance(context).sms.deleteAbandonedMessages();
+      getInstance(context).mms.deleteAbandonedMessages();
       getInstance(context).mms.trimEntriesForExpiredMessages();
       getInstance(context).getRawDatabase().rawExecSQL("DROP TABLE IF EXISTS key_value");
       getInstance(context).getRawDatabase().rawExecSQL("DROP TABLE IF EXISTS megaphone");
@@ -190,33 +233,41 @@ public class DatabaseFactory {
   }
 
   private DatabaseFactory(@NonNull Context context) {
-    SQLiteDatabase.loadLibs(context);
+    SqlCipherLibraryLoader.load(context);
 
     DatabaseSecret   databaseSecret   = DatabaseSecretProvider.getOrCreateDatabaseSecret(context);
     AttachmentSecret attachmentSecret = AttachmentSecretProvider.getInstance(context).getOrCreateAttachmentSecret();
 
-    this.databaseHelper          = new SQLCipherOpenHelper(context, databaseSecret);
-    this.sms                     = new SmsDatabase(context, databaseHelper);
-    this.mms                     = new MmsDatabase(context, databaseHelper);
-    this.attachments             = new AttachmentDatabase(context, databaseHelper, attachmentSecret);
-    this.media                   = new MediaDatabase(context, databaseHelper);
-    this.thread                  = new ThreadDatabase(context, databaseHelper);
-    this.mmsSmsDatabase          = new MmsSmsDatabase(context, databaseHelper);
-    this.identityDatabase        = new IdentityDatabase(context, databaseHelper);
-    this.draftDatabase           = new DraftDatabase(context, databaseHelper);
-    this.pushDatabase            = new PushDatabase(context, databaseHelper);
-    this.groupDatabase           = new GroupDatabase(context, databaseHelper);
-    this.recipientDatabase       = new RecipientDatabase(context, databaseHelper);
-    this.groupReceiptDatabase    = new GroupReceiptDatabase(context, databaseHelper);
-    this.contactsDatabase        = new ContactsDatabase(context);
-    this.preKeyDatabase          = new OneTimePreKeyDatabase(context, databaseHelper);
-    this.signedPreKeyDatabase    = new SignedPreKeyDatabase(context, databaseHelper);
-    this.sessionDatabase         = new SessionDatabase(context, databaseHelper);
-    this.searchDatabase          = new SearchDatabase(context, databaseHelper);
-    this.stickerDatabase         = new StickerDatabase(context, databaseHelper, attachmentSecret);
-    this.storageKeyDatabase      = new StorageKeyDatabase(context, databaseHelper);
-    this.remappedRecordsDatabase = new RemappedRecordsDatabase(context, databaseHelper);
-    this.mentionDatabase         = new MentionDatabase(context, databaseHelper);
+    this.databaseHelper              = new SQLCipherOpenHelper(context, databaseSecret);
+    this.sms                         = new SmsDatabase(context, databaseHelper);
+    this.mms                         = new MmsDatabase(context, databaseHelper);
+    this.attachments                 = new AttachmentDatabase(context, databaseHelper, attachmentSecret);
+    this.media                       = new MediaDatabase(context, databaseHelper);
+    this.thread                      = new ThreadDatabase(context, databaseHelper);
+    this.mmsSmsDatabase              = new MmsSmsDatabase(context, databaseHelper);
+    this.identityDatabase            = new IdentityDatabase(context, databaseHelper);
+    this.draftDatabase               = new DraftDatabase(context, databaseHelper);
+    this.pushDatabase                = new PushDatabase(context, databaseHelper);
+    this.groupDatabase               = new GroupDatabase(context, databaseHelper);
+    this.recipientDatabase           = new RecipientDatabase(context, databaseHelper);
+    this.groupReceiptDatabase        = new GroupReceiptDatabase(context, databaseHelper);
+    this.contactsDatabase            = new ContactsDatabase(context);
+    this.preKeyDatabase              = new OneTimePreKeyDatabase(context, databaseHelper);
+    this.signedPreKeyDatabase        = new SignedPreKeyDatabase(context, databaseHelper);
+    this.sessionDatabase             = new SessionDatabase(context, databaseHelper);
+    this.senderKeyDatabase           = new SenderKeyDatabase(context, databaseHelper);
+    this.senderKeySharedDatabase     = new SenderKeySharedDatabase(context, databaseHelper);
+    this.pendingRetryReceiptDatabase = new PendingRetryReceiptDatabase(context, databaseHelper);
+    this.searchDatabase              = new SearchDatabase(context, databaseHelper);
+    this.stickerDatabase             = new StickerDatabase(context, databaseHelper, attachmentSecret);
+    this.storageIdDatabase           = new UnknownStorageIdDatabase(context, databaseHelper);
+    this.remappedRecordsDatabase     = new RemappedRecordsDatabase(context, databaseHelper);
+    this.mentionDatabase             = new MentionDatabase(context, databaseHelper);
+    this.paymentDatabase             = new PaymentDatabase(context, databaseHelper);
+    this.chatColorsDatabase          = new ChatColorsDatabase(context, databaseHelper);
+    this.emojiSearchDatabase         = new EmojiSearchDatabase(context, databaseHelper);
+    this.messageSendLogDatabase      = new MessageSendLogDatabase(context, databaseHelper);
+    this.avatarPickerDatabase        = new AvatarPickerDatabase(context, databaseHelper);
   }
 
   public void onApplicationLevelUpgrade(@NonNull Context context, @NonNull MasterSecret masterSecret,

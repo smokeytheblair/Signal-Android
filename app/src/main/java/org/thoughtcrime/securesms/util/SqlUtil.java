@@ -94,6 +94,10 @@ public final class SqlUtil {
     return args;
   }
 
+  public static String[] buildArgs(long argument) {
+    return new String[] { Long.toString(argument) };
+  }
+
   /**
    * Returns an updated query and args pairing that will only update rows that would *actually*
    * change. In other words, if {@link SQLiteDatabase#update(String, ContentValues, String, String[])}
@@ -149,6 +153,10 @@ public final class SqlUtil {
     }
 
     return new Query(column + " IN (" + query.toString() + ")", buildArgs(args));
+  }
+
+  public static @NonNull Query buildQuery(@NonNull String where, @NonNull Object... args) {
+    return new SqlUtil.Query(where, SqlUtil.buildArgs(args));
   }
 
   public static String[] appendArg(@NonNull String[] args, String addition) {

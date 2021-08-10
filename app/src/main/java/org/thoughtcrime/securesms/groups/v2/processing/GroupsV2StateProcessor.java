@@ -311,7 +311,7 @@ public final class GroupsV2StateProcessor {
 
       try {
         MessageDatabase mmsDatabase = DatabaseFactory.getMmsDatabase(context);
-        long            threadId    = DatabaseFactory.getThreadDatabase(context).getThreadIdFor(groupRecipient);
+        long            threadId    = DatabaseFactory.getThreadDatabase(context).getOrCreateThreadIdFor(groupRecipient);
         long            id          = mmsDatabase.insertMessageOutbox(leaveMessage, threadId, false, null);
         mmsDatabase.markAsSent(id, true);
       } catch (MmsException e) {
@@ -407,16 +407,9 @@ public final class GroupsV2StateProcessor {
         if (entry.getChange() != null && DecryptedGroupUtil.changeIsEmptyExceptForProfileKeyChanges(entry.getChange()) && !DecryptedGroupUtil.changeIsEmpty(entry.getChange())) {
           Log.d(TAG, "Skipping profile key changes only update message");
         } else {
-          boolean insert = true;
-          if (entry.getChange() != null && DecryptedGroupUtil.changeIsEmpty(entry.getChange())) {
-            if (FeatureFlags.internalUser()) {
-              Log.w(TAG, "Empty group update message seen. Inserting anyway.");
-            } else {
-              Log.w(TAG, "Empty group update message seen. Not inserting.");
-              insert = false;
-            }
-          }
-          if (insert) {
+          if (entry.getChange() != null && DecryptedGroupUtil.changeIsEmpty(entry.getChange()) && previousGroupState != null) {
+            Log.w(TAG, "Empty group update message seen. Not inserting.");
+          } else {
             storeMessage(GroupProtoUtil.createDecryptedGroupV2Context(masterKey, new GroupMutation(previousGroupState, entry.getChange(), entry.getGroup()), null), timestamp);
             timestamp++;
           }
@@ -511,7 +504,7 @@ public final class GroupsV2StateProcessor {
           RecipientId                recipientId     = recipientDatabase.getOrInsertFromGroupId(groupId);
           Recipient                  recipient       = Recipient.resolved(recipientId);
           OutgoingGroupUpdateMessage outgoingMessage = new OutgoingGroupUpdateMessage(recipient, decryptedGroupV2Context, null, timestamp, 0, false, null, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
-          long                       threadId        = DatabaseFactory.getThreadDatabase(context).getThreadIdFor(recipient);
+          long                       threadId        = DatabaseFactory.getThreadDatabase(context).getOrCreateThreadIdFor(recipient);
           long                       messageId       = mmsDatabase.insertMessageOutbox(outgoingMessage, threadId, false, null);
 
           mmsDatabase.markAsSent(messageId, true);
@@ -521,7 +514,7 @@ public final class GroupsV2StateProcessor {
       } else {
         MessageDatabase            smsDatabase  = DatabaseFactory.getSmsDatabase(context);
         RecipientId                sender       = RecipientId.from(editor.get(), null);
-        IncomingTextMessage        incoming     = new IncomingTextMessage(sender, -1, timestamp, timestamp, "", Optional.of(groupId), 0, false);
+        IncomingTextMessage        incoming     = new IncomingTextMessage(sender, -1, timestamp, timestamp, timestamp, "", Optional.of(groupId), 0, false, null);
         IncomingGroupUpdateMessage groupMessage = new IncomingGroupUpdateMessage(incoming, decryptedGroupV2Context);
 
         if (!smsDatabase.insertMessageInbox(groupMessage).isPresent()) {

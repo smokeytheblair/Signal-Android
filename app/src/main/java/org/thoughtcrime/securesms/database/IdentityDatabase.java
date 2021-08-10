@@ -24,6 +24,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.greenrobot.eventbus.EventBus;
+import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
 import org.thoughtcrime.securesms.database.identity.IdentityRecordList;
 import org.thoughtcrime.securesms.recipients.Recipient;
@@ -41,7 +42,7 @@ import java.util.List;
 public class IdentityDatabase extends Database {
 
   @SuppressWarnings("unused")
-  private static final String TAG = IdentityDatabase.class.getSimpleName();
+  private static final String TAG = Log.tag(IdentityDatabase.class);
 
           static final String TABLE_NAME           = "identities";
   private static final String ID                   = "_id";
@@ -142,7 +143,7 @@ public class IdentityDatabase extends Database {
                            boolean firstUse, long timestamp, boolean nonBlockingApproval)
   {
     saveIdentityInternal(recipientId, identityKey, verifiedStatus, firstUse, timestamp, nonBlockingApproval);
-    DatabaseFactory.getRecipientDatabase(context).markDirty(recipientId, RecipientDatabase.DirtyState.UPDATE);
+    DatabaseFactory.getRecipientDatabase(context).markNeedsSync(recipientId);
   }
 
   public void setApproval(@NonNull RecipientId recipientId, boolean nonBlockingApproval) {
@@ -153,7 +154,7 @@ public class IdentityDatabase extends Database {
 
     database.update(TABLE_NAME, contentValues, RECIPIENT_ID + " = ?", new String[] {recipientId.serialize()});
 
-    DatabaseFactory.getRecipientDatabase(context).markDirty(recipientId, RecipientDatabase.DirtyState.UPDATE);
+    DatabaseFactory.getRecipientDatabase(context).markNeedsSync(recipientId);
   }
 
   public void setVerified(@NonNull RecipientId recipientId, IdentityKey identityKey, VerifiedStatus verifiedStatus) {
@@ -168,7 +169,7 @@ public class IdentityDatabase extends Database {
     if (updated > 0) {
       Optional<IdentityRecord> record = getIdentity(recipientId);
       if (record.isPresent()) EventBus.getDefault().post(record.get());
-      DatabaseFactory.getRecipientDatabase(context).markDirty(recipientId, RecipientDatabase.DirtyState.UPDATE);
+      DatabaseFactory.getRecipientDatabase(context).markNeedsSync(recipientId);
     }
   }
 

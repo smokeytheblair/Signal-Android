@@ -12,6 +12,7 @@ import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.storage.StorageSyncHelper;
+import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceAccountManager;
 import org.whispersystems.signalservice.api.push.exceptions.PushNetworkException;
@@ -64,7 +65,7 @@ public class StorageAccountRestoreJob extends BaseJob {
   @Override
   protected void onRun() throws Exception {
     SignalServiceAccountManager accountManager    = ApplicationDependencies.getSignalServiceAccountManager();
-    StorageKey                  storageServiceKey = SignalStore.storageServiceValues().getOrCreateStorageKey();
+    StorageKey                  storageServiceKey = SignalStore.storageService().getOrCreateStorageKey();
 
     Log.i(TAG, "Retrieving manifest...");
     Optional<SignalStorageManifest> manifest = accountManager.getStorageManifest(storageServiceKey);
@@ -74,6 +75,9 @@ public class StorageAccountRestoreJob extends BaseJob {
       ApplicationDependencies.getJobManager().add(new StorageForcePushJob());
       return;
     }
+
+    Log.i(TAG, "Resetting the local manifest to an empty state so that it will sync later.");
+    SignalStore.storageService().setManifest(SignalStorageManifest.EMPTY);
 
     Optional<StorageId> accountId = manifest.get().getAccountStorageId();
 
@@ -99,8 +103,7 @@ public class StorageAccountRestoreJob extends BaseJob {
 
 
     Log.i(TAG, "Applying changes locally...");
-    StorageId selfStorageId = StorageId.forAccount(Recipient.self().getStorageServiceId());
-    StorageSyncHelper.applyAccountStorageSyncUpdates(context, selfStorageId, accountRecord, false);
+    StorageSyncHelper.applyAccountStorageSyncUpdates(context, Recipient.self(), accountRecord, false);
 
     JobManager jobManager = ApplicationDependencies.getJobManager();
 
