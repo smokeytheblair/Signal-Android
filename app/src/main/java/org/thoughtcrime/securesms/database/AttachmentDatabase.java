@@ -47,7 +47,6 @@ import org.thoughtcrime.securesms.crypto.AttachmentSecret;
 import org.thoughtcrime.securesms.crypto.ClassicDecryptingPartInputStream;
 import org.thoughtcrime.securesms.crypto.ModernDecryptingPartInputStream;
 import org.thoughtcrime.securesms.crypto.ModernEncryptingPartOutputStream;
-import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
 import org.thoughtcrime.securesms.database.model.databaseprotos.AudioWaveFormData;
 import org.thoughtcrime.securesms.mms.MediaStream;
 import org.thoughtcrime.securesms.mms.MmsException;
@@ -73,6 +72,7 @@ import java.io.OutputStream;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -82,9 +82,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class AttachmentDatabase extends Database {
-  
+
   private static final String TAG = Log.tag(AttachmentDatabase.class);
 
   public  static final String TABLE_NAME             = "part";
@@ -122,7 +123,7 @@ public class AttachmentDatabase extends Database {
           static final String UPLOAD_TIMESTAMP       = "upload_timestamp";
           static final String CDN_NUMBER             = "cdn_number";
 
-  public  static final String DIRECTORY              = "parts";
+  private static final String DIRECTORY              = "parts";
 
   public static final int TRANSFER_PROGRESS_DONE    = 0;
   public static final int TRANSFER_PROGRESS_STARTED = 1;
@@ -194,7 +195,7 @@ public class AttachmentDatabase extends Database {
 
   private final AttachmentSecret attachmentSecret;
 
-  public AttachmentDatabase(Context context, SQLCipherOpenHelper databaseHelper, AttachmentSecret attachmentSecret) {
+  public AttachmentDatabase(Context context, SignalDatabase databaseHelper, AttachmentSecret attachmentSecret) {
     super(context, databaseHelper);
     this.attachmentSecret = attachmentSecret;
   }
@@ -212,7 +213,7 @@ public class AttachmentDatabase extends Database {
     String   selection = STICKER_PACK_ID + " = ?";
     String[] args      = new String[] { stickerPackId };
 
-    try (Cursor cursor = databaseHelper.getReadableDatabase().query(TABLE_NAME, null, selection, args, null, null, null, "1")) {
+    try (Cursor cursor = databaseHelper.getSignalReadableDatabase().query(TABLE_NAME, null, selection, args, null, null, null, "1")) {
       return cursor != null && cursor.moveToFirst();
     }
   }
@@ -220,18 +221,18 @@ public class AttachmentDatabase extends Database {
   public void setTransferProgressFailed(AttachmentId attachmentId, long mmsId)
       throws MmsException
   {
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
     ContentValues  values   = new ContentValues();
     values.put(TRANSFER_STATE, TRANSFER_PROGRESS_FAILED);
 
     database.update(TABLE_NAME, values, PART_ID_WHERE, attachmentId.toStrings());
-    notifyConversationListeners(DatabaseFactory.getMmsDatabase(context).getThreadIdForMessage(mmsId));
+    notifyConversationListeners(SignalDatabase.mms().getThreadIdForMessage(mmsId));
   }
 
   public @Nullable DatabaseAttachment getAttachment(@NonNull AttachmentId attachmentId)
   {
-    SQLiteDatabase database = databaseHelper.getReadableDatabase();
-    Cursor cursor           = null;
+    SQLiteDatabase database = databaseHelper.getSignalReadableDatabase();
+    Cursor         cursor   = null;
 
     try {
       cursor = database.query(TABLE_NAME, PROJECTION, PART_ID_WHERE, attachmentId.toStrings(), null, null, null);
@@ -252,7 +253,7 @@ public class AttachmentDatabase extends Database {
   }
 
   public @NonNull List<DatabaseAttachment> getAttachmentsForMessage(long mmsId) {
-    SQLiteDatabase           database = databaseHelper.getReadableDatabase();
+    SQLiteDatabase           database = databaseHelper.getSignalReadableDatabase();
     List<DatabaseAttachment> results  = new LinkedList<>();
     Cursor                   cursor   = null;
 
@@ -276,7 +277,7 @@ public class AttachmentDatabase extends Database {
       return Collections.emptyMap();
     }
 
-    SQLiteDatabase database = databaseHelper.getReadableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalReadableDatabase();
     SqlUtil.Query  query    = SqlUtil.buildCollectionQuery(MMS_ID, mmsIds);
 
     Map<Long, List<DatabaseAttachment>> output = new HashMap<>();
@@ -299,7 +300,7 @@ public class AttachmentDatabase extends Database {
   }
 
   public boolean hasAttachment(@NonNull AttachmentId id) {
-    SQLiteDatabase database = databaseHelper.getReadableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalReadableDatabase();
 
     try (Cursor cursor = database.query(TABLE_NAME,
                                         new String[]{ROW_ID, UNIQUE_ID},
@@ -315,17 +316,8 @@ public class AttachmentDatabase extends Database {
     return false;
   }
 
-  public boolean hasAttachmentFilesForMessage(long mmsId) {
-    String   selection = MMS_ID + " = ? AND (" + DATA + " NOT NULL OR " + TRANSFER_STATE + " != ?)";
-    String[] args      = new String[] { String.valueOf(mmsId), String.valueOf(TRANSFER_PROGRESS_DONE) };
-
-    try (Cursor cursor = databaseHelper.getReadableDatabase().query(TABLE_NAME, null, selection, args, null, null, "1")) {
-      return cursor != null && cursor.moveToFirst();
-    }
-  }
-
   public @NonNull List<DatabaseAttachment> getPendingAttachments() {
-    final SQLiteDatabase           database    = databaseHelper.getReadableDatabase();
+    final SQLiteDatabase           database    = databaseHelper.getSignalReadableDatabase();
     final List<DatabaseAttachment> attachments = new LinkedList<>();
 
     Cursor cursor = null;
@@ -341,12 +333,11 @@ public class AttachmentDatabase extends Database {
     return attachments;
   }
 
-  @SuppressWarnings("ResultOfMethodCallIgnored")
-  public void deleteAttachmentsForMessage(long mmsId) {
+  public boolean deleteAttachmentsForMessage(long mmsId) {
     Log.d(TAG, "[deleteAttachmentsForMessage] mmsId: " + mmsId);
 
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
-    Cursor cursor           = null;
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
+    Cursor         cursor   = null;
 
     try {
       cursor = database.query(TABLE_NAME, new String[] {DATA, CONTENT_TYPE, ROW_ID, UNIQUE_ID}, MMS_ID + " = ?",
@@ -363,8 +354,10 @@ public class AttachmentDatabase extends Database {
         cursor.close();
     }
 
-    database.delete(TABLE_NAME, MMS_ID + " = ?", new String[] {mmsId + ""});
+    int deleteCount = database.delete(TABLE_NAME, MMS_ID + " = ?", new String[] {mmsId + ""});
     notifyAttachmentListeners();
+
+    return deleteCount > 0;
   }
 
   /**
@@ -375,10 +368,10 @@ public class AttachmentDatabase extends Database {
    * pre-uploaded.
    */
   public int deleteAbandonedPreuploadedAttachments() {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
-    String   query = MMS_ID + " = ?";
-    String[] args  = new String[] { String.valueOf(PREUPLOAD_MESSAGE_ID) };
-    int      count = 0;
+    SQLiteDatabase db    = databaseHelper.getSignalWritableDatabase();
+    String         query = MMS_ID + " = ?";
+    String[]       args  = new String[] { String.valueOf(PREUPLOAD_MESSAGE_ID) };
+    int            count = 0;
 
     try (Cursor cursor = db.query(TABLE_NAME, null, query, args, null, null, null)) {
       while (cursor != null && cursor.moveToNext()) {
@@ -397,8 +390,8 @@ public class AttachmentDatabase extends Database {
   public void deleteAttachmentFilesForViewOnceMessage(long mmsId) {
     Log.d(TAG, "[deleteAttachmentFilesForViewOnceMessage] mmsId: " + mmsId);
 
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
-    Cursor cursor           = null;
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
+    Cursor         cursor   = null;
 
     try {
       cursor = database.query(TABLE_NAME, new String[] {DATA, CONTENT_TYPE, ROW_ID, UNIQUE_ID}, MMS_ID + " = ?",
@@ -431,7 +424,7 @@ public class AttachmentDatabase extends Database {
     database.update(TABLE_NAME, values, MMS_ID + " = ?", new String[] {mmsId + ""});
     notifyAttachmentListeners();
 
-    long threadId = DatabaseFactory.getMmsDatabase(context).getThreadIdForMessage(mmsId);
+    long threadId = SignalDatabase.mms().getThreadIdForMessage(mmsId);
     if (threadId > 0) {
       notifyConversationListeners(threadId);
     }
@@ -440,7 +433,7 @@ public class AttachmentDatabase extends Database {
   public void deleteAttachment(@NonNull AttachmentId id) {
     Log.d(TAG, "[deleteAttachment] attachmentId: " + id);
 
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
 
     try (Cursor cursor = database.query(TABLE_NAME,
                                         new String[]{DATA, CONTENT_TYPE},
@@ -464,29 +457,36 @@ public class AttachmentDatabase extends Database {
   }
 
   public void trimAllAbandonedAttachments() {
-    SQLiteDatabase db              = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db              = databaseHelper.getSignalWritableDatabase();
     String         selectAllMmsIds = "SELECT " + MmsDatabase.ID + " FROM " + MmsDatabase.TABLE_NAME;
     String         where           = MMS_ID + " != " + PREUPLOAD_MESSAGE_ID + " AND " + MMS_ID + " NOT IN (" + selectAllMmsIds + ")";
 
-    db.delete(TABLE_NAME, where, null);
+    int deletes = db.delete(TABLE_NAME, where, null);
+    if (deletes > 0) {
+      Log.i(TAG, "Trimmed " + deletes + " abandoned attachments.");
+    }
   }
 
   public int deleteAbandonedAttachmentFiles() {
-    Set<String> filesOnDisk = new HashSet<>();
-    Set<String> filesInDb   = new HashSet<>();
+    File[] diskFiles = context.getDir(DIRECTORY, Context.MODE_PRIVATE).listFiles();
 
-    File attachmentDirectory = context.getDir(DIRECTORY, Context.MODE_PRIVATE);
-    for (File file : attachmentDirectory.listFiles()) {
-      filesOnDisk.add(file.getAbsolutePath());
+    if (diskFiles == null) {
+      return 0;
     }
 
-    try (Cursor cursor = databaseHelper.getReadableDatabase().query(true, TABLE_NAME, new String[] { DATA }, null, null, null, null, null, null)) {
+    Set<String> filesOnDisk = Arrays.stream(diskFiles)
+                                    .filter(f -> !PartFileProtector.isProtected(f))
+                                    .map(File::getAbsolutePath)
+                                    .collect(Collectors.toSet());
+
+    Set<String> filesInDb = new HashSet<>();
+    try (Cursor cursor = databaseHelper.getSignalReadableDatabase().query(true, TABLE_NAME, new String[] { DATA }, null, null, null, null, null, null)) {
       while (cursor != null && cursor.moveToNext()) {
         filesInDb.add(CursorUtil.requireString(cursor, DATA));
       }
     }
 
-    filesInDb.addAll(DatabaseFactory.getStickerDatabase(context).getAllStickerFiles());
+    filesInDb.addAll(SignalDatabase.stickers().getAllStickerFiles());
 
     Set<String> onDiskButNotInDatabase = SetUtil.difference(filesOnDisk, filesInDb);
 
@@ -500,7 +500,7 @@ public class AttachmentDatabase extends Database {
 
   @SuppressWarnings("ResultOfMethodCallIgnored")
   void deleteAllAttachments() {
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
     database.delete(TABLE_NAME, null, null);
 
     FileUtils.deleteDirectoryContents(context.getDir(DIRECTORY, Context.MODE_PRIVATE));
@@ -529,7 +529,7 @@ public class AttachmentDatabase extends Database {
 
         if (removableWeakReferences.size() > 0) {
           Log.i(TAG, String.format(Locale.US, "[deleteAttachmentOnDisk] Deleting %d weak references for %s", removableWeakReferences.size(), data));
-          SQLiteDatabase database     = databaseHelper.getWritableDatabase();
+          SQLiteDatabase database     = databaseHelper.getSignalWritableDatabase();
           int            deletedCount = 0;
           database.beginTransaction();
           try {
@@ -565,7 +565,7 @@ public class AttachmentDatabase extends Database {
   private @NonNull DataUsageResult getAttachmentFileUsages(@Nullable String data, @NonNull AttachmentId attachmentId) {
     if (data == null) return DataUsageResult.NOT_IN_USE;
 
-    SQLiteDatabase     database  = databaseHelper.getReadableDatabase();
+    SQLiteDatabase     database  = databaseHelper.getSignalReadableDatabase();
     String             selection = DATA + " = ? AND " + UNIQUE_ID + " != ? AND " + ROW_ID + " != ?";
     String[]           args      = {data, Long.toString(attachmentId.getUniqueId()), Long.toString(attachmentId.getRowId())};
     List<AttachmentId> quoteRows = new LinkedList<>();
@@ -588,11 +588,11 @@ public class AttachmentDatabase extends Database {
       throws MmsException
   {
     DatabaseAttachment placeholder  = getAttachment(attachmentId);
-    SQLiteDatabase     database     = databaseHelper.getWritableDatabase();
+    SQLiteDatabase     database     = databaseHelper.getSignalWritableDatabase();
     ContentValues      values       = new ContentValues();
     DataInfo           oldInfo      = getAttachmentDataFileInfo(attachmentId, DATA);
     DataInfo           dataInfo     = setAttachmentData(inputStream, attachmentId);
-    File               transferFile = getTransferFile(databaseHelper.getReadableDatabase(), attachmentId);
+    File               transferFile = getTransferFile(databaseHelper.getSignalReadableDatabase(), attachmentId);
 
     if (oldInfo != null) {
       updateAttachmentDataHash(database, oldInfo.hash, dataInfo);
@@ -617,8 +617,12 @@ public class AttachmentDatabase extends Database {
       //noinspection ResultOfMethodCallIgnored
       dataInfo.file.delete();
     } else {
-      notifyConversationListeners(DatabaseFactory.getMmsDatabase(context).getThreadIdForMessage(mmsId));
+      long threadId = SignalDatabase.mms().getThreadIdForMessage(mmsId);
+      SignalDatabase.threads().updateSnippetUriSilently(threadId, PartAuthority.getAttachmentDataUri(attachmentId));
+
+      notifyConversationListeners(threadId);
       notifyConversationListListeners();
+      notifyAttachmentListeners();
     }
 
     if (transferFile != null) {
@@ -643,7 +647,7 @@ public class AttachmentDatabase extends Database {
       throw new MmsException("Cannot find attachment for source!");
     }
 
-    SQLiteDatabase database       = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database       = databaseHelper.getSignalWritableDatabase();
     DataInfo       sourceDataInfo = getAttachmentDataFileInfo(sourceId, DATA);
 
     if (sourceDataInfo == null) {
@@ -677,11 +681,11 @@ public class AttachmentDatabase extends Database {
     ContentValues values = new ContentValues(1);
     values.put(CAPTION, caption);
 
-    databaseHelper.getWritableDatabase().update(TABLE_NAME, values, PART_ID_WHERE, id.toStrings());
+    databaseHelper.getSignalWritableDatabase().update(TABLE_NAME, values, PART_ID_WHERE, id.toStrings());
   }
 
   public void updateDisplayOrder(@NonNull Map<AttachmentId, Integer> orderMap) {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
 
     db.beginTransaction();
     try {
@@ -689,7 +693,7 @@ public class AttachmentDatabase extends Database {
         ContentValues values = new ContentValues(1);
         values.put(DISPLAY_ORDER, entry.getValue());
 
-        databaseHelper.getWritableDatabase().update(TABLE_NAME, values, PART_ID_WHERE, entry.getKey().toStrings());
+        databaseHelper.getSignalWritableDatabase().update(TABLE_NAME, values, PART_ID_WHERE, entry.getKey().toStrings());
       }
 
       db.setTransactionSuccessful();
@@ -700,7 +704,7 @@ public class AttachmentDatabase extends Database {
   }
 
   public void updateAttachmentAfterUpload(@NonNull AttachmentId id, @NonNull Attachment attachment, long uploadTimestamp) {
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
     DataInfo       dataInfo = getAttachmentDataFileInfo(id, DATA);
     ContentValues  values   = new ContentValues();
 
@@ -741,7 +745,7 @@ public class AttachmentDatabase extends Database {
   }
 
   public void updateMessageId(@NonNull Collection<AttachmentId> attachmentIds, long mmsId) {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
 
     db.beginTransaction();
     try {
@@ -789,7 +793,7 @@ public class AttachmentDatabase extends Database {
                                    boolean onlyModifyThisAttachment)
     throws MmsException, IOException
   {
-    SQLiteDatabase database    = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database    = databaseHelper.getSignalWritableDatabase();
     DataInfo       oldDataInfo = getAttachmentDataFileInfo(databaseAttachment.getAttachmentId(), DATA);
 
     if (oldDataInfo == null) {
@@ -827,7 +831,7 @@ public class AttachmentDatabase extends Database {
    * Returns false if the file is referenced by zero or one attachments.
    */
   private boolean fileReferencedByMoreThanOneAttachment(@NonNull File file) {
-    SQLiteDatabase database  = databaseHelper.getReadableDatabase();
+    SQLiteDatabase database  = databaseHelper.getSignalReadableDatabase();
     String         selection = DATA + " = ?";
     String[]       args      = new String[]{file.getAbsolutePath()};
 
@@ -851,22 +855,20 @@ public class AttachmentDatabase extends Database {
     ContentValues contentValues = new ContentValues();
     contentValues.put(TRANSFORM_PROPERTIES, transformProperties.serialize());
 
-    int updateCount = updateAttachmentAndMatchingHashes(databaseHelper.getWritableDatabase(), attachmentId, dataInfo.hash, contentValues);
+    int updateCount = updateAttachmentAndMatchingHashes(databaseHelper.getSignalWritableDatabase(), attachmentId, dataInfo.hash, contentValues);
     Log.i(TAG, "[updateAttachmentTransformProperties] Updated " + updateCount + " rows.");
   }
 
   public @NonNull File getOrCreateTransferFile(@NonNull AttachmentId attachmentId) throws IOException {
-    SQLiteDatabase db       = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db       = databaseHelper.getSignalWritableDatabase();
     File           existing = getTransferFile(db, attachmentId);
 
     if (existing != null) {
       return existing;
     }
 
-    File partsDirectory = context.getDir(DIRECTORY, Context.MODE_PRIVATE);
-    File transferFile   = File.createTempFile("transfer", ".mms", partsDirectory);
-
-    ContentValues values = new ContentValues();
+    File          transferFile = newTransferFile();
+    ContentValues values       = new ContentValues();
     values.put(TRANSFER_FILE, transferFile.getAbsolutePath());
 
     db.update(TABLE_NAME, values, PART_ID_WHERE, attachmentId.toStrings());
@@ -920,7 +922,7 @@ public class AttachmentDatabase extends Database {
   public void updateAttachmentFileName(@NonNull AttachmentId attachmentId,
                                        @Nullable String fileName)
   {
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
 
     ContentValues contentValues = new ContentValues(1);
     contentValues.put(FILE_NAME, StorageUtil.getCleanFileName(fileName));
@@ -930,12 +932,12 @@ public class AttachmentDatabase extends Database {
 
   public void markAttachmentUploaded(long messageId, Attachment attachment) {
     ContentValues  values   = new ContentValues(1);
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
 
     values.put(TRANSFER_STATE, TRANSFER_PROGRESS_DONE);
     database.update(TABLE_NAME, values, PART_ID_WHERE, ((DatabaseAttachment)attachment).getAttachmentId().toStrings());
 
-    notifyConversationListeners(DatabaseFactory.getMmsDatabase(context).getThreadIdForMessage(messageId));
+    notifyConversationListeners(SignalDatabase.mms().getThreadIdForMessage(messageId));
   }
 
   public void setTransferState(long messageId, @NonNull Attachment attachment, int transferState) {
@@ -948,11 +950,11 @@ public class AttachmentDatabase extends Database {
 
   public void setTransferState(long messageId, @NonNull AttachmentId attachmentId, int transferState) {
     final ContentValues  values   = new ContentValues(1);
-    final SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    final SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
 
     values.put(TRANSFER_STATE, transferState);
     database.update(TABLE_NAME, values, PART_ID_WHERE, attachmentId.toStrings());
-    notifyConversationListeners(DatabaseFactory.getMmsDatabase(context).getThreadIdForMessage(messageId));
+    notifyConversationListeners(SignalDatabase.mms().getThreadIdForMessage(messageId));
   }
 
   /**
@@ -969,13 +971,13 @@ public class AttachmentDatabase extends Database {
                        "SELECT DISTINCT " + StickerDatabase.PACK_ID + " FROM " + StickerDatabase.TABLE_NAME +
                      ")";
 
-    return databaseHelper.getReadableDatabase().rawQuery(query, null);
+    return databaseHelper.getSignalReadableDatabase().rawQuery(query, null);
   }
 
   public boolean hasStickerAttachments() {
     String selection = STICKER_PACK_ID + " NOT NULL";
 
-    try (Cursor cursor = databaseHelper.getReadableDatabase().query(TABLE_NAME, null, selection, null, null, null, null, "1")) {
+    try (Cursor cursor = databaseHelper.getSignalReadableDatabase().query(TABLE_NAME, null, selection, null, null, null, null, "1")) {
       return cursor != null && cursor.moveToFirst();
     }
   }
@@ -1012,7 +1014,7 @@ public class AttachmentDatabase extends Database {
 
   private @Nullable DataInfo getAttachmentDataFileInfo(@NonNull AttachmentId attachmentId, @NonNull String dataType)
   {
-    SQLiteDatabase database = databaseHelper.getReadableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalReadableDatabase();
     Cursor         cursor   = null;
 
     try {
@@ -1063,8 +1065,17 @@ public class AttachmentDatabase extends Database {
   }
 
   public File newFile() throws IOException {
+    return newFile(context);
+  }
+
+  private File newTransferFile() throws IOException {
     File partsDirectory = context.getDir(DIRECTORY, Context.MODE_PRIVATE);
-    return File.createTempFile("part", ".mms", partsDirectory);
+    return PartFileProtector.protect(() -> File.createTempFile("transfer", ".mms", partsDirectory));
+  }
+
+  public static File newFile(Context context) throws IOException {
+    File partsDirectory = context.getDir(DIRECTORY, Context.MODE_PRIVATE);
+    return PartFileProtector.protect(() -> File.createTempFile("part", ".mms", partsDirectory));
   }
 
   private @NonNull DataInfo setAttachmentData(@NonNull File destination,
@@ -1073,13 +1084,20 @@ public class AttachmentDatabase extends Database {
       throws MmsException
   {
     try {
+      File                       tempFile          = newFile();
       MessageDigest              messageDigest     = MessageDigest.getInstance("SHA-256");
       DigestInputStream          digestInputStream = new DigestInputStream(in, messageDigest);
-      Pair<byte[], OutputStream> out               = ModernEncryptingPartOutputStream.createFor(attachmentSecret, destination, false);
+      Pair<byte[], OutputStream> out               = ModernEncryptingPartOutputStream.createFor(attachmentSecret, tempFile, false);
       long                       length            = StreamUtil.copy(digestInputStream, out.second);
       String                     hash              = Base64.encodeBytes(digestInputStream.getMessageDigest().digest());
 
-      SQLiteDatabase     database       = databaseHelper.getWritableDatabase();
+      if (!tempFile.renameTo(destination)) {
+        Log.w(TAG, "Couldn't rename " + tempFile.getPath() + " to " + destination.getPath());
+        tempFile.delete();
+        throw new IllegalStateException("Couldn't rename " + tempFile.getPath() + " to " + destination.getPath());
+      }
+
+      SQLiteDatabase     database       = databaseHelper.getSignalWritableDatabase();
       Optional<DataInfo> sharedDataInfo = findDuplicateDataFileInfo(database, hash, attachmentId);
       if (sharedDataInfo.isPresent()) {
         Log.i(TAG, "[setAttachmentData] Duplicate data file found! " + sharedDataInfo.get().file.getAbsolutePath());
@@ -1245,7 +1263,10 @@ public class AttachmentDatabase extends Database {
       throws MmsException
   {
     Log.d(TAG, "Inserting attachment for mms id: " + mmsId);
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
+
+    AttachmentId attachmentId = null;
+    boolean      notifyPacks  = false;
 
     database.beginTransaction();
     try {
@@ -1271,6 +1292,7 @@ public class AttachmentDatabase extends Database {
       boolean useTemplateUpload = template.getUploadTimestamp() > attachment.getUploadTimestamp() &&
                                   template.getTransferState() == TRANSFER_PROGRESS_DONE           &&
                                   template.getTransformProperties().shouldSkipTransform()         &&
+                                  template.getDigest() != null                                    &&
                                   !attachment.getTransformProperties().isVideoEdited();
 
       ContentValues contentValues = new ContentValues();
@@ -1320,27 +1342,30 @@ public class AttachmentDatabase extends Database {
         }
       }
 
-      boolean      notifyPacks  = attachment.isSticker() && !hasStickerAttachments();
-      long         rowId        = database.insert(TABLE_NAME, null, contentValues);
-      AttachmentId attachmentId = new AttachmentId(rowId, uniqueId);
+      long rowId = database.insert(TABLE_NAME, null, contentValues);
 
-      if (notifyPacks) {
-        notifyStickerPackListeners();
-      }
+      attachmentId = new AttachmentId(rowId, uniqueId);
+      notifyPacks  = attachment.isSticker() && !hasStickerAttachments();
 
       database.setTransactionSuccessful();
-
-      return attachmentId;
     } finally {
       database.endTransaction();
     }
+
+    if (notifyPacks) {
+      notifyStickerPackListeners();
+    }
+
+    notifyAttachmentListeners();
+
+    return attachmentId;
   }
 
   private @Nullable DatabaseAttachment findTemplateAttachment(@NonNull String dataHash) {
     String   selection = DATA_HASH + " = ?";
     String[] args      = new String[] { dataHash };
 
-    try (Cursor cursor = databaseHelper.getWritableDatabase().query(TABLE_NAME, null, selection, args, null, null, null)) {
+    try (Cursor cursor = databaseHelper.getSignalWritableDatabase().query(TABLE_NAME, null, selection, args, null, null, null)) {
       if (cursor != null && cursor.moveToFirst()) {
         return getAttachments(cursor).get(0);
       }
@@ -1353,7 +1378,7 @@ public class AttachmentDatabase extends Database {
   public void writeAudioHash(@NonNull AttachmentId attachmentId, @Nullable AudioWaveFormData audioWaveForm) {
     Log.i(TAG, "updating part audio wave form for #" + attachmentId);
 
-    SQLiteDatabase database = databaseHelper.getWritableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalWritableDatabase();
     ContentValues  values   = new ContentValues(1);
 
     if (audioWaveForm != null) {

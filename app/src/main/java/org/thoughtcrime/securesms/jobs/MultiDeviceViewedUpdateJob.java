@@ -114,7 +114,7 @@ public class MultiDeviceViewedUpdateJob extends BaseJob {
 
     for (SerializableSyncMessageId messageId : messageIds) {
       Recipient recipient = Recipient.resolved(RecipientId.from(messageId.recipientId));
-      if (!recipient.isGroup()) {
+      if (!recipient.isGroup() && recipient.isMaybeRegistered()) {
         viewedMessages.add(new ViewedMessage(RecipientUtil.toSignalServiceAddress(context, recipient), messageId.timestamp));
       }
     }

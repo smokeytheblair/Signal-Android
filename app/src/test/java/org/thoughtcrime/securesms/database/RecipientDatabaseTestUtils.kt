@@ -2,15 +2,19 @@ package org.thoughtcrime.securesms.database
 
 import android.net.Uri
 import org.signal.zkgroup.profiles.ProfileKeyCredential
+import org.thoughtcrime.securesms.badges.models.Badge
 import org.thoughtcrime.securesms.conversation.colors.AvatarColor
 import org.thoughtcrime.securesms.conversation.colors.ChatColors
+import org.thoughtcrime.securesms.database.model.RecipientRecord
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.profiles.ProfileName
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientDetails
 import org.thoughtcrime.securesms.recipients.RecipientId
+import org.thoughtcrime.securesms.util.Bitmask
 import org.thoughtcrime.securesms.wallpaper.ChatWallpaper
 import org.whispersystems.libsignal.util.guava.Optional
+import org.whispersystems.signalservice.api.push.ACI
 import java.util.UUID
 import kotlin.random.Random
 
@@ -27,7 +31,7 @@ object RecipientDatabaseTestUtils {
     isSelf: Boolean = false,
     participants: List<Recipient> = listOf(),
     recipientId: RecipientId = RecipientId.from(Random.nextLong()),
-    uuid: UUID? = UUID.randomUUID(),
+    aci: ACI? = ACI.from(UUID.randomUUID()),
     username: String? = null,
     e164: String? = null,
     email: String? = null,
@@ -66,7 +70,7 @@ object RecipientDatabaseTestUtils {
     avatarColor: AvatarColor = AvatarColor.A100,
     about: String? = null,
     aboutEmoji: String? = null,
-    syncExtras: RecipientDatabase.RecipientSettings.SyncExtras = RecipientDatabase.RecipientSettings.SyncExtras(
+    syncExtras: RecipientRecord.SyncExtras = RecipientRecord.SyncExtras(
       null,
       null,
       null,
@@ -75,7 +79,8 @@ object RecipientDatabaseTestUtils {
       false
     ),
     extras: Recipient.Extras? = null,
-    hasGroupsInCommon: Boolean = false
+    hasGroupsInCommon: Boolean = false,
+    badges: List<Badge> = emptyList()
   ): Recipient = Recipient(
     recipientId,
     RecipientDetails(
@@ -85,9 +90,10 @@ object RecipientDatabaseTestUtils {
       systemContact,
       isSelf,
       registered,
-      RecipientDatabase.RecipientSettings(
+      RecipientRecord(
         recipientId,
-        uuid,
+        aci,
+        null,
         username,
         e164,
         email,
@@ -118,6 +124,11 @@ object RecipientDatabaseTestUtils {
         unidentifiedAccessMode,
         forceSmsSelection,
         capabilities,
+        Recipient.Capability.deserialize(Bitmask.read(capabilities, RecipientDatabase.Capabilities.GROUPS_V2, RecipientDatabase.Capabilities.BIT_LENGTH).toInt()),
+        Recipient.Capability.deserialize(Bitmask.read(capabilities, RecipientDatabase.Capabilities.GROUPS_V1_MIGRATION, RecipientDatabase.Capabilities.BIT_LENGTH).toInt()),
+        Recipient.Capability.deserialize(Bitmask.read(capabilities, RecipientDatabase.Capabilities.SENDER_KEY, RecipientDatabase.Capabilities.BIT_LENGTH).toInt()),
+        Recipient.Capability.deserialize(Bitmask.read(capabilities, RecipientDatabase.Capabilities.ANNOUNCEMENT_GROUPS, RecipientDatabase.Capabilities.BIT_LENGTH).toInt()),
+        Recipient.Capability.deserialize(Bitmask.read(capabilities, RecipientDatabase.Capabilities.CHANGE_NUMBER, RecipientDatabase.Capabilities.BIT_LENGTH).toInt()),
         insightBannerTier,
         storageId,
         mentionSetting,
@@ -128,7 +139,8 @@ object RecipientDatabaseTestUtils {
         aboutEmoji,
         syncExtras,
         extras,
-        hasGroupsInCommon
+        hasGroupsInCommon,
+        badges
       ),
       participants
     ),

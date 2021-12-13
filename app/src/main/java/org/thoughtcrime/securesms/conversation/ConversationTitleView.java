@@ -19,6 +19,8 @@ import com.annimon.stream.Collectors;
 import com.annimon.stream.Stream;
 
 import org.thoughtcrime.securesms.R;
+import org.thoughtcrime.securesms.badges.BadgeImageView;
+import org.thoughtcrime.securesms.badges.models.Badge;
 import org.thoughtcrime.securesms.components.AvatarImageView;
 import org.thoughtcrime.securesms.mms.GlideRequests;
 import org.thoughtcrime.securesms.recipients.LiveRecipient;
@@ -31,6 +33,7 @@ import java.util.Objects;
 public class ConversationTitleView extends RelativeLayout {
 
   private AvatarImageView avatar;
+  private BadgeImageView  badge;
   private TextView        title;
   private TextView        subtitle;
   private ImageView       verified;
@@ -52,6 +55,7 @@ public class ConversationTitleView extends RelativeLayout {
     super.onFinishInflate();
 
     this.title                    = findViewById(R.id.title);
+    this.badge                    = findViewById(R.id.badge);
     this.subtitle                 = findViewById(R.id.subtitle);
     this.verified                 = findViewById(R.id.verified_indicator);
     this.subtitleContainer        = findViewById(R.id.subtitle_container);
@@ -100,6 +104,12 @@ public class ConversationTitleView extends RelativeLayout {
 
     if (recipient != null) {
       this.avatar.setAvatar(glideRequests, recipient, false);
+    }
+
+    if (recipient == null || recipient.isSelf()) {
+      badge.setBadgeFromRecipient(null);
+    } else {
+      badge.setBadgeFromRecipient(recipient);
     }
 
     updateVerifiedSubtitleVisibility();

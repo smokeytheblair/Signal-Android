@@ -6,8 +6,6 @@ import android.database.Cursor;
 
 import androidx.annotation.NonNull;
 
-import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
-
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.util.Base64;
 import org.whispersystems.libsignal.util.guava.Optional;
@@ -47,7 +45,7 @@ public class PushDatabase extends Database {
                                                                                   SERVER_DELIVERED_TIMESTAMP + " INTEGER DEFAULT 0, " +
                                                                                   SERVER_GUID                + " TEXT DEFAULT NULL);";
 
-  public PushDatabase(Context context, SQLCipherOpenHelper databaseHelper) {
+  public PushDatabase(Context context, SignalDatabase databaseHelper) {
     super(context, databaseHelper);
   }
 
@@ -69,7 +67,7 @@ public class PushDatabase extends Database {
       values.put(SERVER_DELIVERED_TIMESTAMP, envelope.getServerDeliveredTimestamp());
       values.put(SERVER_GUID, envelope.getServerGuid());
 
-      return databaseHelper.getWritableDatabase().insert(TABLE_NAME, null, values);
+      return databaseHelper.getSignalWritableDatabase().insert(TABLE_NAME, null, values);
     }
   }
 
@@ -77,9 +75,9 @@ public class PushDatabase extends Database {
     Cursor cursor = null;
 
     try {
-      cursor = databaseHelper.getReadableDatabase().query(TABLE_NAME, null, ID_WHERE,
-                                                          new String[] {String.valueOf(id)},
-                                                          null, null, null);
+      cursor = databaseHelper.getSignalReadableDatabase().query(TABLE_NAME, null, ID_WHERE,
+                                                                new String[] {String.valueOf(id)},
+                                                                null, null, null);
 
       if (cursor != null && cursor.moveToNext()) {
         String legacyMessage = cursor.getString(cursor.getColumnIndexOrThrow(LEGACY_MSG));
@@ -109,11 +107,11 @@ public class PushDatabase extends Database {
   }
 
   public Cursor getPending() {
-    return databaseHelper.getReadableDatabase().query(TABLE_NAME, null, null, null, null, null, null);
+    return databaseHelper.getSignalReadableDatabase().query(TABLE_NAME, null, null, null, null, null, null);
   }
 
   public void delete(long id) {
-    databaseHelper.getWritableDatabase().delete(TABLE_NAME, ID_WHERE, new String[] {id+""});
+    databaseHelper.getSignalWritableDatabase().delete(TABLE_NAME, ID_WHERE, new String[] {id+""});
   }
 
   public Reader readerFor(Cursor cursor) {
@@ -121,7 +119,7 @@ public class PushDatabase extends Database {
   }
 
   private Optional<Long> find(SignalServiceEnvelope envelope) {
-    SQLiteDatabase database = databaseHelper.getReadableDatabase();
+    SQLiteDatabase database = databaseHelper.getSignalReadableDatabase();
     String         query    = TYPE       + " = ? AND " +
                               DEVICE_ID  + " = ? AND " +
                               LEGACY_MSG + " = ? AND " +

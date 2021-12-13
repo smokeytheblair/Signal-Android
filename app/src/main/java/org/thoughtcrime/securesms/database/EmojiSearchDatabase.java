@@ -7,9 +7,6 @@ import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 
-import com.annimon.stream.Stream;
-
-import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
 import org.thoughtcrime.securesms.database.model.EmojiSearchData;
 import org.thoughtcrime.securesms.util.CursorUtil;
 import org.thoughtcrime.securesms.util.FtsUtil;
@@ -17,7 +14,6 @@ import org.thoughtcrime.securesms.util.SqlUtil;
 
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Contains all info necessary for full-text search of emoji tags.
@@ -31,7 +27,7 @@ public class EmojiSearchDatabase extends Database {
 
   public static final String CREATE_TABLE = "CREATE VIRTUAL TABLE " + TABLE_NAME + " USING fts5(" + LABEL + ", " + EMOJI + " UNINDEXED)";
 
-  public EmojiSearchDatabase(@NonNull Context context, @NonNull SQLCipherOpenHelper databaseHelper) {
+  public EmojiSearchDatabase(@NonNull Context context, @NonNull SignalDatabase databaseHelper) {
     super(context, databaseHelper);
   }
 
@@ -40,7 +36,7 @@ public class EmojiSearchDatabase extends Database {
    * @return A list of emoji that are related to the search term, ordered by relevance.
    */
   public @NonNull List<String> query(@NonNull String query, int limit) {
-    SQLiteDatabase db          = databaseHelper.getReadableDatabase();
+    SQLiteDatabase db          = databaseHelper.getSignalReadableDatabase();
     String         matchString = FtsUtil.createPrefixMatchString(query);
     List<String>   results     = new LinkedList<>();
 
@@ -65,7 +61,7 @@ public class EmojiSearchDatabase extends Database {
    * Deletes the content of the current search index and replaces it with the new one.
    */
   public void setSearchIndex(@NonNull List<EmojiSearchData> searchIndex) {
-    SQLiteDatabase db = databaseHelper.getReadableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalReadableDatabase();
 
     db.beginTransaction();
     try {

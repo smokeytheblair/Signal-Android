@@ -55,6 +55,7 @@
 <!-- nb --><item>Norsk (bokmål)</item>
 <!-- nn --><item>Norsk (nynorsk)</item>
 <!-- or --><item>Odia ଓଡ଼ିଆ</item>
+<!-- ps --><item>Pashto پښتو</item>
 <!-- fa --><item>Persian فارسی</item>
 <!-- pl --><item>Polski</item>
 <!-- pt --><item>Português</item>
@@ -135,6 +136,7 @@
       <item>nb</item>
       <item>nn</item>
       <item>or</item>
+      <item>ps</item>
       <item>fa</item>
       <item>pl</item>
       <item>pt</item>
@@ -406,11 +408,13 @@
 
     <integer-array name="PlaybackSpeedToggleTextView__speeds">
         <item>100</item>
+        <item>150</item>
         <item>200</item>
         <item>50</item>
     </integer-array>
     <string-array name="PlaybackSpeedToggleTextView__speed_labels">
         <item>@string/PlaybackSpeedToggleTextView__1x</item>
+        <item>@string/PlaybackSpeedToggleTextView__1p5x</item>
         <item>@string/PlaybackSpeedToggleTextView__2x</item>
         <item>@string/PlaybackSpeedToggleTextView__p5x</item>
     </string-array>

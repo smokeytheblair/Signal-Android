@@ -24,7 +24,8 @@ import com.bumptech.glide.load.resource.gif.GifDrawable;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.attachments.AttachmentId;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.database.SignalDatabase;
+import org.thoughtcrime.securesms.mediasend.Media;
 import org.thoughtcrime.securesms.mms.AudioSlide;
 import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader.DecryptableUri;
 import org.thoughtcrime.securesms.mms.DocumentSlide;
@@ -283,6 +284,10 @@ public class MediaUtil {
     return (null != contentType) && contentType.startsWith("text/");
   }
 
+  public static boolean isNonGifVideo(Media media) {
+    return isVideo(media.getMimeType()) && !media.isVideoGif();
+  }
+
   public static boolean isImageType(String contentType) {
     if (contentType == null) {
       return false;
@@ -399,7 +404,7 @@ public class MediaUtil {
     {
       try {
         AttachmentId    attachmentId = PartAuthority.requireAttachmentId(uri);
-        MediaDataSource source       = DatabaseFactory.getAttachmentDatabase(context).mediaDataSourceFor(attachmentId);
+        MediaDataSource source       = SignalDatabase.attachments().mediaDataSourceFor(attachmentId);
         return extractFrame(source, timeUs);
       } catch (IOException e) {
         Log.w(TAG, "Failed to extract frame for URI: " + uri, e);

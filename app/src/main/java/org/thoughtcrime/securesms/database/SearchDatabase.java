@@ -1,15 +1,12 @@
 package org.thoughtcrime.securesms.database;
 
 import android.content.Context;
+import android.database.Cursor;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 
 import com.annimon.stream.Stream;
-
-import net.sqlcipher.Cursor;
-
-import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
 
 /**
  * Contains all databases necessary for full-text search (FTS).
@@ -121,12 +118,12 @@ public class SearchDatabase extends Database {
         "ORDER BY " + MmsSmsColumns.NORMALIZED_DATE_RECEIVED + " DESC " +
         "LIMIT 500";
 
-  public SearchDatabase(@NonNull Context context, @NonNull SQLCipherOpenHelper databaseHelper) {
+  public SearchDatabase(@NonNull Context context, @NonNull SignalDatabase databaseHelper) {
     super(context, databaseHelper);
   }
 
   public Cursor queryMessages(@NonNull String query) {
-    SQLiteDatabase db                  = databaseHelper.getReadableDatabase();
+    SQLiteDatabase db                  = databaseHelper.getSignalReadableDatabase();
     String         fullTextSearchQuery = createFullTextSearchQuery(query);
 
     if (TextUtils.isEmpty(fullTextSearchQuery)) {
@@ -137,7 +134,7 @@ public class SearchDatabase extends Database {
   }
 
   public Cursor queryMessages(@NonNull String query, long threadId) {
-    SQLiteDatabase db                  = databaseHelper.getReadableDatabase();
+    SQLiteDatabase db                  = databaseHelper.getSignalReadableDatabase();
     String         fullTextSearchQuery = createFullTextSearchQuery(query);
 
     if (TextUtils.isEmpty(fullTextSearchQuery)) {

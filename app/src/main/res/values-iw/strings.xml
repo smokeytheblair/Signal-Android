@@ -186,9 +186,6 @@
   <string name="ConversationItem_this_message_was_deleted">הודעה זו נמחקה.</string>
   <string name="ConversationItem_you_deleted_this_message">מחקת הודעה זו.</string>
   <!--ConversationActivity-->
-  <string name="ConversationActivity_reset_secure_session_question">לאפס שיח מאובטח?</string>
-  <string name="ConversationActivity_this_may_help_if_youre_having_encryption_problems">ייתכן שזה יעזור אם אתה חווה בעיות הצפנה בשיחה זו. ההודעות שלך יישמרו.</string>
-  <string name="ConversationActivity_reset">אפס</string>
   <string name="ConversationActivity_add_attachment">הוסף צרופה</string>
   <string name="ConversationActivity_select_contact_info">בחר מידע של איש קשר</string>
   <string name="ConversationActivity_compose_message">חבר הודעה</string>
@@ -314,6 +311,7 @@
   <string name="ConversationFragment_not_now">לא עכשיו</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed">מספר הביטחון שלך עם %s השתנה</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed_likey_because_they_reinstalled_signal">מספר הביטחון שלך עם %s השתנה, כנראה מאחר שהוא/היא התקין/ה מחדש את Signal או שינה/שינתה מכשירים. הקש וודא כדי לאשר את המספר החדש של הביטחון. זה רשותי.</string>
+  <!--Message shown to indicate which notification profile is on/active-->
   <plurals name="ConversationListFragment_delete_selected_conversations">
     <item quantity="one">למחוק שיחה נבחרת?</item>
     <item quantity="two">למחוק שיחות נבחרות?</item>
@@ -341,6 +339,72 @@
     <item quantity="many">%d שיחות הועברו לתיבה הנכנסת</item>
     <item quantity="other">%d שיחות הועברו לתיבה הנכנסת</item>
   </plurals>
+  <plurals name="ConversationListFragment_read_plural">
+    <item quantity="one">קרא</item>
+    <item quantity="two">קרא</item>
+    <item quantity="many">קרא</item>
+    <item quantity="other">קרא</item>
+  </plurals>
+  <plurals name="ConversationListFragment_unread_plural">
+    <item quantity="one">בטל קריאה</item>
+    <item quantity="two">בטל קריאה</item>
+    <item quantity="many">בטל קריאה</item>
+    <item quantity="other">בטל קריאה</item>
+  </plurals>
+  <plurals name="ConversationListFragment_pin_plural">
+    <item quantity="one">הצמד</item>
+    <item quantity="two">הצמד</item>
+    <item quantity="many">הצמד</item>
+    <item quantity="other">הצמד</item>
+  </plurals>
+  <plurals name="ConversationListFragment_unpin_plural">
+    <item quantity="one">בטל הצמדה</item>
+    <item quantity="two">בטל הצמדה</item>
+    <item quantity="many">בטל הצמדה</item>
+    <item quantity="other">בטל הצמדה</item>
+  </plurals>
+  <plurals name="ConversationListFragment_mute_plural">
+    <item quantity="one">השתק</item>
+    <item quantity="two">השתק</item>
+    <item quantity="many">השתק</item>
+    <item quantity="other">השתק</item>
+  </plurals>
+  <plurals name="ConversationListFragment_unmute_plural">
+    <item quantity="one">בטל השתקה</item>
+    <item quantity="two">בטל השתקה</item>
+    <item quantity="many">בטל השתקה</item>
+    <item quantity="other">בטל השתקה</item>
+  </plurals>
+  <string name="ConversationListFragment_select">בחר</string>
+  <plurals name="ConversationListFragment_archive_plural">
+    <item quantity="one">ארכב</item>
+    <item quantity="two">ארכב</item>
+    <item quantity="many">ארכב</item>
+    <item quantity="other">ארכב</item>
+  </plurals>
+  <plurals name="ConversationListFragment_unarchive_plural">
+    <item quantity="one">בטל ארכוב</item>
+    <item quantity="two">בטל ארכוב</item>
+    <item quantity="many">בטל ארכוב</item>
+    <item quantity="other">בטל ארכוב</item>
+  </plurals>
+  <plurals name="ConversationListFragment_delete_plural">
+    <item quantity="one">מחק</item>
+    <item quantity="two">מחק</item>
+    <item quantity="many">מחק</item>
+    <item quantity="other">מחק</item>
+  </plurals>
+  <string name="ConversationListFragment_select_all">בחר הכל</string>
+  <plurals name="ConversationListFragment_s_selected">
+    <item quantity="one">%d נבחר</item>
+    <item quantity="two">%d נבחרו</item>
+    <item quantity="many">%d נבחרו</item>
+    <item quantity="other">%d נבחרו</item>
+  </plurals>
+  <!--Show in conversation list overflow menu to open selection bottom sheet-->
+  <string name="ConversationListFragment__notification_profile">פרופיל התראות</string>
+  <!--Tooltip shown after you have created your first notification profile-->
+  <!--Message shown in top toast to indicate the named profile is on-->
   <!--ConversationListItem-->
   <string name="ConversationListItem_key_exchange_message">הודעת החלפת מפתחות</string>
   <!--ConversationListItemAction-->
@@ -421,11 +485,6 @@
   <string name="DeviceListItem_today">היום</string>
   <!--DocumentView-->
   <string name="DocumentView_unnamed_file">קובץ ללא שם</string>
-  <!--DonateMegaphone-->
-  <string name="DonateMegaphone_donate_to_signal">תרום אל Signal</string>
-  <string name="DonateMegaphone_Signal_is_powered_by_people_like_you_show_your_support_today">Signal ממונע על ידי אנשים כמוך. הראה לנו את תמיכתך היום!</string>
-  <string name="DonateMegaphone_donate">תרום</string>
-  <string name="DonateMegaphone_no_thanks">לא תודה</string>
   <!--GroupCallingMegaphone-->
   <string name="GroupCallingMegaphone__introducing_group_calls">היכרות עם שיחה קבוצתית</string>
   <string name="GroupCallingMegaphone__open_a_new_group_to_start">פתח קבוצה חדשה כדי להתחיל שיחה קבוצתית חינמית מוצפנת</string>
@@ -730,6 +789,8 @@
   <string name="ManageProfileFragment_your_name">שמך</string>
   <string name="ManageProfileFragment_your_username">שם המשתמש שלך</string>
   <string name="ManageProfileFragment_failed_to_set_avatar">נכשל בהגדרת יצגן</string>
+  <string name="ManageProfileFragment_badges">תגים</string>
+  <string name="ManageProfileFragment__edit_photo">ערוך תמונה</string>
   <!--ManageRecipientActivity-->
   <string name="ManageRecipientActivity_no_groups_in_common">אין קבוצות במשותף</string>
   <plurals name="ManageRecipientActivity_d_groups_in_common">
@@ -755,6 +816,7 @@
   <string name="CustomNotificationsDialogFragment__enabled">מאופשר</string>
   <string name="CustomNotificationsDialogFragment__disabled">מושבת</string>
   <string name="CustomNotificationsDialogFragment__default">ברירת מחדל</string>
+  <string name="CustomNotificationsDialogFragment__unknown">בלתי ידוע</string>
   <!--ShareableGroupLinkDialogFragment-->
   <string name="ShareableGroupLinkDialogFragment__shareable_group_link">קישור קבוצה בר־שיתוף</string>
   <string name="ShareableGroupLinkDialogFragment__manage_and_share">נהל ושתף</string>
@@ -823,17 +885,12 @@
   <!--InviteActivity-->
   <string name="InviteActivity_share">שתף</string>
   <string name="InviteActivity_share_with_contacts">שתף עם אנשי קשר</string>
-  <string name="InviteActivity_choose_how_to_share">בחר כיצד לשתף</string>
+  <string name="InviteActivity_share_via">שתף באמצעות…</string>
   <string name="InviteActivity_cancel">בטל</string>
   <string name="InviteActivity_sending">שולח…</string>
   <string name="InviteActivity_invitations_sent">הזמנות נשלחו!</string>
   <string name="InviteActivity_invite_to_signal">הזמן אל Signal</string>
-  <plurals name="InviteActivity_send_sms_to_friends">
-    <item quantity="one">שלח מסרון אל חבר %d</item>
-    <item quantity="two">שלח מסרון אל %d חברים</item>
-    <item quantity="many">שלח מסרון אל %d חברים</item>
-    <item quantity="other">שלח מסרון אל %d חברים</item>
-  </plurals>
+  <string name="InviteActivity_send_sms">שלח מסרון (%d)</string>
   <plurals name="InviteActivity_send_sms_invites">
     <item quantity="one">לשלוח הזמנה %d במסרון?</item>
     <item quantity="two">לשלוח %d הזמנות במסרון?</item>
@@ -842,9 +899,9 @@
   </plurals>
   <string name="InviteActivity_lets_switch_to_signal">בוא נחליף אל Signal: %1$s</string>
   <string name="InviteActivity_no_app_to_share_to">נראה שאין לך יישומים כלשהם לשתף בהם.</string>
-  <string name="InviteActivity_friends_dont_let_friends_text_unencrypted">חברים לא נותנים לחברים להתכתב באופן בלתי מוצפן.</string>
   <!--LearnMoreTextView-->
   <string name="LearnMoreTextView_learn_more">למד עוד</string>
+  <string name="SpanUtil__read_more">קרא עוד</string>
   <!--LongMessageActivity-->
   <string name="LongMessageActivity_unable_to_find_message">לא היה ניתן למצוא הודעה</string>
   <string name="LongMessageActivity_message_from_s">הודעה מאת %1$s</string>
@@ -883,17 +940,24 @@
   <string name="MediaOverviewActivity_Grid_view_description">תצוגת סורג</string>
   <string name="MediaOverviewActivity_List_view_description">תצוגת רשימה</string>
   <string name="MediaOverviewActivity_Selected_description">נבחר</string>
-  <plurals name="MediaOverviewActivity_d_items_s">
-    <item quantity="one">פריט %1$d %2$s</item>
-    <item quantity="two">%1$d פריטים %2$s</item>
-    <item quantity="many">%1$d פריטים %2$s</item>
-    <item quantity="other">%1$d פריטים %2$s</item>
+  <string name="MediaOverviewActivity_select_all">בחר הכל</string>
+  <plurals name="MediaOverviewActivity_save_plural">
+    <item quantity="one">שמור</item>
+    <item quantity="two">שמור</item>
+    <item quantity="many">שמור</item>
+    <item quantity="other">שמור</item>
   </plurals>
-  <plurals name="MediaOverviewActivity_d_items">
-    <item quantity="one">פריט %1$d</item>
-    <item quantity="two">%1$d פריטים</item>
-    <item quantity="many">%1$d פריטים</item>
-    <item quantity="other">%1$d פריטים</item>
+  <plurals name="MediaOverviewActivity_delete_plural">
+    <item quantity="one">מחק</item>
+    <item quantity="two">מחק</item>
+    <item quantity="many">מחק</item>
+    <item quantity="other">מחק</item>
+  </plurals>
+  <plurals name="MediaOverviewActivity_d_selected_s">
+    <item quantity="one">%1$d נבחר (%2$s)</item>
+    <item quantity="two">%1$d נבחרו (%2$s)</item>
+    <item quantity="many">%1$d נבחרו (%2$s)</item>
+    <item quantity="other">%1$d נבחרו (%2$s)</item>
   </plurals>
   <string name="MediaOverviewActivity_file">קובץ</string>
   <string name="MediaOverviewActivity_audio">שמע</string>
@@ -921,11 +985,13 @@
   <string name="NotificationBarManager_signal_call_in_progress">שיחת Signal בתהליך</string>
   <string name="NotificationBarManager__establishing_signal_call">מקים שיחת Signal</string>
   <string name="NotificationBarManager__incoming_signal_call">שיחת Signal נכנסת</string>
+  <string name="NotificationBarManager__incoming_signal_group_call">שיחה קבוצתית נכנסת של Signal</string>
   <string name="NotificationBarManager__stopping_signal_call_service">עוצר את שירות השיחות של Signal</string>
-  <string name="NotificationBarManager__deny_call">דחה שיחה</string>
+  <string name="NotificationBarManager__decline_call">דחה שיחה</string>
   <string name="NotificationBarManager__answer_call">ענה לשיחה</string>
   <string name="NotificationBarManager__end_call">סיים שיחה</string>
   <string name="NotificationBarManager__cancel_call">בטל שיחה</string>
+  <string name="NotificationBarManager__join_call">הצטרף לשיחה</string>
   <!--NotificationsMegaphone-->
   <string name="NotificationsMegaphone_turn_on_notifications">להפעיל התראות?</string>
   <string name="NotificationsMegaphone_never_miss_a_message">לעולם לא תפספס הודעה מאנשי הקשר והקבוצות שלך.</string>
@@ -1021,9 +1087,9 @@
   <string name="MessageRecord_you_made_s_an_admin">עשית את %1$s מנהלן.</string>
   <string name="MessageRecord_s_made_s_an_admin">%1$s עשה את %2$s מנהלן.</string>
   <string name="MessageRecord_s_made_you_an_admin">%1$s עשה אותך מנהלן.</string>
-  <string name="MessageRecord_you_revoked_admin_privileges_from_s">שללת זכויות מינהל מן %1$s.</string>
-  <string name="MessageRecord_s_revoked_your_admin_privileges">%1$s שלל את זכויות המינהל שלך.</string>
-  <string name="MessageRecord_s_revoked_admin_privileges_from_s">%1$s שלל זכויות מינהל מן %2$s.</string>
+  <string name="MessageRecord_you_revoked_admin_privileges_from_s">שללת זכויות מנהלן מן %1$s.</string>
+  <string name="MessageRecord_s_revoked_your_admin_privileges">%1$s שלל/ה את זכויות המנהלן שלך.</string>
+  <string name="MessageRecord_s_revoked_admin_privileges_from_s">%1$s שלל זכויות מנהלן מן %2$s.</string>
   <string name="MessageRecord_s_is_now_an_admin">%1$s מנהלן כעת.</string>
   <string name="MessageRecord_you_are_now_an_admin">אתה מנהלן כעת.</string>
   <string name="MessageRecord_s_is_no_longer_an_admin">%1$s אינו מנהלן יותר.</string>
@@ -1144,6 +1210,7 @@
   <string name="MessageRecord_you_marked_your_safety_number_with_s_unverified">סימנת את מספר הביטחון שלך עם %s כבלתי מוודא</string>
   <string name="MessageRecord_you_marked_your_safety_number_with_s_unverified_from_another_device">סימנת את מספר הביטחון שלך עם %s כבלתי מוודא ממכשיר אחר</string>
   <string name="MessageRecord_a_message_from_s_couldnt_be_delivered">הודעה מאת %s לא יכלה להימסר</string>
+  <string name="MessageRecord_s_changed_their_number_to_a_new_number">%1$s שינה/שינתה את המספר שלו/שלה אל מספר חדש.</string>
   <!--Group Calling update messages-->
   <string name="MessageRecord_s_started_a_group_call_s">%1$s התחיל/ה שיחה קבוצתית · %2$s</string>
   <string name="MessageRecord_s_is_in_the_group_call_s">%1$s בשיחה הקבוצתית · %2$s</string>
@@ -1316,21 +1383,55 @@
   <string name="WebRtcCallActivity__to_call_s_signal_needs_access_to_your_camera">כדי להתקשר אל %1$s, היישום Signal צריך גישה אל המצלמה שלך</string>
   <string name="WebRtcCallActivity__signal_s">Signal %1$s</string>
   <string name="WebRtcCallActivity__calling">מתקשר…</string>
+  <string name="WebRtcCallActivity__group_is_too_large_to_ring_the_participants">הקבוצה גדולה מדי כדי לצלצל אל המשתתפים.</string>
   <!--WebRtcCallView-->
-  <string name="WebRtcCallView__signal_voice_call">שיחה קולית של Signal…</string>
-  <string name="WebRtcCallView__signal_video_call">שיחת וידאו של Signal…</string>
+  <string name="WebRtcCallView__signal_call">שיחת Signal</string>
+  <string name="WebRtcCallView__signal_video_call">שיחת וידאו של Signal</string>
   <string name="WebRtcCallView__start_call">התחל שיחה</string>
   <string name="WebRtcCallView__join_call">הצטרף לשיחה</string>
   <string name="WebRtcCallView__call_is_full">השיחה מלאה</string>
   <string name="WebRtcCallView__the_maximum_number_of_d_participants_has_been_Reached_for_this_call">המספר המרבי של %1$d משתתפים הושג עבור שיחה זו. נסה שוב מאוחר יותר.</string>
-  <string name="WebRtcCallView__s_group_call">\"%1$s\" שיחה קבוצתית</string>
   <string name="WebRtcCallView__view_participants_list">הצג משתתפים</string>
   <string name="WebRtcCallView__your_video_is_off">הוידאו שלך כבוי</string>
   <string name="WebRtcCallView__reconnecting">מתחבר מחדש…</string>
   <string name="WebRtcCallView__joining">מצטרף…</string>
   <string name="WebRtcCallView__disconnected">מנותק</string>
+  <string name="WebRtcCallView__signal_will_ring_s">Signal יצלצל אל %1$s</string>
+  <string name="WebRtcCallView__signal_will_ring_s_and_s">Signal יצלצל אל %1$s ואל %2$s</string>
+  <plurals name="WebRtcCallView__signal_will_ring_s_s_and_d_others">
+    <item quantity="one">Signal יצלצל אל %1$s, %2$s ואל %3$d אחר </item>
+    <item quantity="two">Signal יצלצל אל %1$s, %2$s ואל %3$d אחרים</item>
+    <item quantity="many">Signal יצלצל אל %1$s, %2$s ואל %3$d אחרים</item>
+    <item quantity="other">Signal יצלצל אל %1$s, %2$s ואל %3$d אחרים</item>
+  </plurals>
+  <string name="WebRtcCallView__s_will_be_notified">%1$s יוודע/תיוודע</string>
+  <string name="WebRtcCallView__s_and_s_will_be_notified">%1$s וגם %2$s יוודעו</string>
+  <plurals name="WebRtcCallView__s_s_and_d_others_will_be_notified">
+    <item quantity="one">%1$s, %2$s ועוד %3$d אחר יוודעו</item>
+    <item quantity="two">%1$s, %2$s ועוד %3$d אחרים יוודעו</item>
+    <item quantity="many">%1$s, %2$s ועוד %3$d אחרים יוודעו</item>
+    <item quantity="other">%1$s, %2$s ועוד %3$d אחרים יוודעו</item>
+  </plurals>
+  <string name="WebRtcCallView__ringing_s">מצלצל אל %1$s</string>
+  <string name="WebRtcCallView__ringing_s_and_s">מצלצל אל %1$s ואל %2$s</string>
+  <plurals name="WebRtcCallView__ringing_s_s_and_d_others">
+    <item quantity="one">מצלצל אל %1$s, %2$s ועוד %3$d אחר</item>
+    <item quantity="two">מצלצל אל %1$s, %2$s ועוד %3$d אחרים</item>
+    <item quantity="many">מצלצל אל %1$s, %2$s ועוד %3$d אחרים</item>
+    <item quantity="other">מצלצל אל %1$s, %2$s ועוד %3$d אחרים</item>
+  </plurals>
+  <string name="WebRtcCallView__s_is_calling_you">%1$s מתקשר/ת אליך</string>
+  <string name="WebRtcCallView__s_is_calling_you_and_s">%1$s מתקשר/ת אליך ואל %2$s</string>
+  <string name="WebRtcCallView__s_is_calling_you_s_and_s">%1$s מתקשר/ת אליך, %2$s ואל %3$s</string>
+  <plurals name="WebRtcCallView__s_is_calling_you_s_s_and_d_others">
+    <item quantity="one">%1$s מתקשר/ת אליך, %2$s, %3$s ואל %4$d אחר</item>
+    <item quantity="two">%1$s מתקשר/ת אליך, %2$s, %3$s ואל %4$d אחרים</item>
+    <item quantity="many">%1$s מתקשר/ת אליך, %2$s, %3$s ואל %4$d אחרים</item>
+    <item quantity="other">%1$s מתקשר/ת אליך, %2$s, %3$s ואל %4$d אחרים</item>
+  </plurals>
   <string name="WebRtcCallView__no_one_else_is_here">אף אחד אחר לא כאן</string>
   <string name="WebRtcCallView__s_is_in_this_call">%1$s בשיחה זו</string>
+  <string name="WebRtcCallView__s_are_in_this_call">%1$s בשיחה זו</string>
   <string name="WebRtcCallView__s_and_s_are_in_this_call">%1$s וגם %2$s בשיחה זו</string>
   <string name="WebRtcCallView__s_is_presenting">%1$s משתף/ת מסך</string>
   <plurals name="WebRtcCallView__s_s_and_d_others_are_in_this_call">
@@ -1339,6 +1440,12 @@
     <item quantity="many">%1$s, %2$s, ועוד %3$d אחרים בשיחה זו</item>
     <item quantity="other">%1$s, %2$s, ועוד %3$d אחרים בשיחה זו</item>
   </plurals>
+  <string name="WebRtcCallView__flip">החלף</string>
+  <string name="WebRtcCallView__speaker">רמקול</string>
+  <string name="WebRtcCallView__camera">מצלמה</string>
+  <string name="WebRtcCallView__mute">השתק</string>
+  <string name="WebRtcCallView__ring">צלצל</string>
+  <string name="WebRtcCallView__end_call">סיים שיחה</string>
   <!--CallParticipantsListDialog-->
   <plurals name="CallParticipantsListDialog_in_this_call_d_people">
     <item quantity="one">בשיחה זו  · איש %1$d</item>
@@ -1386,10 +1493,14 @@
   <string name="RegistrationActivity_play_services_error">שגיאת שירותי Play</string>
   <string name="RegistrationActivity_google_play_services_is_updating_or_unavailable">שירותי Google Play מתעדכנים או שהם בלתי זמינים באופן זמני. אנא נסה שוב.</string>
   <string name="RegistrationActivity_terms_and_privacy">תנאים ומדיניות פרטיות</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_and_media_in_order_to_connect_with_friends">Signal צריך גישה אל אנשי הקשר והמדיה שלך על מנת לחבור אל חברים, להחליף הודעות ולקיים שיחות מאובטחות</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_in_order_to_connect_with_friends">Signal צריך גישה אל אנשי הקשר שלך על מנת לחבור אל חברים, להחליף הודעות ולקיים שיחות מאובטחות</string>
+  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_and_media_in_order_to_connect_with_friends">Signal צריך הרשאה אל אנשי הקשר והמדיה שלך כדי לעזור לך לחבור אל חברים ולשלוח הודעות. אנשי הקשר שלך מועלים ע״י שימוש בגילוי אנשי קשר פרטי של Signal, מה שאומר שהם מוצפנים מקצה־אל־קצה ואף פעם אינם גלויים אל השירות של Signal.</string>
+  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_in_order_to_connect_with_friends">Signal צריך הרשאה אל אנשי הקשר שלך כדי לעזור לך לחבור אל חברים. אנשי הקשר שלך מועלים ע״י שימוש בגילוי אנשי קשר פרטי של Signal, מה שאומר שהם מוצפנים מקצה־אל־קצה ואף פעם אינם גלויים אל השירות של Signal.</string>
   <string name="RegistrationActivity_rate_limited_to_service">עשית יותר מדי ניסיונות להירשם עם המספר הזה. אנא נסה שוב מאוחר יותר.</string>
   <string name="RegistrationActivity_unable_to_connect_to_service">לא היה ניתן להתחבר אל השירות. אנא בדוק את חיבור האינטרנט ונסה שוב.</string>
+  <string name="RegistrationActivity_non_standard_number_format">תסדיר אי־תקני של מספר</string>
+  <string name="RegistrationActivity_the_number_you_entered_appears_to_be_a_non_standard">המספר שהכנסת (%1$s) כנראה בתסדיר בלתי תקני.\n\nהאם התכוונת אל %2$s?</string>
+  <string name="RegistrationActivity_signal_android_phone_number_format">Signal Android - תסדיר מספר טלפון</string>
+  <string name="RegistrationActivity_call_requested">שיחה התבקשה</string>
   <plurals name="RegistrationActivity_debug_log_hint">
     <item quantity="one">אתה כעת במרחק צעד %d מהגשת יומן ניפוי תקלים.</item>
     <item quantity="two">אתה כעת במרחק %d צעדים מהגשת יומן ניפוי תקלים.</item>
@@ -1434,6 +1545,8 @@
   <string name="SharedContactView_add_to_contacts">הוסף לאנשי קשר</string>
   <string name="SharedContactView_invite_to_signal">הזמן אל Signal</string>
   <string name="SharedContactView_message">הודעת Signal</string>
+  <!--SignalBottomActionBar-->
+  <string name="SignalBottomActionBar_more">עוד</string>
   <!--SignalPinReminders-->
   <string name="SignalPinReminders_well_remind_you_again_later">נזכיר לך שוב מאוחר יותר.</string>
   <string name="SignalPinReminders_well_remind_you_again_tomorrow">נזכיר לך שוב מחר.</string>
@@ -1618,6 +1731,7 @@
   <string name="MessageNotifier_reacted_s_to_s">הגיב עם %1$s אל: \"%2$s\".</string>
   <string name="MessageNotifier_reacted_s_to_your_video">הגיב עם %1$s אל הסרטון שלך.</string>
   <string name="MessageNotifier_reacted_s_to_your_image">הגיב עם %1$s אל התמונה שלך.</string>
+  <string name="MessageNotifier_reacted_s_to_your_gif">הגיב %1$s אל ה־GIF שלך.</string>
   <string name="MessageNotifier_reacted_s_to_your_file">הגיב עם %1$s אל הקובץ שלך.</string>
   <string name="MessageNotifier_reacted_s_to_your_audio">הגיב עם %1$s אל השמע שלך.</string>
   <string name="MessageNotifier_reacted_s_to_your_view_once_media">הגיב/ה עם %1$s אל המדיה לצפייה חד־פעמית שלך.</string>
@@ -1766,6 +1880,7 @@
   <string name="ConversationUpdateItem_call_is_full">השיחה מלאה</string>
   <string name="ConversationUpdateItem_invite_friends">הזמן חברים</string>
   <string name="ConversationUpdateItem_enable_call_notifications">אפשר התראות שיחה</string>
+  <string name="ConversationUpdateItem_update_contact">עדכן איש קשר</string>
   <string name="ConversationUpdateItem_no_groups_in_common_review_requests_carefully">אין קבוצות במשותף. סקור בקשות בזהירות.</string>
   <string name="ConversationUpdateItem_no_contacts_in_this_group_review_requests_carefully">אין אנשי קשר בקבוצה הזאת. סקור בקשות בזהירות.</string>
   <string name="ConversationUpdateItem_view">הצג</string>
@@ -1777,12 +1892,19 @@
   <string name="QuoteView_audio">שמע</string>
   <string name="QuoteView_video">סרטון</string>
   <string name="QuoteView_photo">תמונה</string>
+  <string name="QuoteView_gif">GIF</string>
   <string name="QuoteView_view_once_media">מדיה לצפייה חד־פעמית</string>
   <string name="QuoteView_sticker">מדבקה</string>
   <string name="QuoteView_you">את/ה</string>
   <string name="QuoteView_original_missing">הודעה מקורית לא נמצאה</string>
   <!--conversation_fragment-->
   <string name="conversation_fragment__scroll_to_the_bottom_content_description">גלול לתחתית</string>
+  <!--BubbleOptOutTooltip-->
+  <!--Message to inform the user of what Android chat bubbles are-->
+  <!--Button to dismiss the tooltip for opting out of using Android bubbles-->
+  <string name="BubbleOptOutTooltip__not_now">לא עכשיו</string>
+  <!--Button to move to the system settings to control the use of Android bubbles-->
+  <string name="BubbleOptOutTooltip__turn_off">כבה</string>
   <!--safety_number_change_dialog-->
   <string name="safety_number_change_dialog__safety_number_changes">שינויי מספר ביטחון</string>
   <string name="safety_number_change_dialog__accept">אשר</string>
@@ -1941,21 +2063,26 @@
   <!--recipients_panel-->
   <string name="recipients_panel__to"><small>הכנס שם או מספר</small></string>
   <!--verify_display_fragment-->
-  <string name="verify_display_fragment__if_you_wish_to_verify_the_security_of_your_end_to_end_encryption_with_s"><![CDATA[אם אתה רוצה לוודא את אבטחת ההצפנה שלך עם %s, השווה את המספר לעיל עם המספר במכשיר שלו. לחלופין, אתה יכול לסרוק את הקוד בטלפון שלו, או לבקש ממנו לסרוק את הקוד שלך. <a href="https://signal.org/redirect/safety-numbers">למד עוד.</a>]]></string>
+  <string name="verify_display_fragment__to_verify_the_security_of_your_end_to_end_encryption_with_s"><![CDATA[כדי לוודא את האבטחה של ההצפנה מקצה־אל־קצה שלך עם %s, השווה את המספרים לעיל עם המכשיר של הצד השני. אתה יכול גם לסרוק את הקוד במכשיר של הצד שני. <a href="https://signal.org/redirect/safety-numbers">למד עוד.</a>]]></string>
   <string name="verify_display_fragment__tap_to_scan">הקש כדי לסרוק</string>
+  <string name="verify_display_fragment__successful_match">התאמה מוצלחת</string>
+  <string name="verify_display_fragment__failed_to_verify_safety_number">נכשל בוידוא מספר ביטחון</string>
   <string name="verify_display_fragment__loading">טוען…</string>
-  <string name="verify_display_fragment__verified">מוודא</string>
+  <string name="verify_display_fragment__mark_as_verified">סמן כמוֻדא</string>
+  <string name="verify_display_fragment__clear_verification">נקה וידוא</string>
   <!--verify_identity-->
   <string name="verify_identity__share_safety_number">שתף מספר ביטחון</string>
+  <!--verity_scan_fragment-->
+  <string name="verify_scan_fragment__scan_the_qr_code_on_your_contact">סרוק את קוד ה־QR במכשיר של איש הקשר שלך.</string>
   <!--webrtc_answer_decline_button-->
   <string name="webrtc_answer_decline_button__swipe_up_to_answer">החלק למעלה כדי לענות</string>
   <string name="webrtc_answer_decline_button__swipe_down_to_reject">החלק למטה כדי לדחות</string>
   <!--message_details_header-->
   <string name="message_details_header__issues_need_your_attention">מספר סוגיות דורשות את תשומת לבך.</string>
-  <string name="message_details_header__sent">נשלח</string>
-  <string name="message_details_header__received">התקבל</string>
-  <string name="message_details_header__disappears">נעלם</string>
-  <string name="message_details_header__via">דרך</string>
+  <string name="message_details_header__sent">נשלח:</string>
+  <string name="message_details_header__received">התקבל:</string>
+  <string name="message_details_header__disappears">נעלם:</string>
+  <string name="message_details_header__via">באמצעות:</string>
   <!--message_details_recipient_header-->
   <string name="message_details_recipient_header__pending_send">ממתין</string>
   <string name="message_details_recipient_header__sent_to">נשלחה אל</string>
@@ -1997,14 +2124,15 @@
   <string name="HelpFragment__debug_log">יומן ניפוי תקלים:</string>
   <string name="HelpFragment__could_not_upload_logs">לא היה ניתן להעלות יומן</string>
   <string name="HelpFragment__please_be_as_descriptive_as_possible">אנא הייה מפורט ככל האפשר כדי לעזור לנו להבין את הסוגייה.</string>
-  <string-array name="HelpFragment__categories">
-    <item>-- אנא בחר אפשרות --</item>
+  <string-array name="HelpFragment__categories_3">
+    <item>\-\- אנא בחר אפשרות \-\-</item>
     <item>משהו לא עובד</item>
     <item>בקשת מאפיין</item>
     <item>שאלה</item>
     <item>משוב</item>
     <item>אחר</item>
-    <item>תשלומים</item>
+    <item>תשלומים (MobileCoin)</item>
+    <item>מחזיקים ותמריץ Signal</item>
   </string-array>
   <!--ReactWithAnyEmojiBottomSheetDialogFragment-->
   <string name="ReactWithAnyEmojiBottomSheetDialogFragment__this_message">הודעה זו</string>
@@ -2104,6 +2232,9 @@
   <string name="preferences__help">עזרה</string>
   <string name="preferences__advanced">מתקדם</string>
   <string name="preferences__donate_to_signal">תרום אל Signal</string>
+  <string name="preferences__subscription">מינוי</string>
+  <string name="preferences__become_a_signal_sustainer">הפוך אל מחזיק Signal</string>
+  <string name="preferences__signal_boost">תמריץ Signal</string>
   <string name="preferences__privacy">פרטיות</string>
   <string name="preferences__mms_user_agent">סוכן משתמש MMS</string>
   <string name="preferences__advanced_mms_access_point_names">הגדרות MMS ידניות</string>
@@ -2460,7 +2591,7 @@
   <string name="Insights__title">תובנות</string>
   <string name="InsightsDashboardFragment__title">תובנות</string>
   <string name="InsightsDashboardFragment__signal_protocol_automatically_protected">פרוטוקול Signal הגן באופן אוטומטי על %1$d%% מההודעות היוצאות שלך במהלך %2$d הימים האחרונים. שיחות בין משתמשי Signal תמיד מוצפנות מקצה־אל־קצה.</string>
-  <string name="InsightsDashboardFragment__boost_your_signal">תמריץ Signal</string>
+  <string name="InsightsDashboardFragment__spread_the_word">הפץ את המילה</string>
   <string name="InsightsDashboardFragment__not_enough_data">אין מספיק נתונים</string>
   <string name="InsightsDashboardFragment__your_insights_percentage_is_calculated_based_on">אחוז התובנות שלך מחושב על סמך הודעות יוצאות בטווח %1$d הימים האחרונים שלא נעלמו או לא נמחקו.</string>
   <string name="InsightsDashboardFragment__start_a_conversation">התחל שיחה</string>
@@ -2649,6 +2780,7 @@
   <string name="RegistrationActivity_call_me_instead_available_in">התקשר אליי במקום \n (זמין ב־%1$02d:%2$02d)</string>
   <string name="RegistrationActivity_contact_signal_support">צור קשר עם תמיכת Signal</string>
   <string name="RegistrationActivity_code_support_subject">הרשמת Signal - קוד וידוא עבור Android</string>
+  <string name="RegistrationActivity_incorrect_code">קוד שגוי</string>
   <string name="BackupUtil_never">אף פעם</string>
   <string name="BackupUtil_unknown">בלתי ידוע</string>
   <string name="preferences_app_protection__see_my_phone_number">ראה את מספר הטלפון שלי</string>
@@ -2808,6 +2940,8 @@
   <string name="RecipientBottomSheet_block">חסום</string>
   <string name="RecipientBottomSheet_unblock">שחרר חסימה</string>
   <string name="RecipientBottomSheet_add_to_contacts">הוסף לאנשי הקשר</string>
+  <!--Error message that displays when a user tries to tap to view system contact details but has no app that supports it-->
+  <string name="RecipientBottomSheet_unable_to_open_contacts">לא ניתן למצוא יישום שמסוגל לפתוח אנשי קשר.</string>
   <string name="RecipientBottomSheet_add_to_a_group">הוסף אל קבוצה</string>
   <string name="RecipientBottomSheet_add_to_another_group">הוסף אל קבוצה אחרת</string>
   <string name="RecipientBottomSheet_view_safety_number">הצג מספר ביטחון</string>
@@ -2845,8 +2979,8 @@
   <!--VoiceNotePlaybackPreparer-->
   <string name="VoiceNotePlaybackPreparer__failed_to_play_voice_message">נכשל בניגון הודעה קולית</string>
   <!--VoiceNoteMediaDescriptionCompatFactory-->
-  <string name="VoiceNoteMediaDescriptionCompatFactory__voice_message">הודעה קולית · %1$s</string>
-  <string name="VoiceNoteMediaDescriptionCompatFactory__s_to_s">%1$s אל %2$s</string>
+  <string name="VoiceNoteMediaItemFactory__voice_message">הודעה קולית · %1$s</string>
+  <string name="VoiceNoteMediaItemFactory__s_to_s">%1$s אל %2$s</string>
   <!--StorageUtil-->
   <string name="StorageUtil__s_s">%1$s/%2$s</string>
   <string name="BlockedUsersActivity__s_has_been_blocked">\"%1$s\" נחסם.</string>
@@ -2910,6 +3044,16 @@
   <string name="DeleteAccountFragment__failed_to_delete_account">נכשל במחיקת חשבון. יש לך חיבור אינטרנט?</string>
   <string name="DeleteAccountFragment__failed_to_delete_local_data">נכשל במחיקת נתונים מקומיים. אתה יכול לנקות אותם באופן ידני בהגדרות היישום של המערכת.</string>
   <string name="DeleteAccountFragment__launch_app_settings">פתח הגדרות יישום</string>
+  <!--Title of progress dialog shown when a user deletes their account and the process is leaving all groups-->
+  <string name="DeleteAccountFragment__leaving_groups">עוזב קבוצות…</string>
+  <!--Title of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <string name="DeleteAccountFragment__deleting_account">מוחק חשבון…</string>
+  <!--Message of progress dialog shown when a user deletes their account and the process is leaving groups-->
+  <!--Message of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <string name="DeleteAccountFragment__deleting_all_user_data_and_resetting">מוחק נתוני משתמש ומאפס את היישום</string>
+  <!--Title of error dialog shown when a network error occurs during account deletion-->
+  <string name="DeleteAccountFragment__account_not_deleted">חשבון לא נמחק</string>
+  <!--Message of error dialog shown when a network error occurs during account deletion-->
   <!--DeleteAccountCountryPickerFragment-->
   <string name="DeleteAccountCountryPickerFragment__search_countries">חפש מדינות</string>
   <!--CreateGroupActivity-->
@@ -3069,6 +3213,47 @@
   <string name="AccountSettingsFragment__account">חשבון</string>
   <string name="AccountSettingsFragment__youll_be_asked_less_frequently">תישאל לעיתים פחות תכופות עם הזמן</string>
   <string name="AccountSettingsFragment__require_your_signal_pin">דרוש את ה־PIN של Signal שלך כדי להירשם שוב אל Signal עם מספר הטלפון שלך</string>
+  <string name="AccountSettingsFragment__change_phone_number">שנה מספר טלפון</string>
+  <!--ChangeNumberFragment-->
+  <string name="ChangeNumberFragment__use_this_to_change_your_current_phone_number_to_a_new_phone_number">השתמש בזה כדי לשנות את מספר הטלפון הנוכחי שלך אל מספר טלפון חדש. אתה לא יכול לבטל את השינוי הזה.\n\nלפני המשכה, וודא שהמספר החדש שלך יכול לקבל מסרונים או שיחות.</string>
+  <string name="ChangeNumberFragment__continue">המשך</string>
+  <string name="ChangeNumber__your_phone_number_has_been_changed">מספר הטלפון שלך השתנה.</string>
+  <!--ChangeNumberEnterPhoneNumberFragment-->
+  <string name="ChangeNumberEnterPhoneNumberFragment__change_number">שינוי המספר</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__your_old_number">המספר הישן שלך</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__old_phone_number">מספר טלפון ישן</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__your_new_number">המספר החדש שלך</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__new_phone_number">מספר טלפון חדש</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__the_phone_number_you_entered_doesnt_match_your_accounts">מספר הטלפון שהכנסת אינו תואם אל מספר הטלפון של החשבון שלך.</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__you_must_specify_your_old_number_country_code">אתה חייב לציין את קוד המדינה של המספר הישן שלך</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__you_must_specify_your_old_phone_number">אתה חייב לציין את מספר הטלפון הישן שלך</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__you_must_specify_your_new_number_country_code">אתה חייב לציין את קוד המדינה של המספר החדש שלך</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__you_must_specify_your_new_phone_number">אתה חייב לציין את מספר הטלפון החדש שלך</string>
+  <!--ChangeNumberVerifyFragment-->
+  <string name="ChangeNumberVerifyFragment__change_number">שינוי המספר</string>
+  <string name="ChangeNumberVerifyFragment__verifying_s">מוודא את %1$s</string>
+  <string name="ChangeNumberVerifyFragment__captcha_required">אתגר מענה דרוש</string>
+  <!--ChangeNumberConfirmFragment-->
+  <string name="ChangeNumberConfirmFragment__change_number">שנה מספר</string>
+  <string name="ChangeNumberConfirmFragment__you_are_about_to_change_your_phone_number_from_s_to_s">אתה עומד לשנות את מספר הטלפון שלך מן %1$s אל %2$s.\n\nלפני המשכה, אנא וודא שהמספר למטה נכון.</string>
+  <string name="ChangeNumberConfirmFragment__edit_number">עריכת המספר</string>
+  <!--ChangeNumberRegistrationLockFragment-->
+  <string name="ChangeNumberRegistrationLockFragment__signal_change_number_need_help_with_pin_for_android_v2_pin">שינוי מספר של Signal - צריך עזרה עם PIN עבור Android (v2 PIN)</string>
+  <!--ChangeNumberPinDiffersFragment-->
+  <string name="ChangeNumberPinDiffersFragment__pins_do_not_match">קודי PIN לא תואמים</string>
+  <string name="ChangeNumberPinDiffersFragment__the_pin_associated_with_your_new_number_is_different_from_the_pin_associated_with_your_old_one">ה־PIN שמשוייך עם המספר החדש שלך שונה מה־PIN שמשוייך עם המספר הישן שלך. האם אתה רוצה לשמור את ה‏־PIN הישן שלך או לעדכן אותו?</string>
+  <string name="ChangeNumberPinDiffersFragment__keep_old_pin">שמור PIN ישן</string>
+  <string name="ChangeNumberPinDiffersFragment__update_pin">עדכן PIN</string>
+  <string name="ChangeNumberPinDiffersFragment__keep_old_pin_question">לשמור PIN ישן?</string>
+  <!--ChangeNumberLockActivity-->
+  <string name="ChangeNumberLockActivity__it_looks_like_you_tried_to_change_your_number_but_we_were_unable_to_determine_if_it_was_successful_rechecking_now">נראה שניסית לשנות את המספר שלך אבל לא יכולנו לקבוע אם השינוי היה מוצלח.\n\nבודק מחדש עכשיו…</string>
+  <string name="ChangeNumberLockActivity__change_status_confirmed">מעמד שינוי מאושר</string>
+  <string name="ChangeNumberLockActivity__your_number_has_been_confirmed_as_s">המספר שלך מאושר בתור %1$s. אם זה לא המספר החדש שלך, אנא הפעל מחדש את תהליך שינוי המספר.</string>
+  <string name="ChangeNumberLockActivity__change_status_unconfirmed">מעמד שינוי בלתי מאושר</string>
+  <string name="ChangeNumberLockActivity__we_could_not_determine_the_status_of_your_change_number_request">לא יכולנו לקבוע את המעמד של בקשת שינוי המספר שלך.\n\n(שגיאה: %1$s)</string>
+  <string name="ChangeNumberLockActivity__retry">נסה שוב</string>
+  <string name="ChangeNumberLockActivity__leave">עזוב</string>
+  <string name="ChangeNumberLockActivity__submit_debug_log">הגש יומן ניפוי תקלים</string>
   <!--ChatsSettingsFragment-->
   <string name="ChatsSettingsFragment__keyboard">מקלדת</string>
   <string name="ChatsSettingsFragment__enter_key_sends">מקש Enter שולח</string>
@@ -3079,6 +3264,16 @@
   <string name="NotificationsSettingsFragment__calls">שיחות</string>
   <string name="NotificationsSettingsFragment__notify_when">יידע כאשר…</string>
   <string name="NotificationsSettingsFragment__contact_joins_signal">איש קשר מצטרף אל Signal</string>
+  <!--Notification preference header-->
+  <string name="NotificationsSettingsFragment__notification_profiles">פרופילי התראות</string>
+  <!--Notification preference option header-->
+  <string name="NotificationsSettingsFragment__profiles">פרופילים</string>
+  <!--Notification preference summary text-->
+  <!--NotificationProfilesFragment-->
+  <!--Title for notification profiles screen that shows all existing profiles-->
+  <string name="NotificationProfilesFragment__notification_profiles">פרופילי התראות</string>
+  <!--Button text to create a notification profile-->
+  <string name="NotificationProfilesFragment__create_profile">צור פרופיל</string>
   <!--PrivacySettingsFragment-->
   <string name="PrivacySettingsFragment__blocked">חסום</string>
   <string name="PrivacySettingsFragment__d_contacts">%1$d אנשי קשר</string>
@@ -3120,6 +3315,11 @@
   <string name="HelpFragment__copyright_signal_messenger">זכויות יוצרים Signal Messenger</string>
   <string name="HelpFragment__licenced_under_the_gplv3">ברישיון תחת GPLv3</string>
   <!--DataAndStorageSettingsFragment-->
+  <string name="DataAndStorageSettingsFragment__media_quality">איכות מדיה</string>
+  <string name="DataAndStorageSettingsFragment__sent_media_quality">הגדר איכות מדיה</string>
+  <string name="DataAndStorageSettingsFragment__sending_high_quality_media_will_use_more_data">שליחת מדיה באיכות גבוהה תשתמש ביותר נתונים.</string>
+  <string name="DataAndStorageSettingsFragment__high">גבוה</string>
+  <string name="DataAndStorageSettingsFragment__standard">תקנית</string>
   <string name="DataAndStorageSettingsFragment__calls">שיחות</string>
   <!--ChatColorSelectionFragment-->
   <string name="ChatColorSelectionFragment__auto">אוטומטי</string>
@@ -3170,6 +3370,11 @@
   <string name="AddAProfilePhotoMegaphone__choose_a_look_and_color">בחר מראה וצבע או התאם אישית את ראשי התיבות שלך.</string>
   <string name="AddAProfilePhotoMegaphone__not_now">לא עכשיו</string>
   <string name="AddAProfilePhotoMegaphone__add_photo">הוסף תמונה</string>
+  <!--BecomeASustainerMegaphone-->
+  <string name="BecomeASustainerMegaphone__become_a_sustainer">הפוך אל מחזיק</string>
+  <string name="BecomeASustainerMegaphone__signal_is_powered">Signal ממונע על ידי אנשים כמוך. תרום וקבל תג פרופיל.</string>
+  <string name="BecomeASustainerMegaphone__no_thanks">לא תודה</string>
+  <string name="BecomeASustainerMegaphone__contribute">תרום</string>
   <!--KeyboardPagerFragment-->
   <string name="KeyboardPagerFragment_emoji">אמוג\'י</string>
   <string name="KeyboardPagerFragment_open_emoji_search">פתח חיפוש אימוג\'י</string>
@@ -3218,6 +3423,7 @@
   <string name="ConversationSettingsFragment__conversation_muted_forever">שיחות מושתקות לתמיד</string>
   <string name="ConversationSettingsFragment__copied_phone_number_to_clipboard">מספר טלפון הועתק אל לוח הגזירה.</string>
   <string name="ConversationSettingsFragment__phone_number">מספר טלפון</string>
+  <string name="ConversationSettingsFragment__get_badges">השג תגים עבור הפרופיל שלך ע״י תמיכה ב־Signal. הקש על תג כדי ללמוד עוד.</string>
   <!--PermissionsSettingsFragment-->
   <string name="PermissionsSettingsFragment__add_members">הוסף חברי קבוצה</string>
   <string name="PermissionsSettingsFragment__edit_group_info">ערוך מידע קבוצה</string>
@@ -3240,6 +3446,7 @@
   <!--PlaybackSpeedToggleTextView-->
   <string name="PlaybackSpeedToggleTextView__p5x">.5x</string>
   <string name="PlaybackSpeedToggleTextView__1x">1x</string>
+  <string name="PlaybackSpeedToggleTextView__1p5x">1.5x</string>
   <string name="PlaybackSpeedToggleTextView__2x">2x</string>
   <!--PaymentRecipientSelectionFragment-->
   <string name="PaymentRecipientSelectionFragment__new_payment">תשלום חדש</string>
@@ -3248,7 +3455,7 @@
   <!--ContactFilterView-->
   <string name="ContactFilterView__search_name_or_number">חפש שם או מספר</string>
   <!--VoiceNotePlayerView-->
-  <string name="VoiceNotePlayerView__s_dot_s">%1$s · %2$s</string>
+  <string name="VoiceNotePlayerView__dot_s">· %1$s</string>
   <string name="VoiceNotePlayerView__stop_voice_message">הפסק הודעה קולית</string>
   <string name="VoiceNotePlayerView__change_voice_message_speed">שנה מהירות של הודעה קולית</string>
   <string name="VoiceNotePlayerView__pause_voice_message">השהה הודעה קולית</string>
@@ -3278,5 +3485,283 @@
   <string name="ContactSelectionListItem__dot_s">· %1$s</string>
   <!--DSLSettingsToolbar-->
   <string name="DSLSettingsToolbar__navigate_up">נווט למעלה</string>
+  <string name="MultiselectForwardFragment__forward_to">העבר הלאה אל</string>
+  <string name="MultiselectForwardFragment__add_a_message">הוסף הודעה</string>
+  <string name="MultiselectForwardFragment__faster_forwards">העברות הלאה מהירות יותר</string>
+  <string name="MultiselectForwardFragment__forwarded_messages_are_now">הודעות מועברות הלאה נשלחות כעת באופן מיידי.</string>
+  <plurals name="MultiselectForwardFragment_send_d_messages">
+    <item quantity="one">שלח הודעה %1$d</item>
+    <item quantity="two">שלח %1$d הודעות</item>
+    <item quantity="many">שלח %1$d הודעות</item>
+    <item quantity="other">שלח %1$d הודעות</item>
+  </plurals>
+  <plurals name="MultiselectForwardFragment_messages_sent">
+    <item quantity="one">הודעה נשלחה</item>
+    <item quantity="two">הודעות נשלחו</item>
+    <item quantity="many">הודעות נשלחו</item>
+    <item quantity="other">הודעות נשלחו</item>
+  </plurals>
+  <plurals name="MultiselectForwardFragment_messages_failed_to_send">
+    <item quantity="one">הודעה נכשלה להישלח</item>
+    <item quantity="two">הודעות נכשלו להישלח</item>
+    <item quantity="many">הודעות נכשלו להישלח</item>
+    <item quantity="other">הודעות נכשלו להישלח</item>
+  </plurals>
+  <plurals name="MultiselectForwardFragment__couldnt_forward_messages">
+    <item quantity="one">לא היה ניתן להעביר הלאה הודעה מאחר שהיא לא זמינה יותר.</item>
+    <item quantity="two">לא היה ניתן להעביר הלאה הודעות מאחר שהן לא זמינות יותר.</item>
+    <item quantity="many">לא היה ניתן להעביר הלאה הודעות מאחר שהן לא זמינות יותר.</item>
+    <item quantity="other">לא היה ניתן להעביר הלאה הודעות מאחר שהן לא זמינות יותר.</item>
+  </plurals>
+  <string name="MultiselectForwardFragment__limit_reached">מגבלה הושגה</string>
+  <!--Media V2-->
+  <string name="MediaReviewFragment__add_a_message">הוסף הודעה</string>
+  <string name="MediaReviewFragment__add_a_reply">הוסף תשובה</string>
+  <string name="MediaReviewFragment__send_to">שלח אל</string>
+  <string name="MediaReviewFragment__view_once_message">הודעה לצפייה חד־פעמית</string>
+  <string name="MediaReviewFragment__one_or_more_items_were_too_large">פריט אחד או יותר היו יותר מדי גדולים</string>
+  <string name="MediaReviewFragment__one_or_more_items_were_invalid">פריט אחד או יותר היו בלתי תקפים</string>
+  <string name="MediaReviewFragment__too_many_items_selected">יותר מדי פריטים נבחרו</string>
+  <string name="ImageEditorHud__cancel">בטל</string>
+  <string name="ImageEditorHud__draw">צייר</string>
+  <string name="ImageEditorHud__write_text">כתוב מלל</string>
+  <string name="ImageEditorHud__add_a_sticker">הוסף מדבקה</string>
+  <string name="ImageEditorHud__blur">טשטש</string>
+  <string name="ImageEditorHud__done_editing">סיים לערוך</string>
+  <string name="ImageEditorHud__clear_all">נקה הכול</string>
+  <string name="ImageEditorHud__undo">בטל עשייה</string>
+  <string name="ImageEditorHud__toggle_between_marker_and_highlighter">עורר בין סמן ודגשן</string>
+  <string name="ImageEditorHud__delete">מחק</string>
+  <string name="ImageEditorHud__toggle_between_text_styles">עורר בין סגנונות מלל</string>
+  <string name="MediaCountIndicatorButton__send">שלח</string>
+  <string name="MediaReviewSelectedItem__tap_to_remove">הקש כדי להסיר</string>
+  <string name="MediaReviewSelectedItem__tap_to_select">הקש כדי לבחור</string>
+  <string name="MediaReviewImagePageFragment__discard">השמט</string>
+  <string name="MediaReviewImagePageFragment__discard_changes">להשמיט שינויים?</string>
+  <string name="MediaReviewImagePageFragment__youll_lose_any_changes">תאבד שינויים כלשהם שעשית אל התמונה הזאת.</string>
+  <string name="CameraFragment__failed_to_open_camera">נכשל בפתיחת מצלמה</string>
+  <string name="BadgesOverviewFragment__my_badges">התגים שלי</string>
+  <string name="BadgesOverviewFragment__featured_badge">תג בולט</string>
+  <string name="BadgesOverviewFragment__display_badges_on_profile">הצג תגים בפרופיל שלי</string>
+  <string name="BadgesOverviewFragment__failed_to_update_profile">נכשל בעדכון פרופיל</string>
+  <string name="BadgeSelectionFragment__select_badges">בחר תגים</string>
+  <string name="SelectFeaturedBadgeFragment__preview">תצוגה מקדימה</string>
+  <string name="SelectFeaturedBadgeFragment__select_a_badge">בחר תג</string>
+  <string name="SelectFeaturedBadgeFragment__you_must_select_a_badge">אתה חייב לבחור תג</string>
+  <string name="SelectFeaturedBadgeFragment__failed_to_update_profile">נכשל בעדכון פרופיל</string>
+  <string name="ViewBadgeBottomSheetDialogFragment__become_a_sustainer">הפוך אל מחזיק</string>
+  <string name="ImageView__badge">תג</string>
+  <string name="SubscribeFragment__signal_is_powered_by_people_like_you">Signal ממונע על ידי אנשים כמוך.</string>
+  <string name="SubscribeFragment__support_technology_that_is_built_for_you">תמוך בטכנולוגיה שנבנתה עבורך—לא עבור הנתונים שלך—ע״י הצטרפות אל קהילת האנשים שמחזיקים אותה.</string>
+  <string name="SubscribeFragment__support_technology_that_is_built_for_you_not">תמוך בטכנולוגיה שנבנתה עבורך, לא עבור הנתונים שלך, ע״י הצטרפות אל הקהילה שמחזיקה את Signal.</string>
+  <string name="SubscribeFragment__currency">מטבע</string>
+  <string name="SubscribeFragment__more_payment_options">עוד אפשרויות תשלום</string>
+  <string name="SubscribeFragment__cancel_subscription">בטל מינוי</string>
+  <string name="SubscribeFragment__confirm_cancellation">לאשר ביטול?</string>
+  <string name="SubscribeFragment__you_wont_be_charged_again">לא תחויב שוב. התג שלך יוסר מהפרופיל שלך בסוף תקופת החיוב שלך.</string>
+  <string name="SubscribeFragment__not_now">לא עכשיו</string>
+  <string name="SubscribeFragment__confirm">אשר</string>
+  <string name="SubscribeFragment__update_subscription">עדכן מינוי</string>
+  <string name="SubscribeFragment__your_subscription_has_been_cancelled">המינוי שלך בוטל.</string>
+  <string name="SubscribeFragment__update_subscription_question">לעדכן מינוי?</string>
+  <string name="SubscribeFragment__update">עדכן</string>
+  <string name="SubscribeFragment__you_will_be_charged_the_full_amount">תחויב היום בסכום המלא של המחיר של המינוי החדש. המינוי שלך יחודש בתאריך %1$s.</string>
+  <string name="SubscribeFragment__you_will_be_charged_the_full_amount_s_of">תחויב בסכום המלא (%1$s) של המחיר של המינוי החדש. המינוי שלך יחודש באופן חודשי.</string>
+  <string name="Subscription__s_per_month">%s/חודש</string>
+  <string name="Subscription__s_per_month_dot_renews_s">%1$s/חודש · מתחדש %2$s</string>
+  <string name="Subscription__s_per_month_dot_expires_s">%1$s/חודש · יפוג %2$s</string>
+  <string name="SubscribeLearnMoreBottomSheetDialogFragment__signal_is_a_non_profit_with_no">Signal הוא ללא מטרות רווח בלי מפרסמים או משקיעים, מוחזק רק ע״י האנשים שמשתמשים בו ומעריכים אותו. בצע תרומה חודשית חוזרת וקבל תג פרופיל כדי לשתף את התמיכה שלך.</string>
+  <string name="SubscribeLearnMoreBottomSheetDialogFragment__why_contribute">למה לתרום?</string>
+  <string name="SubscribeLearnMoreBottomSheetDialogFragment__signal_is_committed_to_developing">Signal מחויב לפתח טכנולוגית פרטיות בקוד פתוח אשר מגינה על חופש ביטוי ומאפשרת תקשורת עולמית מאובטחת.</string>
+  <string name="SubscribeLearnMoreBottomSheetDialogFragment__your_contribution">התרומה שלך מתדלקת את המטרה הזאת ומשלמת עבור הפיתוח והפעולות של יישום שנמצא בשימוש ע״י מיליוני אנשים למען תקשורת פרטית. ללא פרסומות. ללא עוקבנים. ללא שטויות.</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__thanks_for_your_support">תודה על התמיכה שלך!</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__thanks_for_the_boost">תודה על התמריץ!</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__youve_earned_s_badge_help_signal">הרווחת את התג %s! עזור אל Signal לבנות מוּדָעוּת ע״י הצגת התג הזה בפרופיל שלך.</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__youve_earned_a_boost_badge_help_signal">הרווחת תג תמריץ! עזור אל Signal לבנות מוּדָעוּת ע״י הצגת התג הזה בפרופיל שלך.</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__you_can_also">אתה גם יכול</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__become_a_montly_sustainer">הפוך אל מחזיק חודשי.</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__display_on_profile">הצג בפרופיל</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__make_featured_badge">עשה תג בולט</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__done">סיים</string>
+  <string name="ThanksForYourSupportBottomSheetFragment__when_you_have_more">כשיהיו לך יותר מתג אחד, תוכל לבחור אחד להבליט כדי שאחרים יראו בפרופיל שלך.</string>
+  <string name="BecomeASustainerFragment__get_badges">השג תגים עבור הפרופיל שלך ע״י תמיכה ב־Signal.</string>
+  <string name="BecomeASustainerFragment__signal_is_a_non_profit">Signal הוא ארגון ללא מטרות רווח בלי מפרסמים או משקיעים, שנתמך רק ע״י אנשים כמוך.</string>
+  <string name="ManageDonationsFragment__my_support">התמיכה שלי</string>
+  <string name="ManageDonationsFragment__manage_subscription">נהל מינוי</string>
+  <string name="ManageDonationsFragment__badges">תגים</string>
+  <string name="ManageDonationsFragment__subscription_faq">שאלות נפוצות של מינוי</string>
+  <string name="ManageDonationsFragment__error_getting_subscription">שגיאה בהשגת מינוי.</string>
+  <string name="BoostFragment__give_signal_a_boost">תן אל Signal תמריץ</string>
+  <string name="BoostFragment__say_thanks_and_earn">אמור \"תודה!\" והרווח את תג התמריץ למשך %1$d ימים.</string>
+  <string name="Boost__enter_custom_amount">הכנס סכום מותאם אישית</string>
+  <string name="Boost__one_time_contribution">תרומה חד־פעמית</string>
+  <string name="MySupportPreference__add_a_signal_boost">הוסף תמריץ Signal</string>
+  <string name="MySupportPreference__s_per_month">%1$s/חודש</string>
+  <string name="MySupportPreference__renews_s">מתחדש %1$s</string>
+  <string name="MySupportPreference__processing_transaction">מעבד עסקה…</string>
+  <!--Displayed on "My Support" screen when user badge failed to be added to their account-->
+  <string name="MySupportPreference__couldnt_add_badge_s">לא היה ניתן להוסיף תג. %1$s</string>
+  <string name="MySupportPreference__please_contact_support">אנא צור קשר עם התמיכה.</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__your_badge_has_expired">התג שלך פג</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__badge_expired">תג פג</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__subscription_cancelled">מינוי בוטל</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__your_boost_badge_has_expired">תג התמריץ שלך פג, ואינו גלוי יותר אל אחרים בפרופיל שלך.</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__you_can_reactivate">אתה יכול להפעיל מחדש את תג התמריץ שלך למשך 30 ימים נוספים עם תרומה חד־פעמית.</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__to_continue_supporting_technology">כדי להמשיך לתמוך בטכנולוגיה שנבנתה עבורך, אנא שקול להפוך למחזיק חודשי.</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__become_a_sustainer">הפוך אל מחזיק</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__add_a_boost">הוסף תמריץ</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__not_now">לא עכשיו</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__your_sustainer">מינוי התמריץ שלך בוטל באופן אוטומטי מאחר שהיית בלתי פעיל למשך זמן רב. תג ה%1$s שלך אינו גלוי יותר בפרופיל שלך.</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__you_can">אתה יכול להמשיך להשתמש ב־Signal אבל כדי לתמוך ביישום ולהפעיל מחדש את התג שלך, חדש עכשיו.</string>
+  <string name="ExpiredBadgeBottomSheetDialogFragment__renew_subscription">חדש מינוי</string>
+  <string name="Subscription__please_contact_support_for_more_information">אנא צור קשר עם התמיכה לעוד מידע.</string>
+  <string name="Subscription__contact_support">צור קשר עם תמיכה</string>
+  <string name="Subscription__earn_a_s_badge">הרווח תג %1$s</string>
+  <string name="SubscribeFragment__processing_payment">מעבד תשלום…</string>
+  <!--Displayed in notification when user payment fails to process on Stripe-->
+  <string name="DonationsErrors__error_processing_payment">שגיאה בעיבוד תשלום</string>
+  <!--Displayed on "My Support" screen when user subscription payment method failed.-->
+  <string name="DonationsErrors__error_processing_payment_s">שגיאה בעיבוד תשלום. %1$s</string>
+  <string name="DonationsErrors__your_badge_could_not_be_added">התג שלך לא היה יכול להתווסף אל החשבון שלך, אבל ייתכן שחויבת. אנא צור קשר עם התמיכה.</string>
+  <string name="DonationsErrors__your_payment">התשלום שלך לא היה יכול להיות מעובד ולא חויבת. אנא נסה שוב.</string>
+  <string name="DonationsErrors__still_processing">עדין מעבד</string>
+  <string name="DonationsErrors__couldnt_add_badge">לא היה ניתן להוסיף תג</string>
+  <string name="DonationsErrors__your_badge_could_not">התג שלך לא היה יכול להתווסף אל החשבון שלך, אבל ייתכן שחויבת. אנא צור קשר עם התמיכה.</string>
+  <string name="DonationsErrors__your_payment_is_still">התשלום שלך עדין מעובד. זה יכול לקחת מספר דקות בהתאם לחיבור שלך.</string>
+  <string name="DonationsErrors__google_pay_unavailable">Google Pay לא זמין</string>
+  <string name="DonationsErrors__you_have_to_set_up_google_pay_to_donate_in_app">אתה חייב להגדיר את Google Pay כדי לתרום בתוך יישום.</string>
+  <string name="DonationsErrors__failed_to_cancel_subscription">נכשל בביטול מינוי</string>
+  <string name="DonationsErrors__subscription_cancellation_requires_an_internet_connection">ביטול מינוי דורש חיבור אינטרנט.</string>
+  <string name="ViewBadgeBottomSheetDialogFragment__your_device_doesn_t_support_google_pay_so_you_can_t_subscribe_to_earn_a_badge_you_can_still_support_signal_by_making_a_donation_on_our_website">המכשיר שלך לא תומך ב־Google Pay, כך שאתה לא יכול להירשם כמנוי כדי להרוויח תג. אתה עדין יכול לתמוך ב־Signal ע״י ביצוע תרומה באתר שלנו.</string>
+  <string name="NetworkFailure__network_error_check_your_connection_and_try_again">שגיאת רשת. בדוק את החיבור שלך ונסה שוב.</string>
+  <string name="NetworkFailure__retry">נסה שוב</string>
+  <!--Title of create notification profile screen-->
+  <string name="EditNotificationProfileFragment__name_your_profile">תן שם לפרופיל שלך</string>
+  <!--Hint text for create/edit notification profile name-->
+  <string name="EditNotificationProfileFragment__profile_name">שם פרופיל</string>
+  <!--Name has a max length, this shows how many characters are used out of the max-->
+  <string name="EditNotificationProfileFragment__count">%1$d/%2$d</string>
+  <!--Call to action button once the profile is named to continue to the next create step-->
+  <string name="EditNotificationProfileFragment__next">הבא</string>
+  <!--Call to action button once the profile name is edited-->
+  <string name="EditNotificationProfileFragment__save">שמור</string>
+  <!--Title of edit notification profile screen-->
+  <string name="EditNotificationProfileFragment__edit_this_profile">ערוך פרופיל זה</string>
+  <!--Error message shown when attempting to create or edit a profile name to an existing profile name-->
+  <string name="EditNotificationProfileFragment__a_profile_with_this_name_already_exists">פרופיל עם השם הזה קיים כבר</string>
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <string name="EditNotificationProfileFragment__work">עבודה</string>
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <string name="EditNotificationProfileFragment__sleep">שינה</string>
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <string name="EditNotificationProfileFragment__driving">נהיגה</string>
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <string name="EditNotificationProfileFragment__focus">מיקוד</string>
+  <!--Error message shown when attempting to next/save without a profile name-->
+  <string name="EditNotificationProfileFragment__profile_must_have_a_name">חייב להיות שם</string>
+  <!--Title for add recipients to notification profile screen in create flow-->
+  <string name="AddAllowedMembers__allowed_notifications">התראות מותרות</string>
+  <!--Description of what the user should be doing with this screen-->
+  <!--Button text that launches the contact picker to select from-->
+  <string name="AddAllowedMembers__add_people_or_groups">הוסף אנשים או קבוצות</string>
+  <!--Call to action button on contact picker for adding to profile-->
+  <string name="SelectRecipientsFragment__add">הוסף</string>
+  <!--Notification profiles home fragment, shown when no profiles have been created yet-->
+  <!--Header shown above list of all notification profiles-->
+  <string name="NotificationProfilesFragment__profiles">פרופילים</string>
+  <!--Button that starts the create new notification profile flow-->
+  <string name="NotificationProfilesFragment__new_profile">פרופיל חדש</string>
+  <!--Profile active status, indicating the current profile is on for an unknown amount of time-->
+  <string name="NotificationProfilesFragment__on">מופעל</string>
+  <!--Button use to permanently delete a notification profile-->
+  <string name="NotificationProfileDetails__delete_profile">מחק פרופיל</string>
+  <!--Snakbar message shown when removing a recipient from a profile-->
+  <string name="NotificationProfileDetails__s_removed">\"%1$s\" הוסר.</string>
+  <!--Snackbar button text that will undo the recipient remove-->
+  <string name="NotificationProfileDetails__undo">בטל עשייה</string>
+  <!--Dialog message shown to confirm deleting a profile-->
+  <string name="NotificationProfileDetails__permanently_delete_profile">למחוק לצמיתות פרופיל?</string>
+  <!--Dialog button to delete profile-->
+  <string name="NotificationProfileDetails__delete">מחק</string>
+  <!--Title/accessibility text for edit icon to edit profile emoji/name-->
+  <string name="NotificationProfileDetails__edit_notification_profile">ערוך פרופיל התראות</string>
+  <!--Schedule description if all days are selected-->
+  <string name="NotificationProfileDetails__everyday">כל יום</string>
+  <!--Profile status on if it is the active profile-->
+  <string name="NotificationProfileDetails__on">מופעל</string>
+  <!--Profile status on if it is not the active profile-->
+  <string name="NotificationProfileDetails__off">כבוי</string>
+  <!--Description of hours for schedule (start to end) times-->
+  <string name="NotificationProfileDetails__s_to_s">%1$s אל %2$s</string>
+  <!--Section header for exceptions to the notification profile-->
+  <!--Profile exception to allow all calls through the profile restrictions-->
+  <string name="NotificationProfileDetails__allow_all_calls">התר את כל השיחות</string>
+  <!--Profile exception to allow all @mentions through the profile restrictions-->
+  <string name="NotificationProfileDetails__notify_for_all_mentions">יידע לגבי כל האזכורים</string>
+  <!--Section header for showing schedule information-->
+  <string name="NotificationProfileDetails__schedule">תזמן</string>
+  <!--If member list is long, will truncate the list and show an option to then see all when tapped-->
+  <string name="NotificationProfileDetails__see_all">ראה הכל</string>
+  <!--Title for add schedule to profile in create flow-->
+  <string name="EditNotificationProfileSchedule__add_a_schedule">הוסף תזמון</string>
+  <!--Descriptor text indicating what the user can do with this screen-->
+  <!--Text shown next to toggle switch to enable/disable schedule-->
+  <string name="EditNotificationProfileSchedule__schedule">תזמן</string>
+  <!--Label for showing the start time for the schedule-->
+  <string name="EditNotificationProfileSchedule__start">התחל</string>
+  <!--Label for showing the end time for the schedule-->
+  <string name="EditNotificationProfileSchedule__end">סוף</string>
+  <!--First letter of Sunday-->
+  <string name="EditNotificationProfileSchedule__sunday_first_letter">א</string>
+  <!--First letter of Monday-->
+  <string name="EditNotificationProfileSchedule__monday_first_letter">ב</string>
+  <!--First letter of Tuesday-->
+  <string name="EditNotificationProfileSchedule__tuesday_first_letter">ג</string>
+  <!--First letter of Wednesday-->
+  <string name="EditNotificationProfileSchedule__wednesday_first_letter">ד</string>
+  <!--First letter of Thursday-->
+  <string name="EditNotificationProfileSchedule__thursday_first_letter">ה</string>
+  <!--First letter of Friday-->
+  <string name="EditNotificationProfileSchedule__friday_first_letter">ו</string>
+  <!--First letter of Saturday-->
+  <string name="EditNotificationProfileSchedule__saturday_first_letter">ש</string>
+  <!--Title of select time dialog shown when setting start time for schedule-->
+  <string name="EditNotificationProfileSchedule__set_start_time">הגדר זמן התחלה</string>
+  <!--Title of select time dialog shown when setting end time for schedule-->
+  <string name="EditNotificationProfileSchedule__set_end_time">הגדר זמן סיום</string>
+  <!--If in edit mode, call to action button text show to save schedule to profile-->
+  <string name="EditNotificationProfileSchedule__save">שמור</string>
+  <!--If in create mode, call to action button text to show to skip enabling a schedule-->
+  <string name="EditNotificationProfileSchedule__skip">דלג</string>
+  <!--If in create mode, call to action button text to show to use the enabled schedule and move to the next screen-->
+  <string name="EditNotificationProfileSchedule__next">הבא</string>
+  <!--Error message shown if trying to save/use a schedule with no days selected-->
+  <string name="EditNotificationProfileSchedule__schedule_must_have_at_least_one_day">לתזמון חייב להיות לפחות יום אחד</string>
+  <!--Title for final screen shown after completing a profile creation-->
+  <string name="NotificationProfileCreated__profile_created">פרופיל נוצר</string>
+  <!--Call to action button to press to close the created screen and move to the profile details screen-->
+  <string name="NotificationProfileCreated__done">סיים</string>
+  <!--Descriptor text shown to indicate how to manually turn a profile on/off-->
+  <!--Descriptor text shown to indicate you can add a schedule later since you did not add one during create flow-->
+  <!--Descriptor text shown to indicate your profile will follow the schedule set during create flow-->
+  <!--Button text shown in profile selection bottom sheet to create a new profile-->
+  <string name="NotificationProfileSelection__new_profile">פרופיל חדש</string>
+  <!--Manual enable option to manually enable a profile for 1 hour-->
+  <!--Manual enable option to manually enable a profile until a set time (currently 6pm or 8am depending on what is next)-->
+  <string name="NotificationProfileSelection__until_s">עד %1$s</string>
+  <!--Option to view profile details-->
+  <string name="NotificationProfileSelection__view_settings">הצג הגדרות</string>
+  <!--Descriptor text indicating how long a profile will be on when there is a time component associated with it-->
+  <!--Title for notification profile megaphone-->
+  <string name="NotificationProfilesMegaphone__notification_profiles">פרופילי התראות</string>
+  <!--Description for notification profile megaphone-->
+  <string name="NotificationProfilesMegaphone__only_get_notifications_from_the_people_and_groups_you_choose">קבל התראות רק מהאנשים ומהקבוצות שאתה בוחר.</string>
+  <!--Call to action button to create a profile from megaphone-->
+  <string name="NotificationProfilesMegaphone__create_a_profile">צור פרופיל</string>
+  <!--Button to dismiss notification profile megaphone-->
+  <string name="NotificationProfilesMegaphone__not_now">לא עכשיו</string>
+  <!--Displayed in a toast when we fail to open the ringtone picker-->
+  <string name="NotificationSettingsFragment__failed_to_open_picker">נכשל בפתיחת בורר.</string>
   <!--EOF-->
 </resources>

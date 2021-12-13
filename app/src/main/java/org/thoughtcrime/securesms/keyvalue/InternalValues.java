@@ -2,6 +2,7 @@ package org.thoughtcrime.securesms.keyvalue;
 
 import androidx.annotation.NonNull;
 
+import org.signal.ringrtc.CallManager;
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.util.FeatureFlags;
 
@@ -23,6 +24,9 @@ public final class InternalValues extends SignalStoreValues {
   public static final String REMOVE_SENDER_KEY_MINIMUM            = "internal.remove_sender_key_minimum";
   public static final String DELAY_RESENDS                        = "internal.delay_resends";
   public static final String CALLING_SERVER                       = "internal.calling_server";
+  public static final String AUDIO_PROCESSING_METHOD              = "internal.audio_processing_method";
+  public static final String SHAKE_TO_REPORT                      = "internal.shake_to_report";
+  public static final String DISABLE_STORAGE_SERVICE              = "internal.disable_storage_service";
 
   InternalValues(KeyValueStore store) {
     super(store);
@@ -73,10 +77,10 @@ public final class InternalValues extends SignalStoreValues {
   }
 
   /**
-   * Show detailed recipient info in the {@link org.thoughtcrime.securesms.recipients.ui.managerecipient.ManageRecipientFragment}.
+   * Show detailed recipient info in the {@link org.thoughtcrime.securesms.components.settings.conversation.InternalConversationSettingsFragment}.
    */
   public synchronized boolean recipientDetails() {
-    return FeatureFlags.internalUser() && getBoolean(RECIPIENT_DETAILS, false);
+    return FeatureFlags.internalUser() && getBoolean(RECIPIENT_DETAILS, true);
   }
 
   /**
@@ -124,6 +128,20 @@ public final class InternalValues extends SignalStoreValues {
   }
 
   /**
+   * Whether or not "shake to report" is enabled.
+   */
+  public synchronized boolean shakeToReport() {
+    return FeatureFlags.internalUser() && getBoolean(SHAKE_TO_REPORT, true);
+  }
+
+  /**
+   * Whether or not storage service is manually disabled.
+   */
+  public synchronized boolean storageServiceDisabled() {
+    return FeatureFlags.internalUser() && getBoolean(DISABLE_STORAGE_SERVICE, false);
+  }
+
+  /**
    * The selected group calling server to use.
    * <p>
    * The user must be an internal user and the setting must be one of the current set of internal servers otherwise
@@ -136,5 +154,17 @@ public final class InternalValues extends SignalStoreValues {
       internalServer = null;
     }
     return internalServer != null ? internalServer : BuildConfig.SIGNAL_SFU_URL;
+  }
+
+  /**
+   * The selected audio processing method to use (for AEC/NS).
+   * <p>
+   * The user must be an internal user otherwise the default method will be returned. For
+   * evaluation, internal users will use software processing by default unless the setting
+   * is changed in storage.
+   */
+  public synchronized CallManager.AudioProcessingMethod audioProcessingMethod() {
+    return FeatureFlags.internalUser() ? CallManager.AudioProcessingMethod.values()[getInteger(AUDIO_PROCESSING_METHOD, CallManager.AudioProcessingMethod.ForceSoftware.ordinal())]
+                                       : CallManager.AudioProcessingMethod.Default;
   }
 }

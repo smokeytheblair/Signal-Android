@@ -16,7 +16,7 @@ import org.thoughtcrime.securesms.attachments.DatabaseAttachment;
 import org.thoughtcrime.securesms.attachments.PointerAttachment;
 import org.thoughtcrime.securesms.blurhash.BlurHashEncoder;
 import org.thoughtcrime.securesms.database.AttachmentDatabase;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.events.PartProgressEvent;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -32,6 +32,7 @@ import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentPointer;
+import org.whispersystems.signalservice.api.push.exceptions.NonSuccessfulResumableUploadResponseCodeException;
 import org.whispersystems.signalservice.api.push.exceptions.ResumeLocationInvalidException;
 import org.whispersystems.signalservice.internal.push.http.ResumableUploadSpec;
 
@@ -56,6 +57,7 @@ public final class AttachmentUploadJob extends BaseJob {
 
   private static final String KEY_ROW_ID      = "row_id";
   private static final String KEY_UNIQUE_ID   = "unique_id";
+  private static final String KEY_FORCE_V2    = "force_v2";
 
   /**
    * Foreground notification shows while uploading attachments above this.
@@ -64,24 +66,29 @@ public final class AttachmentUploadJob extends BaseJob {
 
   private final AttachmentId attachmentId;
 
+  private boolean forceV2;
+
   public AttachmentUploadJob(AttachmentId attachmentId) {
     this(new Job.Parameters.Builder()
                            .addConstraint(NetworkConstraint.KEY)
                            .setLifespan(TimeUnit.DAYS.toMillis(1))
                            .setMaxAttempts(Parameters.UNLIMITED)
                            .build(),
-         attachmentId);
+         attachmentId,
+         false);
   }
 
-  private AttachmentUploadJob(@NonNull Job.Parameters parameters, @NonNull AttachmentId attachmentId) {
+  private AttachmentUploadJob(@NonNull Job.Parameters parameters, @NonNull AttachmentId attachmentId, boolean forceV2) {
     super(parameters);
     this.attachmentId = attachmentId;
+    this.forceV2      = forceV2;
   }
 
   @Override
   public @NonNull Data serialize() {
     return new Data.Builder().putLong(KEY_ROW_ID, attachmentId.getRowId())
                              .putLong(KEY_UNIQUE_ID, attachmentId.getUniqueId())
+                             .putBoolean(KEY_FORCE_V2, forceV2)
                              .build();
   }
 
@@ -105,7 +112,10 @@ public final class AttachmentUploadJob extends BaseJob {
 
     ResumableUploadSpec resumableUploadSpec;
 
-    if (inputData != null && inputData.hasString(ResumableUploadSpecJob.KEY_RESUME_SPEC)) {
+    if (forceV2) {
+      Log.d(TAG, "Forcing utilization of V2");
+      resumableUploadSpec = null;
+    } else if (inputData != null && inputData.hasString(ResumableUploadSpecJob.KEY_RESUME_SPEC)) {
       Log.d(TAG, "Using attachments V3");
       resumableUploadSpec = ResumableUploadSpec.deserialize(inputData.getString(ResumableUploadSpecJob.KEY_RESUME_SPEC));
     } else {
@@ -114,7 +124,7 @@ public final class AttachmentUploadJob extends BaseJob {
     }
 
     SignalServiceMessageSender messageSender      = ApplicationDependencies.getSignalServiceMessageSender();
-    AttachmentDatabase         database           = DatabaseFactory.getAttachmentDatabase(context);
+    AttachmentDatabase         database           = SignalDatabase.attachments();
     DatabaseAttachment         databaseAttachment = database.getAttachment(attachmentId);
 
     if (databaseAttachment == null) {
@@ -137,6 +147,11 @@ public final class AttachmentUploadJob extends BaseJob {
       Attachment                     attachment       = PointerAttachment.forPointer(Optional.of(remoteAttachment), null, databaseAttachment.getFastPreflightId()).get();
 
       database.updateAttachmentAfterUpload(databaseAttachment.getAttachmentId(), attachment, remoteAttachment.getUploadTimestamp());
+    } catch (NonSuccessfulResumableUploadResponseCodeException e) {
+      if (e.getCode() == 400) {
+        Log.w(TAG, "Failed to upload due to a 400 when getting resumable upload information. Downgrading to attachments v2", e);
+        forceV2 = true;
+      }
     }
   }
 
@@ -151,7 +166,7 @@ public final class AttachmentUploadJob extends BaseJob {
   @Override
   public void onFailure() {
     if (isCanceled()) {
-      DatabaseFactory.getAttachmentDatabase(context).deleteAttachment(attachmentId);
+      SignalDatabase.attachments().deleteAttachment(attachmentId);
     }
   }
 
@@ -245,7 +260,7 @@ public final class AttachmentUploadJob extends BaseJob {
   public static final class Factory implements Job.Factory<AttachmentUploadJob> {
     @Override
     public @NonNull AttachmentUploadJob create(@NonNull Parameters parameters, @NonNull org.thoughtcrime.securesms.jobmanager.Data data) {
-      return new AttachmentUploadJob(parameters, new AttachmentId(data.getLong(KEY_ROW_ID), data.getLong(KEY_UNIQUE_ID)));
+      return new AttachmentUploadJob(parameters, new AttachmentId(data.getLong(KEY_ROW_ID), data.getLong(KEY_UNIQUE_ID)), data.getBooleanOrDefault(KEY_FORCE_V2, false));
     }
   }
 }

@@ -5,9 +5,9 @@ import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.GroupDatabase;
 import org.thoughtcrime.securesms.database.GroupDatabase.GroupRecord;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -20,6 +20,7 @@ import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.RecipientUtil;
 import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
+import org.whispersystems.signalservice.api.SignalServiceMessageSender.IndividualSendEvents;
 import org.whispersystems.signalservice.api.crypto.ContentHint;
 import org.whispersystems.signalservice.api.crypto.UntrustedIdentityException;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
@@ -82,7 +83,14 @@ public class PushGroupUpdateJob extends BaseJob {
       throw new NotPushRegisteredException();
     }
 
-    GroupDatabase           groupDatabase = DatabaseFactory.getGroupDatabase(context);
+    Recipient sourceRecipient = Recipient.resolved(source);
+
+    if (sourceRecipient.isUnregistered()) {
+      Log.w(TAG, sourceRecipient.getId() + " not registered!");
+      return;
+    }
+
+    GroupDatabase           groupDatabase = SignalDatabase.groups();
     Optional<GroupRecord>   record        = groupDatabase.getGroup(groupId);
     SignalServiceAttachment avatar        = null;
 
@@ -103,7 +111,10 @@ public class PushGroupUpdateJob extends BaseJob {
 
     for (RecipientId member : record.get().getMembers()) {
       Recipient recipient = Recipient.resolved(member);
-      members.add(RecipientUtil.toSignalServiceAddress(context, recipient));
+
+      if (recipient.isMaybeRegistered()) {
+        members.add(RecipientUtil.toSignalServiceAddress(context, recipient));
+      }
     }
 
     SignalServiceGroup groupContext = SignalServiceGroup.newBuilder(Type.UPDATE)
@@ -113,7 +124,7 @@ public class PushGroupUpdateJob extends BaseJob {
                                                         .withName(record.get().getTitle())
                                                         .build();
 
-    RecipientId groupRecipientId = DatabaseFactory.getRecipientDatabase(context).getOrInsertFromGroupId(groupId);
+    RecipientId groupRecipientId = SignalDatabase.recipients().getOrInsertFromGroupId(groupId);
     Recipient   groupRecipient   = Recipient.resolved(groupRecipientId);
 
     SignalServiceDataMessage message = SignalServiceDataMessage.newBuilder()
@@ -123,12 +134,12 @@ public class PushGroupUpdateJob extends BaseJob {
                                                                .build();
 
     SignalServiceMessageSender messageSender = ApplicationDependencies.getSignalServiceMessageSender();
-    Recipient                  recipient     = Recipient.resolved(source);
 
-    messageSender.sendDataMessage(RecipientUtil.toSignalServiceAddress(context, recipient),
-                                  UnidentifiedAccessUtil.getAccessFor(context, recipient),
+    messageSender.sendDataMessage(RecipientUtil.toSignalServiceAddress(context, sourceRecipient),
+                                  UnidentifiedAccessUtil.getAccessFor(context, sourceRecipient),
                                   ContentHint.DEFAULT,
-                                  message);
+                                  message,
+                                  IndividualSendEvents.EMPTY);
   }
 
   @Override

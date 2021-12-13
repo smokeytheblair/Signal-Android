@@ -43,32 +43,39 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.animation.Animation;
 import android.view.animation.AnticipateInterpolator;
-import android.view.animation.OvershootInterpolator;
 import android.view.animation.ScaleAnimation;
-import android.widget.CompoundButton;
+import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.ScrollView;
+import android.widget.TextSwitcher;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.widget.SwitchCompat;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
+import androidx.core.view.OneShotPreDrawListener;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
+import org.thoughtcrime.securesms.components.ShapeScrim;
 import org.thoughtcrime.securesms.components.camera.CameraView;
 import org.thoughtcrime.securesms.crypto.ReentrantSessionLock;
 import org.thoughtcrime.securesms.crypto.IdentityKeyParcelable;
 import org.thoughtcrime.securesms.crypto.IdentityKeyUtil;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.IdentityDatabase;
 import org.thoughtcrime.securesms.database.IdentityDatabase.VerifiedStatus;
+import org.thoughtcrime.securesms.database.model.IdentityRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobs.MultiDeviceVerifiedUpdateJob;
 import org.thoughtcrime.securesms.permissions.Permissions;
@@ -79,6 +86,7 @@ import org.thoughtcrime.securesms.recipients.LiveRecipient;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.storage.StorageSyncHelper;
+import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme;
 import org.thoughtcrime.securesms.util.DynamicTheme;
 import org.thoughtcrime.securesms.util.FeatureFlags;
 import org.thoughtcrime.securesms.util.IdentityUtil;
@@ -109,13 +117,13 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
   private static final String IDENTITY_EXTRA  = "recipient_identity";
   private static final String VERIFIED_EXTRA  = "verified_state";
 
-  private final DynamicTheme dynamicTheme = new DynamicTheme();
+  private final DynamicTheme dynamicTheme = new DynamicNoActionBarTheme();
 
   private final VerifyDisplayFragment displayFragment = new VerifyDisplayFragment();
   private final VerifyScanFragment    scanFragment    = new VerifyScanFragment();
 
   public static Intent newIntent(@NonNull Context context,
-                                 @NonNull IdentityDatabase.IdentityRecord identityRecord)
+                                 @NonNull IdentityRecord identityRecord)
   {
     return newIntent(context,
                      identityRecord.getRecipientId(),
@@ -124,7 +132,7 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
   }
 
   public static Intent newIntent(@NonNull Context context,
-                                 @NonNull IdentityDatabase.IdentityRecord identityRecord,
+                                 @NonNull IdentityRecord identityRecord,
                                  boolean verified)
   {
     return newIntent(context,
@@ -154,14 +162,11 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
 
   @Override
   protected void onCreate(Bundle state, boolean ready) {
-    getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-    getSupportActionBar().setTitle(R.string.AndroidManifest__verify_safety_number);
-
     Bundle extras = new Bundle();
     extras.putParcelable(VerifyDisplayFragment.RECIPIENT_ID, getIntent().getParcelableExtra(RECIPIENT_EXTRA));
     extras.putParcelable(VerifyDisplayFragment.REMOTE_IDENTITY, getIntent().getParcelableExtra(IDENTITY_EXTRA));
     extras.putParcelable(VerifyDisplayFragment.LOCAL_IDENTITY, new IdentityKeyParcelable(IdentityKeyUtil.getIdentityKey(this)));
-    extras.putString(VerifyDisplayFragment.LOCAL_NUMBER, TextSecurePreferences.getLocalNumber(this));
+    extras.putString(VerifyDisplayFragment.LOCAL_NUMBER, Recipient.self().requireE164());
     extras.putBoolean(VerifyDisplayFragment.VERIFIED_STATE, getIntent().getBooleanExtra(VERIFIED_EXTRA, false));
 
     scanFragment.setScanListener(this);
@@ -214,7 +219,7 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
     Permissions.onRequestPermissionsResult(this, requestCode, permissions, grantResults);
   }
 
-  public static class VerifyDisplayFragment extends Fragment implements CompoundButton.OnCheckedChangeListener {
+  public static class VerifyDisplayFragment extends Fragment implements ViewTreeObserver.OnScrollChangedListener {
 
     public static final String RECIPIENT_ID    = "recipient_id";
     public static final String REMOTE_NUMBER   = "remote_number";
@@ -228,28 +233,41 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
     private IdentityKey   remoteIdentity;
     private Fingerprint   fingerprint;
 
+    private Toolbar              toolbar;
+    private ScrollView           scrollView;
     private View                 container;
     private View                 numbersContainer;
+    private View                 loading;
+    private View                 qrCodeContainer;
     private ImageView            qrCode;
     private ImageView            qrVerified;
-    private TextView             tapLabel;
+    private TextSwitcher         tapLabel;
     private TextView             description;
     private View.OnClickListener clickListener;
-    private SwitchCompat         verified;
+    private Button               verifyButton;
+    private View                 toolbarShadow;
+    private View                 bottomShadow;
 
     private TextView[] codes                = new TextView[12];
     private boolean    animateSuccessOnDraw = false;
     private boolean    animateFailureOnDraw = false;
+    private boolean    currentVerifiedState = false;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup viewGroup, Bundle bundle) {
       this.container        = ViewUtil.inflate(inflater, viewGroup, R.layout.verify_display_fragment);
+      this.toolbar          = container.findViewById(R.id.toolbar);
+      this.scrollView       = container.findViewById(R.id.scroll_view);
       this.numbersContainer = container.findViewById(R.id.number_table);
+      this.loading          = container.findViewById(R.id.loading);
+      this.qrCodeContainer  = container.findViewById(R.id.qr_code_container);
       this.qrCode           = container.findViewById(R.id.qr_code);
-      this.verified         = container.findViewById(R.id.verified_switch);
+      this.verifyButton     = container.findViewById(R.id.verify_button);
       this.qrVerified       = container.findViewById(R.id.qr_verified);
       this.description      = container.findViewById(R.id.description);
       this.tapLabel         = container.findViewById(R.id.tap_label);
+      this.toolbarShadow    = container.findViewById(R.id.toolbar_shadow);
+      this.bottomShadow     = container.findViewById(R.id.verify_identity_bottom_shadow);
       this.codes[0]         = container.findViewById(R.id.code_first);
       this.codes[1]         = container.findViewById(R.id.code_second);
       this.codes[2]         = container.findViewById(R.id.code_third);
@@ -263,13 +281,23 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
       this.codes[10]        = container.findViewById(R.id.code_eleventh);
       this.codes[11]        = container.findViewById(R.id.code_twelth);
 
-      this.qrCode.setOnClickListener(clickListener);
+      this.qrCodeContainer.setOnClickListener(clickListener);
       this.registerForContextMenu(numbersContainer);
 
-      this.verified.setChecked(getArguments().getBoolean(VERIFIED_STATE, false));
-      this.verified.setOnCheckedChangeListener(this);
+      updateVerifyButton(getArguments().getBoolean(VERIFIED_STATE, false), false);
+      this.verifyButton.setOnClickListener((button -> updateVerifyButton(!currentVerifiedState, true)));
+
+      this.scrollView.getViewTreeObserver().addOnScrollChangedListener(this);
+
+      ((AppCompatActivity)requireActivity()).setSupportActionBar(toolbar);
+      ((AppCompatActivity)requireActivity()).setTitle(R.string.AndroidManifest__verify_safety_number);
 
       return container;
+    }
+
+    @Override public void onDestroyView() {
+      this.scrollView.getViewTreeObserver().removeOnScrollChangedListener(this);
+      super.onDestroyView();
     }
 
     @Override
@@ -295,23 +323,26 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
       //noinspection WrongThread
       Recipient resolved = recipient.resolve();
 
-      if (FeatureFlags.verifyV2() && resolved.getUuid().isPresent()) {
+      if (FeatureFlags.verifyV2() && resolved.getAci().isPresent()) {
         Log.i(TAG, "Using UUID (version 2).");
         version  = 2;
-        localId  = UuidUtil.toByteArray(TextSecurePreferences.getLocalUuid(requireContext()));
-        remoteId = UuidUtil.toByteArray(resolved.getUuid().get());
+        localId  = Recipient.self().requireAci().toByteArray();
+        remoteId = resolved.requireAci().toByteArray();
       } else if (!FeatureFlags.verifyV2() && resolved.getE164().isPresent()) {
         Log.i(TAG, "Using E164 (version 1).");
         version  = 1;
-        localId  = TextSecurePreferences.getLocalNumber(requireContext()).getBytes();
+        localId  = Recipient.self().requireE164().getBytes();
         remoteId = resolved.requireE164().getBytes();
       } else {
-        Log.w(TAG, String.format(Locale.ENGLISH, "Could not show proper verification! verifyV2: %s, hasUuid: %s, hasE164: %s", FeatureFlags.verifyV2(), resolved.getUuid().isPresent(), resolved.getE164().isPresent()));
-        new AlertDialog.Builder(requireContext())
-                       .setMessage(getString(R.string.VerifyIdentityActivity_you_must_first_exchange_messages_in_order_to_view, resolved.getDisplayName(requireContext())))
-                       .setPositiveButton(android.R.string.ok, (dialog, which) -> requireActivity().finish())
-                       .setOnDismissListener(dialog -> requireActivity().finish())
-                       .show();
+        Log.w(TAG, String.format(Locale.ENGLISH, "Could not show proper verification! verifyV2: %s, hasUuid: %s, hasE164: %s", FeatureFlags.verifyV2(), resolved.getAci().isPresent(), resolved.getE164().isPresent()));
+        new MaterialAlertDialogBuilder(requireContext())
+            .setMessage(getString(R.string.VerifyIdentityActivity_you_must_first_exchange_messages_in_order_to_view, resolved.getDisplayName(requireContext())))
+            .setPositiveButton(android.R.string.ok, (dialog, which) -> requireActivity().finish())
+            .setOnDismissListener(dialog -> {
+              requireActivity().finish();
+              dialog.dismiss();
+            })
+            .show();
         return;
       }
 
@@ -327,6 +358,7 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
 
         @Override
         protected void onPostExecute(Fingerprint fingerprint) {
+          if (getActivity() == null) return;
           VerifyDisplayFragment.this.fingerprint = fingerprint;
           setFingerprintViews(fingerprint, true);
           getActivity().supportInvalidateOptionsMenu();
@@ -353,6 +385,8 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
         animateFailureOnDraw = false;
         animateVerifiedFailure();
       }
+
+      ThreadUtil.postToMain(this::onScrollChanged);
     }
 
     @Override
@@ -410,9 +444,11 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
         } else {
           Toast.makeText(getActivity(), R.string.VerifyIdentityActivity_your_contact_is_running_an_old_version_of_signal, Toast.LENGTH_LONG).show();
         }
+        this.animateFailureOnDraw = true;
       } catch (Exception e) {
         Log.w(TAG, e);
         Toast.makeText(getActivity(), R.string.VerifyIdentityActivity_the_scanned_qr_code_is_not_a_correctly_formatted_safety_number, Toast.LENGTH_LONG).show();
+        this.animateFailureOnDraw = true;
       }
     }
 
@@ -480,7 +516,7 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
     }
 
     private void setRecipientText(Recipient recipient) {
-      description.setText(Html.fromHtml(String.format(getActivity().getString(R.string.verify_display_fragment__if_you_wish_to_verify_the_security_of_your_end_to_end_encryption_with_s), recipient.getDisplayName(getContext()))));
+      description.setText(Html.fromHtml(String.format(getActivity().getString(R.string.verify_display_fragment__to_verify_the_security_of_your_end_to_end_encryption_with_s), recipient.getDisplayName(getContext()))));
       description.setMovementMethod(LinkMovementMethod.getInstance());
     }
 
@@ -501,9 +537,11 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
       if (animate) {
         ViewUtil.fadeIn(qrCode, 1000);
         ViewUtil.fadeIn(tapLabel, 1000);
+        ViewUtil.fadeOut(loading, 300, View.GONE);
       } else {
         qrCode.setVisibility(View.VISIBLE);
         tapLabel.setVisibility(View.VISIBLE);
+        loading.setVisibility(View.GONE);
       }
     }
 
@@ -559,6 +597,8 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
       qrVerified.setImageBitmap(qrSuccess);
       qrVerified.getBackground().setColorFilter(getResources().getColor(R.color.green_500), PorterDuff.Mode.MULTIPLY);
 
+      tapLabel.setText(getString(R.string.verify_display_fragment__successful_match));
+
       animateVerified();
     }
 
@@ -569,6 +609,8 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
       qrVerified.setImageBitmap(qrSuccess);
       qrVerified.getBackground().setColorFilter(getResources().getColor(R.color.red_500), PorterDuff.Mode.MULTIPLY);
 
+      tapLabel.setText(getString(R.string.verify_display_fragment__failed_to_verify_safety_number));
+
       animateVerified();
     }
 
@@ -576,7 +618,7 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
       ScaleAnimation scaleAnimation = new ScaleAnimation(0, 1, 0, 1,
                                                          ScaleAnimation.RELATIVE_TO_SELF, 0.5f,
                                                          ScaleAnimation.RELATIVE_TO_SELF, 0.5f);
-      scaleAnimation.setInterpolator(new OvershootInterpolator());
+      scaleAnimation.setInterpolator(new FastOutSlowInInterpolator());
       scaleAnimation.setDuration(800);
       scaleAnimation.setAnimationListener(new Animation.AnimationListener() {
         @Override
@@ -594,6 +636,9 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
               scaleAnimation.setInterpolator(new AnticipateInterpolator());
               scaleAnimation.setDuration(500);
               ViewUtil.animateOut(qrVerified, scaleAnimation, View.GONE);
+              ViewUtil.fadeIn(qrCode, 800);
+              qrCodeContainer.setEnabled(true);
+              tapLabel.setText(getString(R.string.verify_display_fragment__tap_to_scan));
             }
           }, 2000);
         }
@@ -602,40 +647,70 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
         public void onAnimationRepeat(Animation animation) {}
       });
 
+      ViewUtil.fadeOut(qrCode, 200, View.INVISIBLE);
       ViewUtil.animateIn(qrVerified, scaleAnimation);
+      qrCodeContainer.setEnabled(false);
     }
 
-    @Override
-    public void onCheckedChanged(CompoundButton buttonView, final boolean isChecked) {
-      final Recipient   recipient   = this.recipient.get();
-      final RecipientId recipientId = recipient.getId();
+    private void updateVerifyButton(boolean verified, boolean update) {
+      currentVerifiedState = verified;
 
-      SignalExecutors.BOUNDED.execute(() -> {
-        try (SignalSessionLock.Lock unused = ReentrantSessionLock.INSTANCE.acquire()) {
-          if (isChecked) {
-            Log.i(TAG, "Saving identity: " + recipientId);
-            DatabaseFactory.getIdentityDatabase(getActivity())
-                           .saveIdentity(recipientId,
-                                         remoteIdentity,
-                                         VerifiedStatus.VERIFIED, false,
-                                         System.currentTimeMillis(), true);
-          } else {
-            DatabaseFactory.getIdentityDatabase(getActivity())
-                           .setVerified(recipientId,
-                                        remoteIdentity,
-                                        VerifiedStatus.DEFAULT);
+      if (verified) {
+        verifyButton.setText(R.string.verify_display_fragment__clear_verification);
+      } else {
+        verifyButton.setText(R.string.verify_display_fragment__mark_as_verified);
+      }
+
+      if (update) {
+        final RecipientId recipientId = recipient.getId();
+
+        SignalExecutors.BOUNDED.execute(() -> {
+          try (SignalSessionLock.Lock unused = ReentrantSessionLock.INSTANCE.acquire()) {
+            if (verified) {
+              Log.i(TAG, "Saving identity: " + recipientId);
+              ApplicationDependencies.getIdentityStore()
+                                     .saveIdentityWithoutSideEffects(recipientId,
+                                                                     remoteIdentity,
+                                                                     VerifiedStatus.VERIFIED,
+                                                                     false,
+                                                                     System.currentTimeMillis(),
+                                                                     true);
+            } else {
+              ApplicationDependencies.getIdentityStore().setVerified(recipientId, remoteIdentity, VerifiedStatus.DEFAULT);
+            }
+
+            ApplicationDependencies.getJobManager()
+                                   .add(new MultiDeviceVerifiedUpdateJob(recipientId,
+                                                                         remoteIdentity,
+                                                                         verified ? VerifiedStatus.VERIFIED
+                                                                                   : VerifiedStatus.DEFAULT));
+            StorageSyncHelper.scheduleSyncForDataChange();
+
+            IdentityUtil.markIdentityVerified(getActivity(), recipient.get(), verified, false);
           }
+        });
+      }
+    }
 
-          ApplicationDependencies.getJobManager()
-                                 .add(new MultiDeviceVerifiedUpdateJob(recipientId,
-                                                                       remoteIdentity,
-                                                                       isChecked ? VerifiedStatus.VERIFIED
-                                                                                 : VerifiedStatus.DEFAULT));
-          StorageSyncHelper.scheduleSyncForDataChange();
 
-          IdentityUtil.markIdentityVerified(getActivity(), recipient, isChecked, false);
+    @Override public void onScrollChanged() {
+      if (scrollView.canScrollVertically(-1)) {
+        if (toolbarShadow.getVisibility() != View.VISIBLE) {
+          ViewUtil.fadeIn(toolbarShadow, 250);
         }
-      });
+      } else {
+        if (toolbarShadow.getVisibility() != View.GONE) {
+          ViewUtil.fadeOut(toolbarShadow, 250);
+        }
+      }
+
+      if (scrollView.canScrollVertically(1)) {
+        if (bottomShadow.getVisibility() != View.VISIBLE) {
+          ViewUtil.fadeIn(bottomShadow, 250);
+        }
+      } else {
+        ViewUtil.fadeOut(bottomShadow, 250);
+      }
     }
   }
 
@@ -643,12 +718,23 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
 
     private View           container;
     private CameraView     cameraView;
+    private ShapeScrim     cameraScrim;
+    private ImageView      cameraMarks;
     private ScanningThread scanningThread;
     private ScanListener   scanListener;
 
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup viewGroup, Bundle bundle) {
-      this.container  = ViewUtil.inflate(inflater, viewGroup, R.layout.verify_scan_fragment);
-      this.cameraView = container.findViewById(R.id.scanner);
+      this.container   = ViewUtil.inflate(inflater, viewGroup, R.layout.verify_scan_fragment);
+      this.cameraView  = container.findViewById(R.id.scanner);
+      this.cameraScrim = container.findViewById(R.id.camera_scrim);
+      this.cameraMarks = container.findViewById(R.id.camera_marks);
+
+      OneShotPreDrawListener.add(cameraScrim, () -> {
+        int width  = cameraScrim.getScrimWidth();
+        int height = cameraScrim.getScrimHeight();
+
+        ViewUtil.updateLayoutParams(cameraMarks, width, height);
+      });
 
       return container;
     }
@@ -685,5 +771,4 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity implement
     }
 
   }
-
 }

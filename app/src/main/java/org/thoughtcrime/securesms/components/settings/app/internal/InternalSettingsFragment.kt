@@ -5,9 +5,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.DialogInterface
 import android.widget.Toast
-import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.signal.core.util.concurrent.SignalExecutors
+import org.signal.ringrtc.CallManager
 import org.thoughtcrime.securesms.BuildConfig
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
@@ -15,16 +16,20 @@ import org.thoughtcrime.securesms.components.settings.DSLSettingsAdapter
 import org.thoughtcrime.securesms.components.settings.DSLSettingsFragment
 import org.thoughtcrime.securesms.components.settings.DSLSettingsText
 import org.thoughtcrime.securesms.components.settings.configure
-import org.thoughtcrime.securesms.database.DatabaseFactory
 import org.thoughtcrime.securesms.database.LocalMetricsDatabase
+import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.jobs.DownloadLatestEmojiDataJob
 import org.thoughtcrime.securesms.jobs.RefreshAttributesJob
 import org.thoughtcrime.securesms.jobs.RefreshOwnProfileJob
 import org.thoughtcrime.securesms.jobs.RemoteConfigRefreshJob
 import org.thoughtcrime.securesms.jobs.RotateProfileKeyJob
 import org.thoughtcrime.securesms.jobs.StorageForcePushJob
+import org.thoughtcrime.securesms.jobs.SubscriptionReceiptRequestResponseJob
+import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.payments.DataExportUtil
 import org.thoughtcrime.securesms.util.ConversationUtil
+import org.thoughtcrime.securesms.util.FeatureFlags
 import org.thoughtcrime.securesms.util.concurrent.SimpleTask
 
 class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__internal_preferences) {
@@ -34,7 +39,7 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
   override fun bindAdapter(adapter: DSLSettingsAdapter) {
     val repository = InternalSettingsRepository(requireContext())
     val factory = InternalSettingsViewModel.Factory(repository)
-    viewModel = ViewModelProviders.of(this, factory)[InternalSettingsViewModel::class.java]
+    viewModel = ViewModelProvider(this, factory)[InternalSettingsViewModel::class.java]
 
     viewModel.state.observe(viewLifecycleOwner) {
       adapter.submitList(getConfiguration(it).toMappingModelList())
@@ -74,8 +79,8 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
       )
 
       clickPref(
-        title = DSLSettingsText.from(R.string.preferences__internal_refresh_remote_values),
-        summary = DSLSettingsText.from(R.string.preferences__internal_refresh_remote_values_description),
+        title = DSLSettingsText.from(R.string.preferences__internal_refresh_remote_config),
+        summary = DSLSettingsText.from(R.string.preferences__internal_refresh_remote_config_description),
         onClick = {
           refreshRemoteValues()
         }
@@ -83,7 +88,7 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
 
       dividerPref()
 
-      sectionHeaderPref(R.string.preferences__internal_display)
+      sectionHeaderPref(R.string.preferences__internal_misc)
 
       switchPref(
         title = DSLSettingsText.from(R.string.preferences__internal_user_details),
@@ -94,9 +99,27 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
         }
       )
 
+      switchPref(
+        title = DSLSettingsText.from(R.string.preferences__internal_shake_to_report),
+        summary = DSLSettingsText.from(R.string.preferences__internal_shake_to_report_description),
+        isChecked = state.shakeToReport,
+        onClick = {
+          viewModel.setShakeToReport(!state.shakeToReport)
+        }
+      )
+
       dividerPref()
 
       sectionHeaderPref(R.string.preferences__internal_storage_service)
+
+      switchPref(
+        title = DSLSettingsText.from(R.string.preferences__internal_disable_storage_service),
+        summary = DSLSettingsText.from(R.string.preferences__internal_disable_storage_service_description),
+        isChecked = state.disableStorageService,
+        onClick = {
+          viewModel.setDisableStorageService(!state.disableStorageService)
+        }
+      )
 
       clickPref(
         title = DSLSettingsText.from(R.string.preferences__internal_force_storage_service_sync),
@@ -212,7 +235,15 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
         summary = DSLSettingsText.from(emojiSummary),
         isChecked = state.useBuiltInEmojiSet,
         onClick = {
-          viewModel.setDisableAutoMigrationNotification(!state.useBuiltInEmojiSet)
+          viewModel.setUseBuiltInEmoji(!state.useBuiltInEmojiSet)
+        }
+      )
+
+      clickPref(
+        title = DSLSettingsText.from(R.string.preferences__internal_force_emoji_download),
+        summary = DSLSettingsText.from(R.string.preferences__internal_force_emoji_download_description),
+        onClick = {
+          ApplicationDependencies.getJobManager().add(DownloadLatestEmojiDataJob(true))
         }
       )
 
@@ -290,6 +321,30 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
             }
           )
         }
+
+      sectionHeaderPref(R.string.preferences__internal_audio)
+
+      radioListPref(
+        title = DSLSettingsText.from(R.string.preferences__internal_audio_processing_method),
+        listItems = CallManager.AudioProcessingMethod.values().map { it.name }.toTypedArray(),
+        selected = CallManager.AudioProcessingMethod.values().indexOf(state.audioProcessingMethod),
+        onSelected = {
+          viewModel.setInternalAudioProcessingMethod(CallManager.AudioProcessingMethod.values()[it])
+        }
+      )
+
+      dividerPref()
+
+      if (FeatureFlags.donorBadges() && SignalStore.donationsValues().getSubscriber() != null) {
+        sectionHeaderPref(R.string.preferences__internal_badges)
+
+        clickPref(
+          title = DSLSettingsText.from(R.string.preferences__internal_badges_enqueue_redemption),
+          onClick = {
+            enqueueSubscriptionRedemption()
+          }
+        )
+      }
     }
   }
 
@@ -305,12 +360,12 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
       .setPositiveButton(
         "Copy"
       ) { _: DialogInterface?, _: Int ->
+        val context: Context = ApplicationDependencies.getApplication()
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
         SimpleTask.run<Any?>(
           SignalExecutors.UNBOUNDED,
           {
-            val context: Context = ApplicationDependencies.getApplication()
-            val clipboard =
-              context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val tsv = DataExportUtil.createTsv()
             val clip = ClipData.newPlainText(context.getString(R.string.app_name), tsv)
             clipboard.setPrimaryClip(clip)
@@ -358,18 +413,22 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
   }
 
   private fun clearAllSenderKeyState() {
-    DatabaseFactory.getSenderKeyDatabase(requireContext()).deleteAll()
-    DatabaseFactory.getSenderKeySharedDatabase(requireContext()).deleteAll()
+    SignalDatabase.senderKeys.deleteAll()
+    SignalDatabase.senderKeyShared.deleteAll()
     Toast.makeText(context, "Deleted all sender key state.", Toast.LENGTH_SHORT).show()
   }
 
   private fun clearAllSenderKeySharedState() {
-    DatabaseFactory.getSenderKeySharedDatabase(requireContext()).deleteAll()
+    SignalDatabase.senderKeyShared.deleteAll()
     Toast.makeText(context, "Deleted all sender key shared state.", Toast.LENGTH_SHORT).show()
   }
 
   private fun clearAllLocalMetricsState() {
     LocalMetricsDatabase.getInstance(ApplicationDependencies.getApplication()).clear()
     Toast.makeText(context, "Cleared all local metrics state.", Toast.LENGTH_SHORT).show()
+  }
+
+  private fun enqueueSubscriptionRedemption() {
+    SubscriptionReceiptRequestResponseJob.createSubscriptionContinuationJobChain().enqueue()
   }
 }

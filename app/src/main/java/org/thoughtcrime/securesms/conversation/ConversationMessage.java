@@ -10,8 +10,10 @@ import androidx.annotation.WorkerThread;
 
 import org.signal.core.util.Conversions;
 import org.thoughtcrime.securesms.components.mention.MentionAnnotation;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.conversation.mutiselect.Multiselect;
+import org.thoughtcrime.securesms.conversation.mutiselect.MultiselectCollection;
 import org.thoughtcrime.securesms.database.MentionUtil;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.Mention;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 
@@ -24,9 +26,10 @@ import java.util.List;
  * for various presentations.
  */
 public class ConversationMessage {
-  @NonNull  private final MessageRecord   messageRecord;
-  @NonNull  private final List<Mention>   mentions;
-  @Nullable private final SpannableString body;
+  @NonNull  private final MessageRecord         messageRecord;
+  @NonNull  private final List<Mention>         mentions;
+  @Nullable private final SpannableString       body;
+  @NonNull  private final MultiselectCollection multiselectCollection;
 
   private ConversationMessage(@NonNull MessageRecord messageRecord) {
     this(messageRecord, null, null);
@@ -43,6 +46,8 @@ public class ConversationMessage {
     if (!this.mentions.isEmpty() && this.body != null) {
       MentionAnnotation.setMentionAnnotations(this.body, this.mentions);
     }
+
+    multiselectCollection = Multiselect.getParts(this);
   }
 
   public @NonNull MessageRecord getMessageRecord() {
@@ -51,6 +56,10 @@ public class ConversationMessage {
 
   public @NonNull List<Mention> getMentions() {
     return mentions;
+  }
+
+  public @NonNull MultiselectCollection getMultiselectCollection() {
+    return multiselectCollection;
   }
 
   @Override
@@ -74,10 +83,7 @@ public class ConversationMessage {
   }
 
   public @NonNull SpannableString getDisplayBody(Context context) {
-    if (mentions.isEmpty() || body == null) {
-      return messageRecord.getDisplayBody(context);
-    }
-    return body;
+    return (body != null) ? body : messageRecord.getDisplayBody(context);
   }
 
   /**
@@ -107,7 +113,7 @@ public class ConversationMessage {
       if (messageRecord.isMms() && mentions != null && !mentions.isEmpty()) {
         return new ConversationMessage(messageRecord, body, mentions);
       }
-      return createWithResolvedData(messageRecord);
+      return new ConversationMessage(messageRecord, body, null);
     }
 
     /**
@@ -143,13 +149,13 @@ public class ConversationMessage {
     @WorkerThread
     public static @NonNull ConversationMessage createWithUnresolvedData(@NonNull Context context, @NonNull MessageRecord messageRecord, @NonNull CharSequence body) {
       if (messageRecord.isMms()) {
-        List<Mention> mentions = DatabaseFactory.getMentionDatabase(context).getMentionsForMessage(messageRecord.getId());
+        List<Mention> mentions = SignalDatabase.mentions().getMentionsForMessage(messageRecord.getId());
         if (!mentions.isEmpty()) {
           MentionUtil.UpdatedBodyAndMentions updated = MentionUtil.updateBodyAndMentionsWithDisplayNames(context, body, mentions);
           return new ConversationMessage(messageRecord, updated.getBody(), updated.getMentions());
         }
       }
-      return createWithResolvedData(messageRecord);
+      return createWithResolvedData(messageRecord, body, null);
     }
   }
 }

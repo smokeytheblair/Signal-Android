@@ -26,8 +26,8 @@ import android.os.Bundle;
 import androidx.core.app.RemoteInput;
 
 import org.signal.core.util.concurrent.SignalExecutors;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.MessageDatabase.MarkedMessageInfo;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.mms.OutgoingMediaMessage;
 import org.thoughtcrime.securesms.notifications.v2.MessageNotifierV2;
@@ -90,19 +90,19 @@ public class RemoteReplyReceiver extends BroadcastReceiver {
                                                                   Collections.emptyList(),
                                                                   Collections.emptyList(),
                                                                   Collections.emptyList(),
-                                                                  Collections.emptyList(),
-                                                                  Collections.emptyList());
-            threadId = MessageSender.send(context, reply, -1, false, null);
+                                                                  Collections.emptySet(),
+                                                                  Collections.emptySet());
+            threadId = MessageSender.send(context, reply, -1, false, null, null);
             break;
           }
           case SecureMessage: {
             OutgoingEncryptedMessage reply = new OutgoingEncryptedMessage(recipient, responseText.toString(), expiresIn);
-            threadId = MessageSender.send(context, reply, -1, false, null);
+            threadId = MessageSender.send(context, reply, -1, false, null, null);
             break;
           }
           case UnsecuredSmsMessage: {
             OutgoingTextMessage reply = new OutgoingTextMessage(recipient, responseText.toString(), expiresIn, subscriptionId);
-            threadId = MessageSender.send(context, reply, -1, true, null);
+            threadId = MessageSender.send(context, reply, -1, true, null, null);
             break;
           }
           default:
@@ -111,7 +111,7 @@ public class RemoteReplyReceiver extends BroadcastReceiver {
 
         ApplicationDependencies.getMessageNotifier().addStickyThread(threadId, intent.getLongExtra(EARLIEST_TIMESTAMP, System.currentTimeMillis()));
 
-        List<MarkedMessageInfo> messageIds = DatabaseFactory.getThreadDatabase(context).setRead(threadId, true);
+        List<MarkedMessageInfo> messageIds = SignalDatabase.threads().setRead(threadId, true);
 
         ApplicationDependencies.getMessageNotifier().updateNotification(context);
         MarkReadReceiver.process(context, messageIds);

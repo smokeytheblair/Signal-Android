@@ -3,6 +3,7 @@ package org.thoughtcrime.securesms.components.settings.app.internal
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import org.signal.ringrtc.CallManager
 import org.thoughtcrime.securesms.keyvalue.InternalValues
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.util.livedata.Store
@@ -22,6 +23,16 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
 
   fun setSeeMoreUserDetails(enabled: Boolean) {
     preferenceDataStore.putBoolean(InternalValues.RECIPIENT_DETAILS, enabled)
+    refresh()
+  }
+
+  fun setShakeToReport(enabled: Boolean) {
+    preferenceDataStore.putBoolean(InternalValues.SHAKE_TO_REPORT, enabled)
+    refresh()
+  }
+
+  fun setDisableStorageService(enabled: Boolean) {
+    preferenceDataStore.putBoolean(InternalValues.DISABLE_STORAGE_SERVICE, enabled)
     refresh()
   }
 
@@ -80,12 +91,18 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
     refresh()
   }
 
+  fun setInternalAudioProcessingMethod(method: CallManager.AudioProcessingMethod) {
+    preferenceDataStore.putInt(InternalValues.AUDIO_PROCESSING_METHOD, method.ordinal)
+    refresh()
+  }
+
   private fun refresh() {
     store.update { getState().copy(emojiVersion = it.emojiVersion) }
   }
 
   private fun getState() = InternalSettingsState(
     seeMoreUserDetails = SignalStore.internalValues().recipientDetails(),
+    shakeToReport = SignalStore.internalValues().shakeToReport(),
     gv2doNotCreateGv2Groups = SignalStore.internalValues().gv2DoNotCreateGv2Groups(),
     gv2forceInvites = SignalStore.internalValues().gv2ForceInvites(),
     gv2ignoreServerChanges = SignalStore.internalValues().gv2IgnoreServerChanges(),
@@ -94,10 +111,12 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
     disableAutoMigrationNotification = SignalStore.internalValues().disableGv1AutoMigrateNotification(),
     forceCensorship = SignalStore.internalValues().forcedCensorship(),
     callingServer = SignalStore.internalValues().groupCallingServer(),
+    audioProcessingMethod = SignalStore.internalValues().audioProcessingMethod(),
     useBuiltInEmojiSet = SignalStore.internalValues().forceBuiltInEmoji(),
     emojiVersion = null,
     removeSenderKeyMinimium = SignalStore.internalValues().removeSenderKeyMinimum(),
-    delayResends = SignalStore.internalValues().delayResends()
+    delayResends = SignalStore.internalValues().delayResends(),
+    disableStorageService = SignalStore.internalValues().storageServiceDisabled()
   )
 
   class Factory(private val repository: InternalSettingsRepository) : ViewModelProvider.Factory {

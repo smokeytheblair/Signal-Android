@@ -26,7 +26,7 @@ import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.crypto.ReentrantSessionLock;
 import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
 import org.thoughtcrime.securesms.crypto.storage.SignalProtocolStoreImpl;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.groups.BadGroupIdException;
 import org.thoughtcrime.securesms.groups.GroupId;
@@ -78,7 +78,7 @@ public final class MessageDecryptionUtil {
    */
   public static @NonNull DecryptionResult decrypt(@NonNull Context context, @NonNull SignalServiceEnvelope envelope) {
     SignalProtocolStore  axolotlStore = new SignalProtocolStoreImpl(context);
-    SignalServiceAddress localAddress = new SignalServiceAddress(Optional.of(TextSecurePreferences.getLocalUuid(context)), Optional.of(TextSecurePreferences.getLocalNumber(context)));
+    SignalServiceAddress localAddress = new SignalServiceAddress(Recipient.self().requireAci(), Recipient.self().requireE164());
     SignalServiceCipher  cipher       = new SignalServiceCipher(localAddress, axolotlStore, ReentrantSessionLock.INSTANCE, UnidentifiedAccessUtil.getCertificateValidator());
     List<Job>            jobs         = new LinkedList<>();
 
@@ -106,19 +106,19 @@ public final class MessageDecryptionUtil {
 
         return DecryptionResult.forNoop(jobs);
       } catch (ProtocolLegacyMessageException e) {
-        Log.w(TAG, String.valueOf(envelope.getTimestamp()), e);
+        Log.w(TAG, "[" + envelope.getTimestamp() + "] " + envelope.getSourceIdentifier() + ":" + envelope.getSourceDevice(), e);
         return DecryptionResult.forError(MessageState.LEGACY_MESSAGE, toExceptionMetadata(e), jobs);
       } catch (ProtocolDuplicateMessageException e) {
-        Log.w(TAG, String.valueOf(envelope.getTimestamp()), e);
+        Log.w(TAG, "[" + envelope.getTimestamp() + "] " + envelope.getSourceIdentifier() + ":" + envelope.getSourceDevice(), e);
         return DecryptionResult.forError(MessageState.DUPLICATE_MESSAGE, toExceptionMetadata(e), jobs);
       } catch (InvalidMetadataVersionException | InvalidMetadataMessageException | InvalidMessageStructureException e) {
-        Log.w(TAG, String.valueOf(envelope.getTimestamp()), e);
+        Log.w(TAG, "[" + envelope.getTimestamp() + "] " + envelope.getSourceIdentifier() + ":" + envelope.getSourceDevice(), e);
         return DecryptionResult.forNoop(jobs);
       } catch (SelfSendException e) {
         Log.i(TAG, "Dropping UD message from self.");
         return DecryptionResult.forNoop(jobs);
       } catch (UnsupportedDataMessageException e) {
-        Log.w(TAG, String.valueOf(envelope.getTimestamp()), e);
+        Log.w(TAG, "[" + envelope.getTimestamp() + "] " + envelope.getSourceIdentifier() + ":" + envelope.getSourceDevice(), e);
         return DecryptionResult.forError(MessageState.UNSUPPORTED_DATA_MESSAGE, toExceptionMetadata(e), jobs);
       }
     } catch (NoSenderException e) {
@@ -147,15 +147,15 @@ public final class MessageDecryptionUtil {
 
     if (groupId.isPresent()) {
       Recipient groupRecipient = Recipient.externalPossiblyMigratedGroup(context, groupId.get());
-      threadId = DatabaseFactory.getThreadDatabase(context).getOrCreateThreadIdFor(groupRecipient);
+      threadId = SignalDatabase.threads().getOrCreateThreadIdFor(groupRecipient);
     } else {
-      threadId = DatabaseFactory.getThreadDatabase(context).getOrCreateThreadIdFor(sender);
+      threadId = SignalDatabase.threads().getOrCreateThreadIdFor(sender);
     }
 
     switch (contentHint) {
       case DEFAULT:
         Log.w(TAG, "[" + envelope.getTimestamp() + "] Inserting an error right away because it's " + contentHint);
-        DatabaseFactory.getSmsDatabase(context).insertBadDecryptMessage(sender.getId(), senderDevice, envelope.getTimestamp(), receivedTimestamp, threadId);
+        SignalDatabase.sms().insertBadDecryptMessage(sender.getId(), senderDevice, envelope.getTimestamp(), receivedTimestamp, threadId);
         break;
       case RESENDABLE:
         Log.w(TAG, "[" + envelope.getTimestamp() + "] Inserting into pending retries store because it's " + contentHint);

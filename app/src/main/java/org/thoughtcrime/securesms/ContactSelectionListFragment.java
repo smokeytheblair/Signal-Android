@@ -37,6 +37,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.Px;
 import androidx.appcompat.app.AlertDialog;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
@@ -178,12 +179,16 @@ public final class ContactSelectionListFragment extends LoggingFragment
       onSelectionLimitReachedListener = (OnSelectionLimitReachedListener) context;
     }
 
+    if (getParentFragment() instanceof OnSelectionLimitReachedListener) {
+      onSelectionLimitReachedListener = (OnSelectionLimitReachedListener) getParentFragment();
+    }
+
     if (context instanceof AbstractContactsCursorLoaderFactoryProvider) {
       cursorFactoryProvider = (AbstractContactsCursorLoaderFactoryProvider) context;
     }
 
     if (getParentFragment() instanceof AbstractContactsCursorLoaderFactoryProvider) {
-      cursorFactoryProvider = (AbstractContactsCursorLoaderFactoryProvider) context;
+      cursorFactoryProvider = (AbstractContactsCursorLoaderFactoryProvider) getParentFragment();
     }
   }
 
@@ -262,7 +267,9 @@ public final class ContactSelectionListFragment extends LoggingFragment
 
     recyclerView.setClipToPadding(recyclerViewClipping);
 
-    swipeRefresh.setEnabled(arguments.getBoolean(REFRESHABLE, intent.getBooleanExtra(REFRESHABLE, true)));
+    boolean isRefreshable = arguments.getBoolean(REFRESHABLE, intent.getBooleanExtra(REFRESHABLE, true));
+    swipeRefresh.setNestedScrollingEnabled(isRefreshable);
+    swipeRefresh.setEnabled(isRefreshable);
 
     hideCount      = arguments.getBoolean(HIDE_COUNT, intent.getBooleanExtra(HIDE_COUNT, false));
     selectionLimit = arguments.getParcelable(SELECTION_LIMITS);
@@ -438,6 +445,10 @@ public final class ContactSelectionListFragment extends LoggingFragment
     }
   }
 
+  public void setRecyclerViewPaddingBottom(@Px int paddingBottom) {
+    ViewUtil.setPaddingBottom(recyclerView, paddingBottom);
+  }
+
   @Override
   public @NonNull Loader<Cursor> onCreateLoader(int id, Bundle args) {
     FragmentActivity activity       = requireActivity();
@@ -560,7 +571,7 @@ public final class ContactSelectionListFragment extends LoggingFragment
           AlertDialog loadingDialog = SimpleProgressDialog.show(requireContext());
 
           SimpleTask.run(getViewLifecycleOwner().getLifecycle(), () -> {
-            return UsernameUtil.fetchUuidForUsername(requireContext(), contact.getNumber());
+            return UsernameUtil.fetchAciForUsername(requireContext(), contact.getNumber());
           }, uuid -> {
             loadingDialog.dismiss();
             if (uuid.isPresent()) {
@@ -686,6 +697,11 @@ public final class ContactSelectionListFragment extends LoggingFragment
 
       @Override
       public void endTransition(LayoutTransition transition, ViewGroup container, View view, int transitionType) {
+        if (getView() == null || !requireView().isAttachedToWindow()) {
+          Log.w(TAG, "Fragment's view was detached before the animation completed.");
+          return;
+        }
+
         if (view == chip && transitionType == LayoutTransition.APPEARING) {
           chipGroup.getLayoutTransition().removeTransitionListener(this);
           registerChipRecipientObserver(chip, recipient.live());
@@ -749,8 +765,8 @@ public final class ContactSelectionListFragment extends LoggingFragment
 
   public interface OnContactSelectedListener {
     /** Provides an opportunity to disallow selecting an item. Call the callback with false to disallow, or true to allow it. */
-    void onBeforeContactSelected(Optional<RecipientId> recipientId, String number, Consumer<Boolean> callback);
-    void onContactDeselected(Optional<RecipientId> recipientId, String number);
+    void onBeforeContactSelected(Optional<RecipientId> recipientId, @Nullable String number, Consumer<Boolean> callback);
+    void onContactDeselected(Optional<RecipientId> recipientId, @Nullable String number);
     void onSelectionChanged();
   }
 

@@ -3,8 +3,8 @@ package org.thoughtcrime.securesms.database
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ContentValues
-import net.sqlcipher.database.SQLiteDatabase
-import net.sqlcipher.database.SQLiteOpenHelper
+import net.zetetic.database.sqlcipher.SQLiteDatabase
+import net.zetetic.database.sqlcipher.SQLiteOpenHelper
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.crypto.DatabaseSecret
 import org.thoughtcrime.securesms.crypto.DatabaseSecretProvider
@@ -25,16 +25,18 @@ import java.util.concurrent.TimeUnit
  */
 class LocalMetricsDatabase private constructor(
   application: Application,
-  private val databaseSecret: DatabaseSecret
+  databaseSecret: DatabaseSecret
 ) : SQLiteOpenHelper(
     application,
     DATABASE_NAME,
+    databaseSecret.asString(),
     null,
     DATABASE_VERSION,
-    SqlCipherDatabaseHook(),
-    SqlCipherErrorHandler(DATABASE_NAME)
+    0,
+    SqlCipherDeletingErrorHandler(DATABASE_NAME),
+    SqlCipherDatabaseHook()
   ),
-  SignalDatabase {
+  SignalDatabaseOpenHelper {
 
   companion object {
     private val TAG = Log.tag(LocalMetricsDatabase::class.java)
@@ -78,7 +80,7 @@ class LocalMetricsDatabase private constructor(
       if (instance == null) {
         synchronized(LocalMetricsDatabase::class.java) {
           if (instance == null) {
-            SqlCipherLibraryLoader.load(context)
+            SqlCipherLibraryLoader.load()
             instance = LocalMetricsDatabase(context, DatabaseSecretProvider.getOrCreateDatabaseSecret(context))
           }
         }
@@ -107,7 +109,12 @@ class LocalMetricsDatabase private constructor(
     db.execSQL(EventTotals.CREATE_VIEW)
   }
 
-  override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) {
+  override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+  }
+
+  override fun onOpen(db: SQLiteDatabase) {
+    db.enableWriteAheadLogging()
+    db.setForeignKeyConstraintsEnabled(true)
   }
 
   override fun getSqlCipherDatabase(): SQLiteDatabase {
@@ -232,12 +239,6 @@ class LocalMetricsDatabase private constructor(
       }
     }
   }
-
-  private val readableDatabase: SQLiteDatabase
-    get() = getReadableDatabase(databaseSecret.asString())
-
-  private val writableDatabase: SQLiteDatabase
-    get() = getWritableDatabase(databaseSecret.asString())
 
   data class EventMetrics(
     val name: String,

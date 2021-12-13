@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2014 Open Whisper Systems
  *
  * This program is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@ import androidx.annotation.NonNull;
 
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.ThreadDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -32,18 +32,23 @@ public class TrimThreadJob extends BaseJob {
 
   public static final String KEY = "TrimThreadJob";
 
-  private static final String TAG = Log.tag(TrimThreadJob.class);
-
+  private static final String TAG           = Log.tag(TrimThreadJob.class);
+  private static final String QUEUE_PREFIX  = "TrimThreadJob_";
   private static final String KEY_THREAD_ID = "thread_id";
 
-  private long threadId;
+  private final long threadId;
 
   public static void enqueueAsync(long threadId) {
-    SignalExecutors.BOUNDED.execute(() -> ApplicationDependencies.getJobManager().add(new TrimThreadJob(threadId)));
+    if (SignalStore.settings().getKeepMessagesDuration() != KeepMessagesDuration.FOREVER || SignalStore.settings().isTrimByLengthEnabled()) {
+      SignalExecutors.BOUNDED.execute(() -> ApplicationDependencies.getJobManager().add(new TrimThreadJob(threadId)));
+    }
   }
 
-  public TrimThreadJob(long threadId) {
-    this(new Job.Parameters.Builder().setQueue("TrimThreadJob").build(), threadId);
+  private TrimThreadJob(long threadId) {
+    this(new Job.Parameters.Builder().setQueue(QUEUE_PREFIX + threadId)
+                                     .setMaxInstancesForQueue(2)
+                                     .build(),
+         threadId);
   }
 
   private TrimThreadJob(@NonNull Job.Parameters parameters, long threadId) {
@@ -71,7 +76,7 @@ public class TrimThreadJob extends BaseJob {
     long trimBeforeDate = keepMessagesDuration != KeepMessagesDuration.FOREVER ? System.currentTimeMillis() - keepMessagesDuration.getDuration()
                                                                                : ThreadDatabase.NO_TRIM_BEFORE_DATE_SET;
 
-    DatabaseFactory.getThreadDatabase(context).trimThread(threadId, trimLength, trimBeforeDate);
+    SignalDatabase.threads().trimThread(threadId, trimLength, trimBeforeDate);
   }
 
   @Override

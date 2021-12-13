@@ -1,6 +1,7 @@
 package org.thoughtcrime.securesms.notifications;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.database.Cursor;
@@ -12,7 +13,7 @@ import androidx.annotation.RequiresApi;
 import androidx.annotation.WorkerThread;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.permissions.Permissions;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.util.CursorUtil;
@@ -28,6 +29,23 @@ public final class DoNotDisturbUtil {
   }
 
   @WorkerThread
+  @SuppressLint("SwitchIntDef")
+  public static boolean shouldDisturbUserWithCall(@NonNull Context context) {
+    if (Build.VERSION.SDK_INT <= 23) return true;
+
+    NotificationManager notificationManager = ServiceUtil.getNotificationManager(context);
+
+    switch (notificationManager.getCurrentInterruptionFilter()) {
+      case NotificationManager.INTERRUPTION_FILTER_ALL:
+      case NotificationManager.INTERRUPTION_FILTER_UNKNOWN:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  @WorkerThread
+  @SuppressLint("SwitchIntDef")
   public static boolean shouldDisturbUserWithCall(@NonNull Context context, @NonNull Recipient recipient) {
     if (Build.VERSION.SDK_INT <= 23) return true;
 
@@ -91,6 +109,7 @@ public final class DoNotDisturbUtil {
       return false;
     }
 
+    //noinspection ConstantConditions
     try (Cursor cursor = context.getContentResolver().query(recipient.resolve().getContactUri(), new String[]{ContactsContract.Contacts.STARRED}, null, null, null)) {
       if (cursor == null || !cursor.moveToFirst()) return false;
       return CursorUtil.requireInt(cursor, ContactsContract.Contacts.STARRED) == 1;
@@ -98,7 +117,7 @@ public final class DoNotDisturbUtil {
   }
 
   private static boolean isRepeatCaller(@NonNull Context context, @NonNull Recipient recipient) {
-    return DatabaseFactory.getThreadDatabase(context).hasCalledSince(recipient, System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(15));
+    return SignalDatabase.threads().hasCalledSince(recipient, System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(15));
   }
 
 }

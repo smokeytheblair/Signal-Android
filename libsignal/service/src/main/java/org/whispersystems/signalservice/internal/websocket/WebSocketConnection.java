@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -111,7 +112,7 @@ public class WebSocketConnection extends WebSocketListener {
       String filledUri;
 
       if (credentialsProvider.isPresent()) {
-        String identifier = credentialsProvider.get().getUuid() != null ? credentialsProvider.get().getUuid().toString() : credentialsProvider.get().getE164();
+        String identifier = Objects.requireNonNull(credentialsProvider.get().getAci()).toString();
         filledUri = String.format(wsUri, identifier, credentialsProvider.get().getPassword());
       } else {
         filledUri = wsUri;
@@ -207,7 +208,7 @@ public class WebSocketConnection extends WebSocketListener {
 
     return single.subscribeOn(Schedulers.io())
                  .observeOn(Schedulers.io())
-                 .timeout(10, TimeUnit.SECONDS);
+                 .timeout(10, TimeUnit.SECONDS, Schedulers.io());
   }
 
   public synchronized void sendResponse(WebSocketResponseMessage response) throws IOException {

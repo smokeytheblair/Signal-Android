@@ -6,17 +6,16 @@ import android.database.Cursor;
 
 import androidx.annotation.NonNull;
 
-import net.sqlcipher.database.SQLiteDatabase;
-import net.sqlcipher.database.SQLiteDatabaseHook;
-import net.sqlcipher.database.SQLiteOpenHelper;
+import net.zetetic.database.sqlcipher.SQLiteDatabase;
+import net.zetetic.database.sqlcipher.SQLiteOpenHelper;
 
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.crypto.DatabaseSecret;
 import org.thoughtcrime.securesms.crypto.DatabaseSecretProvider;
 import org.thoughtcrime.securesms.keyvalue.KeyValueDataSet;
+import org.thoughtcrime.securesms.keyvalue.KeyValuePersistentStorage;
 import org.thoughtcrime.securesms.util.CursorUtil;
-import org.thoughtcrime.securesms.util.SqlUtil;
 
 import java.util.Collection;
 import java.util.Map;
@@ -27,7 +26,7 @@ import java.util.Map;
  * This is it's own separate physical database, so it cannot do joins or queries with any other
  * tables.
  */
-public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase {
+public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabaseOpenHelper, KeyValuePersistentStorage {
 
   private static final String TAG = Log.tag(KeyValueDatabase.class);
 
@@ -47,14 +46,13 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
 
   private static volatile KeyValueDatabase instance;
 
-  private final Application    application;
-  private final DatabaseSecret databaseSecret;
+  private final Application application;
 
   public static @NonNull KeyValueDatabase getInstance(@NonNull Application context) {
     if (instance == null) {
       synchronized (KeyValueDatabase.class) {
         if (instance == null) {
-          SqlCipherLibraryLoader.load(context);
+          SqlCipherLibraryLoader.load();
           instance = new KeyValueDatabase(context, DatabaseSecretProvider.getOrCreateDatabaseSecret(context));
         }
       }
@@ -63,10 +61,9 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
   }
 
   private KeyValueDatabase(@NonNull Application application, @NonNull DatabaseSecret databaseSecret) {
-    super(application, DATABASE_NAME, null, DATABASE_VERSION, new SqlCipherDatabaseHook(), new SqlCipherErrorHandler(DATABASE_NAME));
+    super(application, DATABASE_NAME, databaseSecret.asString(), null, DATABASE_VERSION, 0,new SqlCipherErrorHandler(DATABASE_NAME), new SqlCipherDatabaseHook());
 
-    this.application    = application;
-    this.databaseSecret = databaseSecret;
+    this.application = application;
   }
 
   @Override
@@ -75,9 +72,9 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
 
     db.execSQL(CREATE_TABLE);
 
-    if (DatabaseFactory.getInstance(application).hasTable("key_value")) {
+    if (SignalDatabase.hasTable("key_value")) {
       Log.i(TAG, "Found old key_value table. Migrating data.");
-      migrateDataFromPreviousDatabase(DatabaseFactory.getInstance(application).getRawDatabase(), db);
+      migrateDataFromPreviousDatabase(SignalDatabase.getRawDatabase(), db);
     }
   }
 
@@ -90,14 +87,18 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
   public void onOpen(SQLiteDatabase db) {
     Log.i(TAG, "onOpen()");
 
+    db.enableWriteAheadLogging();
+    db.setForeignKeyConstraintsEnabled(true);
+
     SignalExecutors.BOUNDED.execute(() -> {
-      if (DatabaseFactory.getInstance(application).hasTable("key_value")) {
+      if (SignalDatabase.hasTable("key_value")) {
         Log.i(TAG, "Dropping original key_value table from the main database.");
-        DatabaseFactory.getInstance(application).getRawDatabase().rawExecSQL("DROP TABLE key_value");
+        SignalDatabase.getRawDatabase().execSQL("DROP TABLE key_value");
       }
     });
   }
 
+  @Override
   public @NonNull KeyValueDataSet getDataSet() {
     KeyValueDataSet dataSet = new KeyValueDataSet();
 
@@ -132,6 +133,7 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
     return dataSet;
   }
 
+  @Override
   public void writeDataSet(@NonNull KeyValueDataSet dataSet, @NonNull Collection<String> removes) {
     SQLiteDatabase db = getWritableDatabase();
 
@@ -179,14 +181,6 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
     } finally {
       db.endTransaction();
     }
-  }
-
-  private @NonNull SQLiteDatabase getReadableDatabase() {
-    return getReadableDatabase(databaseSecret.asString());
-  }
-
-  private @NonNull SQLiteDatabase getWritableDatabase() {
-    return getWritableDatabase(databaseSecret.asString());
   }
 
   @Override

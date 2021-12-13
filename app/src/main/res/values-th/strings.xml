@@ -183,9 +183,6 @@
   <string name="ConversationItem_this_message_was_deleted">ข้อความนี้ถูกลบ</string>
   <string name="ConversationItem_you_deleted_this_message">คุณได้ลบข้อความนี้</string>
   <!--ConversationActivity-->
-  <string name="ConversationActivity_reset_secure_session_question">ต้องการรีเซ็ตเซสชันที่ปลอดภัยหรือไม่?</string>
-  <string name="ConversationActivity_this_may_help_if_youre_having_encryption_problems">นี่อาจจะช่วยได้ หากคุณมีปัญหากับการเข้ารหัสลับข้อความในการสนทนานี้ ข้อความของคุณจะถูกเก็บไว้</string>
-  <string name="ConversationActivity_reset">รีเซ็ต</string>
   <string name="ConversationActivity_add_attachment">เพิ่มแฟ้มแนบ</string>
   <string name="ConversationActivity_select_contact_info">เลือกข้อมูลผู้ติดต่อ</string>
   <string name="ConversationActivity_compose_message">เขียนข้อความ</string>
@@ -293,6 +290,7 @@
   <string name="ConversationFragment_not_now">ไม่ใช่ตอนนี้</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed">หมายเลขความปลอดภัยของคุณกับ %s ได้เปลี่ยนไป</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed_likey_because_they_reinstalled_signal">หมายเลขความปลอดภัยของคุณกับ %s ได้เปลี่ยนไป น่าจะเพราะเขาได้ติดตั้ง Signal ใหม่หรือเปลี่ยนอุปกรณ์ แตะ ตรวจยืนยัน เพื่อยืนยันหมายเลขความปลอดภัยใหม่ สิ่งนี้จะทำหรือไม่ก็ได้</string>
+  <!--Message shown to indicate which notification profile is on/active-->
   <plurals name="ConversationListFragment_delete_selected_conversations">
     <item quantity="other">ลบการสนทนาที่เลือกหรือไม่?</item>
   </plurals>
@@ -308,6 +306,11 @@
   <plurals name="ConversationListFragment_moved_conversations_to_inbox">
     <item quantity="other">ย้าย %d การสนทนาไปยังกล่องขาเข้า</item>
   </plurals>
+  <string name="ConversationListFragment_select">เลือก</string>
+  <string name="ConversationListFragment_select_all">เลือกทั้งหมด</string>
+  <!--Show in conversation list overflow menu to open selection bottom sheet-->
+  <!--Tooltip shown after you have created your first notification profile-->
+  <!--Message shown in top toast to indicate the named profile is on-->
   <!--ConversationListItem-->
   <string name="ConversationListItem_key_exchange_message">ข้อความแลกเปลี่ยนกุญแจ</string>
   <!--ConversationListItemAction-->
@@ -388,11 +391,6 @@
   <string name="DeviceListItem_today">วันนี้</string>
   <!--DocumentView-->
   <string name="DocumentView_unnamed_file">แฟ้มที่ไม่มีชื่อ</string>
-  <!--DonateMegaphone-->
-  <string name="DonateMegaphone_donate_to_signal">บริจาคให้ Signal</string>
-  <string name="DonateMegaphone_Signal_is_powered_by_people_like_you_show_your_support_today">Signal ได้รับการสนับสนุนจากผู้คนอย่างคุณ แสดงการสนับสนุนของคุณวันนี้!</string>
-  <string name="DonateMegaphone_donate">บริจาค</string>
-  <string name="DonateMegaphone_no_thanks">ไม่ ขอบคุณ</string>
   <!--GroupCallingMegaphone-->
   <string name="GroupCallingMegaphone__introducing_group_calls">แนะนำการโทรแบบกลุ่ม</string>
   <string name="GroupCallingMegaphone__open_a_new_group_to_start">เปิดกลุ่มแบบใหม่เพื่อเริ่มการโทรแบบกลุ่มที่เข้ารหัสลับ</string>
@@ -650,6 +648,7 @@
   <string name="CustomNotificationsDialogFragment__enabled">เปิดใช้</string>
   <string name="CustomNotificationsDialogFragment__disabled">หยุดใช้</string>
   <string name="CustomNotificationsDialogFragment__default">ค่าเริ่มต้น</string>
+  <string name="CustomNotificationsDialogFragment__unknown">ไม่รู้จัก</string>
   <!--ShareableGroupLinkDialogFragment-->
   <string name="ShareableGroupLinkDialogFragment__shareable_group_link">ลิงก์กลุ่มที่แบ่งปันได้</string>
   <string name="ShareableGroupLinkDialogFragment__manage_and_share">จัดการ &amp; แชร์</string>
@@ -712,20 +711,15 @@
   <!--InviteActivity-->
   <string name="InviteActivity_share">แบ่งปัน</string>
   <string name="InviteActivity_share_with_contacts"> แบ่งปันกับผู้ติดต่อ</string>
-  <string name="InviteActivity_choose_how_to_share">เลือกว่าจะแบ่งปันอย่างไร</string>
   <string name="InviteActivity_cancel">ยกเลิก</string>
   <string name="InviteActivity_sending">กำลังส่ง…</string>
   <string name="InviteActivity_invitations_sent">ส่งคำเชิญแล้ว!</string>
   <string name="InviteActivity_invite_to_signal">เชิญมาใช้ Signal</string>
-  <plurals name="InviteActivity_send_sms_to_friends">
-    <item quantity="other">ส่ง SMS ให้เพื่อน %d คน</item>
-  </plurals>
   <plurals name="InviteActivity_send_sms_invites">
     <item quantity="other">ส่งคำเชิญทาง %dSMS หรือไม่?</item>
   </plurals>
   <string name="InviteActivity_lets_switch_to_signal">เปลี่ยนมาใช้ Signal กัน: %1$s</string>
   <string name="InviteActivity_no_app_to_share_to">ดูเหมือนว่าคุณไม่มีแอปอะไรที่จะแบ่งปันได้</string>
-  <string name="InviteActivity_friends_dont_let_friends_text_unencrypted">เพื่อนต้องไม่ยอมให้เพื่อนคุยกันโดยไม่มีการเข้ารหัส</string>
   <!--LearnMoreTextView-->
   <string name="LearnMoreTextView_learn_more">เรียนรู้เพิ่มเติม</string>
   <!--LongMessageActivity-->
@@ -760,12 +754,7 @@
   <string name="MediaOverviewActivity_Grid_view_description">แสดงข้อมูลแบบตาราง</string>
   <string name="MediaOverviewActivity_List_view_description">แสดงข้อมูลแบบแถว</string>
   <string name="MediaOverviewActivity_Selected_description">ถูกเลือก</string>
-  <plurals name="MediaOverviewActivity_d_items_s">
-    <item quantity="other">%1$d รายการ %2$s</item>
-  </plurals>
-  <plurals name="MediaOverviewActivity_d_items">
-    <item quantity="other">%1$d รายการ</item>
-  </plurals>
+  <string name="MediaOverviewActivity_select_all">เลือกทั้งหมด</string>
   <string name="MediaOverviewActivity_file">แฟ้ม</string>
   <string name="MediaOverviewActivity_audio">เสียง</string>
   <string name="MediaOverviewActivity_video">วิดีโอ</string>
@@ -793,10 +782,10 @@
   <string name="NotificationBarManager__establishing_signal_call">กำลังต่อสาย Signal</string>
   <string name="NotificationBarManager__incoming_signal_call">สาย Signal เรียกเข้า</string>
   <string name="NotificationBarManager__stopping_signal_call_service">หยุดบริการโทร Signal</string>
-  <string name="NotificationBarManager__deny_call">ไม่รับสาย</string>
   <string name="NotificationBarManager__answer_call">รับสาย</string>
   <string name="NotificationBarManager__end_call">วางสาย</string>
   <string name="NotificationBarManager__cancel_call">ยกเลิกการโทร</string>
+  <string name="NotificationBarManager__join_call">เข้าร่วมสาย</string>
   <!--NotificationsMegaphone-->
   <string name="NotificationsMegaphone_turn_on_notifications">เปิดการแจ้งเตือนหรือไม่?</string>
   <string name="NotificationsMegaphone_never_miss_a_message">คุณจะไม่พลาดข้อความจากผู้ติดต่อและกลุ่มของคุณอีกต่อไป</string>
@@ -884,7 +873,6 @@
   <string name="MessageRecord_s_made_s_an_admin">%1$s ตั้ง %2$s เป็นผู้ดูแล</string>
   <string name="MessageRecord_s_made_you_an_admin">%1$s ตั้งคุณเป็นผู้ดูแล</string>
   <string name="MessageRecord_you_revoked_admin_privileges_from_s">คุณได้เพิกถอนสิทธิ์ผู้ดูแลจาก %1$s</string>
-  <string name="MessageRecord_s_revoked_your_admin_privileges">%1$s ได้เพิกถอนสิทธิ์ผู้ดูแลจากคุณ</string>
   <string name="MessageRecord_s_revoked_admin_privileges_from_s">%1$s ได้เพิกถอนสิทธิ์ผู้ดูแลจาก %2$s</string>
   <string name="MessageRecord_s_is_now_an_admin">%1$s ได้เป็นผู้ดูแลแล้ว</string>
   <string name="MessageRecord_you_are_now_an_admin">ตอนนี้คุณเป็นผู้ดูแลแล้ว</string>
@@ -1143,13 +1131,11 @@
   <string name="WebRtcCallActivity__signal_s">Signal %1$s</string>
   <string name="WebRtcCallActivity__calling">กำลังโทร…</string>
   <!--WebRtcCallView-->
-  <string name="WebRtcCallView__signal_voice_call">โทรเสียง Signal…</string>
-  <string name="WebRtcCallView__signal_video_call">โทรวิดีโอ Signal…</string>
+  <string name="WebRtcCallView__signal_call">โทร Signal</string>
   <string name="WebRtcCallView__start_call">เริ่มโทร</string>
   <string name="WebRtcCallView__join_call">เข้าร่วมการโทร</string>
   <string name="WebRtcCallView__call_is_full">ห้องเต็ม</string>
   <string name="WebRtcCallView__the_maximum_number_of_d_participants_has_been_Reached_for_this_call">มีผู้เข้าร่วมสายนี้เต็มขีดจำกัดสูงสุด %1$d คนแล้ว โปรดลองใหม่ภายหลัง</string>
-  <string name="WebRtcCallView__s_group_call">\"%1$s\" โทรกลุ่ม</string>
   <string name="WebRtcCallView__view_participants_list">ดูผู้เข้าร่วม</string>
   <string name="WebRtcCallView__your_video_is_off">วิดีโอของคุณปิดอยู่</string>
   <string name="WebRtcCallView__reconnecting">กำลังเชื่อมต่อใหม่…</string>
@@ -1162,6 +1148,10 @@
   <plurals name="WebRtcCallView__s_s_and_d_others_are_in_this_call">
     <item quantity="other">%1$s %2$s และ %3$d รวมถึงคนอื่นๆ อยู่ในการโทรนี้</item>
   </plurals>
+  <string name="WebRtcCallView__speaker">ลำโพง</string>
+  <string name="WebRtcCallView__camera">กล้อง</string>
+  <string name="WebRtcCallView__mute">ปิดเสียง</string>
+  <string name="WebRtcCallView__end_call">วางสาย</string>
   <!--CallParticipantsListDialog-->
   <plurals name="CallParticipantsListDialog_in_this_call_d_people">
     <item quantity="other">มีผู้เข้าร่วมการโทร %1$d คน</item>
@@ -1206,8 +1196,6 @@
   <string name="RegistrationActivity_play_services_error">ข้อผิดพลาดเกี่ยวกับ Play Services</string>
   <string name="RegistrationActivity_google_play_services_is_updating_or_unavailable">Google Play Services กำลังปรับรุ่นหรือใช้ไม่ได้ชั่วคราว โปรดลองอีกครั้ง</string>
   <string name="RegistrationActivity_terms_and_privacy">เงื่อนไขและนโยบายความเป็นส่วนตัว</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_and_media_in_order_to_connect_with_friends">Signal ต้องการเข้าถึงสื่อและผู้ติดต่อที่คุณติดต่อด้วย เพื่อที่จะเชื่อมต่อคุณกับเพื่อน แลกเปลี่ยนข้อความ และโทรหากันแบบปลอดภัย</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_in_order_to_connect_with_friends">Signal ต้องการเข้าถึงผู้ติดต่อที่คุณติดต่อด้วย เพื่อที่จะเชื่อมต่อคุณกับเพื่อน แลกเปลี่ยนข้อความ และโทรหากันแบบปลอดภัย</string>
   <string name="RegistrationActivity_rate_limited_to_service">คุณได้พยายามลงทะเบียนด้วยหมายเลขนี้หลายครั้งเกินไป โปรดลองใหม่ในภายหลัง</string>
   <string name="RegistrationActivity_unable_to_connect_to_service">ไม่สามารถเชื่อมต่อบริการได้ โปรดตรวจสอบการเชื่อมต่อเครือข่ายและลองอีกครั้ง</string>
   <plurals name="RegistrationActivity_debug_log_hint">
@@ -1251,6 +1239,8 @@
   <string name="SharedContactView_add_to_contacts">เพิ่มลงในรายชื่อผู้ติดต่อ</string>
   <string name="SharedContactView_invite_to_signal">เชิญมาใช้ Signal</string>
   <string name="SharedContactView_message">ข้อความ Signal</string>
+  <!--SignalBottomActionBar-->
+  <string name="SignalBottomActionBar_more">ดูเพิ่ม</string>
   <!--SignalPinReminders-->
   <string name="SignalPinReminders_well_remind_you_again_later">เราจะเตือนคุณอีกครั้งในภายหลัง</string>
   <string name="SignalPinReminders_well_remind_you_again_tomorrow">เราจะเตือนคุณอีกครั้งพรุ่งนี้</string>
@@ -1571,6 +1561,7 @@
   <string name="ConversationUpdateItem_call_is_full">ห้องเต็ม</string>
   <string name="ConversationUpdateItem_invite_friends">เชิญเพื่อน</string>
   <string name="ConversationUpdateItem_enable_call_notifications">เปิดใช้การแจ้งเตือนการโทร</string>
+  <string name="ConversationUpdateItem_update_contact">ปรับปรุงผู้ติดต่อ</string>
   <string name="ConversationUpdateItem_no_groups_in_common_review_requests_carefully">ไม่มีกลุ่มที่เหมือนกันเลย โปรดพิจารณาคำขออย่างระวัง</string>
   <string name="ConversationUpdateItem_no_contacts_in_this_group_review_requests_carefully">ไม่มีผู้ติดต่อในกลุ่มนี้ โปรดพิจารณาคำขออย่างระวัง</string>
   <string name="ConversationUpdateItem_view">ดู</string>
@@ -1582,12 +1573,19 @@
   <string name="QuoteView_audio">เสียง</string>
   <string name="QuoteView_video">วิดีโอ</string>
   <string name="QuoteView_photo">รูปภาพ</string>
+  <string name="QuoteView_gif">GIF</string>
   <string name="QuoteView_view_once_media">สื่อที่ดูได้ครั้งเดียว</string>
   <string name="QuoteView_sticker">สติกเกอร์</string>
   <string name="QuoteView_you">คุณ</string>
   <string name="QuoteView_original_missing">ไม่พบข้อความเดิม</string>
   <!--conversation_fragment-->
   <string name="conversation_fragment__scroll_to_the_bottom_content_description">เลื่อนลงล่างสุด</string>
+  <!--BubbleOptOutTooltip-->
+  <!--Message to inform the user of what Android chat bubbles are-->
+  <!--Button to dismiss the tooltip for opting out of using Android bubbles-->
+  <string name="BubbleOptOutTooltip__not_now">ไม่ใช่ตอนนี้</string>
+  <!--Button to move to the system settings to control the use of Android bubbles-->
+  <string name="BubbleOptOutTooltip__turn_off">ปิด</string>
   <!--safety_number_change_dialog-->
   <string name="safety_number_change_dialog__safety_number_changes">การเปลี่ยนแปลงหมายเลขความปลอดภัย</string>
   <string name="safety_number_change_dialog__accept">ตอบรับ</string>
@@ -1725,21 +1723,18 @@
   <!--recipients_panel-->
   <string name="recipients_panel__to"><small>ใส่ชื่อหรือหมายเลข</small></string>
   <!--verify_display_fragment-->
-  <string name="verify_display_fragment__if_you_wish_to_verify_the_security_of_your_end_to_end_encryption_with_s"><![CDATA[หากคุณต้องการตรวจยืนยันความปลอดภัยในการเข้ารหัสลับระหว่างคุณกับ %s ให้เปรียบเทียบหมายเลขด้านบนนี้กับหมายเลขบนอุปกรณ์ของเขา หรืออีกทางหนึ่ง คุณสามารถสแกนรหัสบนโทรศัพท์ของเขา หรือขอให้เขาสแกนรหัสของคุณ <a href="https://signal.org/redirect/safety-numbers">เรียนรู้เพิ่มเติม</a>]]></string>
   <string name="verify_display_fragment__tap_to_scan">แตะเพื่อสแกน</string>
   <string name="verify_display_fragment__loading">กำลังโหลด…</string>
-  <string name="verify_display_fragment__verified">ตรวจยืนยันแล้ว</string>
+  <string name="verify_display_fragment__mark_as_verified">ทำเครื่องหมายว่าตรวจยืนยันแล้ว</string>
   <!--verify_identity-->
   <string name="verify_identity__share_safety_number">แบ่งปันหมายเลขความปลอดภัย</string>
+  <!--verity_scan_fragment-->
+  <string name="verify_scan_fragment__scan_the_qr_code_on_your_contact">สแกนรหัส QR บนอุปกรณ์ของผู้ติดต่อของคุณ</string>
   <!--webrtc_answer_decline_button-->
   <string name="webrtc_answer_decline_button__swipe_up_to_answer">ปัดขึ้นเพื่อรับสาย</string>
   <string name="webrtc_answer_decline_button__swipe_down_to_reject">ปัดลงเพื่อปฏิเสธ</string>
   <!--message_details_header-->
   <string name="message_details_header__issues_need_your_attention">มีปัญหาบางประการที่คุณควรให้ความสนใจ</string>
-  <string name="message_details_header__sent">ส่งแล้ว</string>
-  <string name="message_details_header__received">ได้รับแล้ว</string>
-  <string name="message_details_header__disappears">ลบตัวเอง</string>
-  <string name="message_details_header__via">ผ่าน</string>
   <!--message_details_recipient_header-->
   <string name="message_details_recipient_header__pending_send">รอดำเนินการ</string>
   <string name="message_details_recipient_header__sent_to">ส่งถึง</string>
@@ -1781,15 +1776,6 @@
   <string name="HelpFragment__debug_log">ปูมดีบัก:</string>
   <string name="HelpFragment__could_not_upload_logs">ไม่สามารถอัปโหลดปูม</string>
   <string name="HelpFragment__please_be_as_descriptive_as_possible">กรุณาอธิบายละเอียดที่สุดเท่าที่จะทำได้ เพื่อช่วยให้เราเข้าใจปัญหา</string>
-  <string-array name="HelpFragment__categories">
-    <item>-- กรุณาเลือกตัวเลือก --</item>
-    <item>บางสิ่งไม่ทำงาน</item>
-    <item>ขอความสามารถใหม่</item>
-    <item>มีคำถาม</item>
-    <item>มีข้อเสนอแนะ</item>
-    <item>อื่นๆ</item>
-    <item>การชำระเงิน</item>
-  </string-array>
   <!--ReactWithAnyEmojiBottomSheetDialogFragment-->
   <string name="ReactWithAnyEmojiBottomSheetDialogFragment__this_message">ข้อความนี้</string>
   <string name="ReactWithAnyEmojiBottomSheetDialogFragment__recently_used">เพิ่งใช้</string>
@@ -2241,7 +2227,6 @@
   <string name="Insights__title">Insights</string>
   <string name="InsightsDashboardFragment__title">Insights</string>
   <string name="InsightsDashboardFragment__signal_protocol_automatically_protected">โปรโตคอลของ Signal ปกป้อง %1$d%% ข้อความส่งออกอัตโนมัติเป็นเวลา %2$d วัน บทสนทนาระหว่างผู้ใช้ Signal จะเป็นการเข้ารหัสตั้งแต่ต้นทางถึงปลายทางเสมอ</string>
-  <string name="InsightsDashboardFragment__boost_your_signal">เพิ่มความปลอดภัยของการพูดคุยใน Signal</string>
   <string name="InsightsDashboardFragment__not_enough_data">ข้อมูลไม่พอ</string>
   <string name="InsightsDashboardFragment__your_insights_percentage_is_calculated_based_on">เปอร์เซ็นต์ข้อมูล insights ของคุณถูกคำนวณจากข้อความส่งออกที่ไม่ได้ลบตัวเองหรือถูกลบภายใน %1$d วันที่ผ่านมา </string>
   <string name="InsightsDashboardFragment__start_a_conversation">เริ่มการสนทนา</string>
@@ -2568,6 +2553,7 @@
   <string name="RecipientBottomSheet_block">ปิดกั้น</string>
   <string name="RecipientBottomSheet_unblock">เลิกปิดกั้น</string>
   <string name="RecipientBottomSheet_add_to_contacts">เพิ่มลงในรายชื่อผู้ติดต่อ</string>
+  <!--Error message that displays when a user tries to tap to view system contact details but has no app that supports it-->
   <string name="RecipientBottomSheet_add_to_a_group">เพิ่มเข้ากลุ่ม</string>
   <string name="RecipientBottomSheet_add_to_another_group">เพิ่มเข้าอีกกลุ่ม</string>
   <string name="RecipientBottomSheet_view_safety_number">ดูหมายเลขความปลอดภัย</string>
@@ -2605,8 +2591,8 @@
   <!--VoiceNotePlaybackPreparer-->
   <string name="VoiceNotePlaybackPreparer__failed_to_play_voice_message">การเล่นข้อความเสียงล้มเหลว</string>
   <!--VoiceNoteMediaDescriptionCompatFactory-->
-  <string name="VoiceNoteMediaDescriptionCompatFactory__voice_message">ข้อความเสียง %1$s</string>
-  <string name="VoiceNoteMediaDescriptionCompatFactory__s_to_s">%1$s ถึง %2$s</string>
+  <string name="VoiceNoteMediaItemFactory__voice_message">ข้อความเสียง %1$s</string>
+  <string name="VoiceNoteMediaItemFactory__s_to_s">%1$s ถึง %2$s</string>
   <!--StorageUtil-->
   <string name="StorageUtil__s_s">%1$s/%2$s</string>
   <string name="BlockedUsersActivity__s_has_been_blocked">\"%1$s\" ถูกปิดกั้นแล้ว</string>
@@ -2664,6 +2650,12 @@
   <string name="DeleteAccountFragment__failed_to_delete_account">การลบบัญชีผู้ใช้ล้มเหลว คุณมีเครือข่ายให้เชื่อมต่อหรือไม่?</string>
   <string name="DeleteAccountFragment__failed_to_delete_local_data">ลบข้อมูลในเครื่องไม่สำเร็จ คุณสามารถล้างข้อมูลเองได้ในการตั้งค่าแอปของระบบ</string>
   <string name="DeleteAccountFragment__launch_app_settings">การตั้งค่าการเริ่มแอป</string>
+  <!--Title of progress dialog shown when a user deletes their account and the process is leaving all groups-->
+  <!--Title of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <!--Message of progress dialog shown when a user deletes their account and the process is leaving groups-->
+  <!--Message of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <!--Title of error dialog shown when a network error occurs during account deletion-->
+  <!--Message of error dialog shown when a network error occurs during account deletion-->
   <!--DeleteAccountCountryPickerFragment-->
   <string name="DeleteAccountCountryPickerFragment__search_countries">ค้นหาประเทศ</string>
   <!--CreateGroupActivity-->
@@ -2820,6 +2812,20 @@
   <string name="AccountSettingsFragment__account">บัญชี</string>
   <string name="AccountSettingsFragment__youll_be_asked_less_frequently">จะมีการสอบถามคุณน้อยลงเมื่อเวลาผ่านไป</string>
   <string name="AccountSettingsFragment__require_your_signal_pin">ต้องการรหัส SignalPIN ในการลงทะเบียนหมายเลขโทรศัพท์ของคุณกับ Signal อีกครั้ง</string>
+  <!--ChangeNumberFragment-->
+  <string name="ChangeNumberFragment__continue">ทำต่อ</string>
+  <!--ChangeNumberEnterPhoneNumberFragment-->
+  <string name="ChangeNumberEnterPhoneNumberFragment__the_phone_number_you_entered_doesnt_match_your_accounts">หมายเลขโทรศัพท์ที่คุณป้อนไม่ตรงกับหมายเลขในบัญชีคุณ</string>
+  <!--ChangeNumberVerifyFragment-->
+  <!--ChangeNumberConfirmFragment-->
+  <string name="ChangeNumberConfirmFragment__edit_number">แก้ไขหมายเลข</string>
+  <!--ChangeNumberRegistrationLockFragment-->
+  <!--ChangeNumberPinDiffersFragment-->
+  <string name="ChangeNumberPinDiffersFragment__update_pin">เปลี่ยนรหัส PIN</string>
+  <!--ChangeNumberLockActivity-->
+  <string name="ChangeNumberLockActivity__retry">ลองใหม่</string>
+  <string name="ChangeNumberLockActivity__leave">ออก</string>
+  <string name="ChangeNumberLockActivity__submit_debug_log">ส่งปูมดีบัก</string>
   <!--ChatsSettingsFragment-->
   <string name="ChatsSettingsFragment__keyboard">แป้นพิมพ์</string>
   <string name="ChatsSettingsFragment__enter_key_sends">กด Enter เพื่อส่ง</string>
@@ -2830,6 +2836,12 @@
   <string name="NotificationsSettingsFragment__calls">การโทร</string>
   <string name="NotificationsSettingsFragment__notify_when">แจ้งเตือนเมื่อ…</string>
   <string name="NotificationsSettingsFragment__contact_joins_signal">ผู้ติดต่อเริ่มใช้ Signal</string>
+  <!--Notification preference header-->
+  <!--Notification preference option header-->
+  <!--Notification preference summary text-->
+  <!--NotificationProfilesFragment-->
+  <!--Title for notification profiles screen that shows all existing profiles-->
+  <!--Button text to create a notification profile-->
   <!--PrivacySettingsFragment-->
   <string name="PrivacySettingsFragment__blocked">ถูกปิดกั้น</string>
   <string name="PrivacySettingsFragment__d_contacts">%1$d ผู้ติดต่อ</string>
@@ -2871,6 +2883,9 @@
   <string name="HelpFragment__copyright_signal_messenger">ลิขสิทธิ์ Signal Messenger</string>
   <string name="HelpFragment__licenced_under_the_gplv3">อนุญาตให้ใช้ภายใต้ GPLv3</string>
   <!--DataAndStorageSettingsFragment-->
+  <string name="DataAndStorageSettingsFragment__sending_high_quality_media_will_use_more_data">การส่งสื่อคุณภาพสูงจะใช้ข้อมูลมากขึ้น</string>
+  <string name="DataAndStorageSettingsFragment__high">สูง</string>
+  <string name="DataAndStorageSettingsFragment__standard">มาตรฐาน</string>
   <string name="DataAndStorageSettingsFragment__calls">การโทร</string>
   <!--ChatColorSelectionFragment-->
   <string name="ChatColorSelectionFragment__auto">อัตโนมัติ</string>
@@ -2915,6 +2930,8 @@
   <string name="AddAProfilePhotoMegaphone__choose_a_look_and_color">เลือกหน้าตาและสีหรือปรับแต่งหน้าตาเริ่มต้นของคุณ</string>
   <string name="AddAProfilePhotoMegaphone__not_now">ไม่ใช่ตอนนี้</string>
   <string name="AddAProfilePhotoMegaphone__add_photo">เพิ่มรูปภาพ</string>
+  <!--BecomeASustainerMegaphone-->
+  <string name="BecomeASustainerMegaphone__no_thanks">ไม่ ขอบคุณ</string>
   <!--KeyboardPagerFragment-->
   <string name="KeyboardPagerFragment_emoji">อีโมจิ</string>
   <string name="KeyboardPagerFragment_open_emoji_search">หาอีโมจิ</string>
@@ -2993,7 +3010,7 @@
   <!--ContactFilterView-->
   <string name="ContactFilterView__search_name_or_number">ค้นหาชื่อหรือหมายเลข</string>
   <!--VoiceNotePlayerView-->
-  <string name="VoiceNotePlayerView__s_dot_s">%1$s · %2$s</string>
+  <string name="VoiceNotePlayerView__dot_s">· %1$s</string>
   <string name="VoiceNotePlayerView__stop_voice_message">หยุดข้อความเสียง</string>
   <string name="VoiceNotePlayerView__change_voice_message_speed">เปลี่ยนความเร็วข้อความเสียง</string>
   <string name="VoiceNotePlayerView__pause_voice_message">หยุดข้อความเสียงชั่วคราว</string>
@@ -3023,5 +3040,115 @@
   <string name="ContactSelectionListItem__dot_s">· %1$s</string>
   <!--DSLSettingsToolbar-->
   <string name="DSLSettingsToolbar__navigate_up">เลื่อนขึ้น</string>
+  <!--Media V2-->
+  <string name="ImageEditorHud__cancel">ยกเลิก</string>
+  <string name="ImageEditorHud__undo">เลิกทำ</string>
+  <string name="ImageEditorHud__delete">ลบ</string>
+  <string name="MediaCountIndicatorButton__send">ส่ง</string>
+  <string name="MediaReviewSelectedItem__tap_to_select">แตะเพื่อเลือก</string>
+  <string name="MediaReviewImagePageFragment__discard">ยกเลิก</string>
+  <string name="SelectFeaturedBadgeFragment__preview">ภาพตัวอย่าง</string>
+  <string name="SubscribeFragment__signal_is_powered_by_people_like_you">Signal ขับเคลื่อนโดยผู้คนเช่นคุณ</string>
+  <string name="SubscribeFragment__not_now">ไม่ใช่ตอนนี้</string>
+  <string name="SubscribeFragment__confirm">ยืนยัน</string>
+  <string name="SubscribeFragment__update">ปรับรุ่น</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__done">เสร็จสิ้น</string>
+  <string name="Boost__enter_custom_amount">กรอกจำนวนเอง</string>
+  <!--Displayed on "My Support" screen when user badge failed to be added to their account-->
+  <string name="ExpiredBadgeBottomSheetDialogFragment__not_now">ไม่ใช่ตอนนี้</string>
+  <string name="Subscription__contact_support">ติดต่อการสนับสนุน</string>
+  <string name="SubscribeFragment__processing_payment">กำลังประมวลผลการชำระเงิน…</string>
+  <!--Displayed in notification when user payment fails to process on Stripe-->
+  <!--Displayed on "My Support" screen when user subscription payment method failed.-->
+  <string name="NetworkFailure__retry">ลองใหม่</string>
+  <!--Title of create notification profile screen-->
+  <!--Hint text for create/edit notification profile name-->
+  <string name="EditNotificationProfileFragment__profile_name">ชื่อโปรไฟล์</string>
+  <!--Name has a max length, this shows how many characters are used out of the max-->
+  <string name="EditNotificationProfileFragment__count">%1$d/%2$d</string>
+  <!--Call to action button once the profile is named to continue to the next create step-->
+  <string name="EditNotificationProfileFragment__next">ถัดไป</string>
+  <!--Call to action button once the profile name is edited-->
+  <string name="EditNotificationProfileFragment__save">บันทึก</string>
+  <!--Title of edit notification profile screen-->
+  <!--Error message shown when attempting to create or edit a profile name to an existing profile name-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <string name="EditNotificationProfileFragment__work">ที่ทำงาน</string>
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Error message shown when attempting to next/save without a profile name-->
+  <!--Title for add recipients to notification profile screen in create flow-->
+  <!--Description of what the user should be doing with this screen-->
+  <!--Button text that launches the contact picker to select from-->
+  <!--Call to action button on contact picker for adding to profile-->
+  <string name="SelectRecipientsFragment__add">เพิ่ม</string>
+  <!--Notification profiles home fragment, shown when no profiles have been created yet-->
+  <!--Header shown above list of all notification profiles-->
+  <!--Button that starts the create new notification profile flow-->
+  <!--Profile active status, indicating the current profile is on for an unknown amount of time-->
+  <string name="NotificationProfilesFragment__on">เปิด</string>
+  <!--Button use to permanently delete a notification profile-->
+  <!--Snakbar message shown when removing a recipient from a profile-->
+  <!--Snackbar button text that will undo the recipient remove-->
+  <string name="NotificationProfileDetails__undo">เลิกทำ</string>
+  <!--Dialog message shown to confirm deleting a profile-->
+  <!--Dialog button to delete profile-->
+  <string name="NotificationProfileDetails__delete">ลบ</string>
+  <!--Title/accessibility text for edit icon to edit profile emoji/name-->
+  <!--Schedule description if all days are selected-->
+  <!--Profile status on if it is the active profile-->
+  <string name="NotificationProfileDetails__on">เปิด</string>
+  <!--Profile status on if it is not the active profile-->
+  <string name="NotificationProfileDetails__off">ปิด</string>
+  <!--Description of hours for schedule (start to end) times-->
+  <string name="NotificationProfileDetails__s_to_s">%1$s ถึง %2$s</string>
+  <!--Section header for exceptions to the notification profile-->
+  <!--Profile exception to allow all calls through the profile restrictions-->
+  <!--Profile exception to allow all @mentions through the profile restrictions-->
+  <!--Section header for showing schedule information-->
+  <!--If member list is long, will truncate the list and show an option to then see all when tapped-->
+  <string name="NotificationProfileDetails__see_all">ดูทั้งหมด</string>
+  <!--Title for add schedule to profile in create flow-->
+  <!--Descriptor text indicating what the user can do with this screen-->
+  <!--Text shown next to toggle switch to enable/disable schedule-->
+  <!--Label for showing the start time for the schedule-->
+  <string name="EditNotificationProfileSchedule__start">เริ่ม</string>
+  <!--Label for showing the end time for the schedule-->
+  <!--First letter of Sunday-->
+  <!--First letter of Monday-->
+  <!--First letter of Tuesday-->
+  <!--First letter of Wednesday-->
+  <!--First letter of Thursday-->
+  <!--First letter of Friday-->
+  <!--First letter of Saturday-->
+  <!--Title of select time dialog shown when setting start time for schedule-->
+  <!--Title of select time dialog shown when setting end time for schedule-->
+  <!--If in edit mode, call to action button text show to save schedule to profile-->
+  <string name="EditNotificationProfileSchedule__save">บันทึก</string>
+  <!--If in create mode, call to action button text to show to skip enabling a schedule-->
+  <string name="EditNotificationProfileSchedule__skip">ข้าม</string>
+  <!--If in create mode, call to action button text to show to use the enabled schedule and move to the next screen-->
+  <string name="EditNotificationProfileSchedule__next">ถัดไป</string>
+  <!--Error message shown if trying to save/use a schedule with no days selected-->
+  <!--Title for final screen shown after completing a profile creation-->
+  <!--Call to action button to press to close the created screen and move to the profile details screen-->
+  <string name="NotificationProfileCreated__done">เสร็จสิ้น</string>
+  <!--Descriptor text shown to indicate how to manually turn a profile on/off-->
+  <!--Descriptor text shown to indicate you can add a schedule later since you did not add one during create flow-->
+  <!--Descriptor text shown to indicate your profile will follow the schedule set during create flow-->
+  <!--Button text shown in profile selection bottom sheet to create a new profile-->
+  <!--Manual enable option to manually enable a profile for 1 hour-->
+  <!--Manual enable option to manually enable a profile until a set time (currently 6pm or 8am depending on what is next)-->
+  <string name="NotificationProfileSelection__until_s">จนถึง %1$s</string>
+  <!--Option to view profile details-->
+  <!--Descriptor text indicating how long a profile will be on when there is a time component associated with it-->
+  <!--Title for notification profile megaphone-->
+  <!--Description for notification profile megaphone-->
+  <!--Call to action button to create a profile from megaphone-->
+  <!--Button to dismiss notification profile megaphone-->
+  <string name="NotificationProfilesMegaphone__not_now">ไม่ใช่ตอนนี้</string>
+  <!--Displayed in a toast when we fail to open the ringtone picker-->
   <!--EOF-->
 </resources>

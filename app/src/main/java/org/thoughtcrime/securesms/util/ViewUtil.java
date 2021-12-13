@@ -19,9 +19,7 @@ package org.thoughtcrime.securesms.util;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
-import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.graphics.Paint;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -41,7 +39,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.ContextThemeWrapper;
-import androidx.core.view.ViewCompat;
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 import androidx.lifecycle.Lifecycle;
 
@@ -120,6 +117,10 @@ public final class ViewUtil {
 
   public static ListenableFuture<Boolean> fadeOut(@NonNull View view, int duration, int visibility) {
     return animateOut(view, getAlphaAnimation(1f, 0f, duration), visibility);
+  }
+
+  public static ListenableFuture<Boolean> animateOut(final @NonNull View view, final @NonNull Animation animation) {
+    return animateOut(view, animation, View.GONE);
   }
 
   public static ListenableFuture<Boolean> animateOut(final @NonNull View view, final @NonNull Animation animation, final int visibility) {
@@ -229,6 +230,12 @@ public final class ViewUtil {
     }
   }
 
+  public static void setVisibilityIfNonNull(@Nullable View view, int visibility) {
+    if (view != null) {
+      view.setVisibility(visibility);
+    }
+  }
+
   public static int getLeftMargin(@NonNull View view) {
     if (isLtr(view)) {
       return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).leftMargin;
@@ -241,6 +248,10 @@ public final class ViewUtil {
       return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).rightMargin;
     }
     return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).leftMargin;
+  }
+
+  public static int getTopMargin(@NonNull View view) {
+    return ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).topMargin;
   }
 
   public static void setLeftMargin(@NonNull View view, int margin) {
@@ -271,6 +282,10 @@ public final class ViewUtil {
   public static void setBottomMargin(@NonNull View view, int margin) {
     ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).bottomMargin = margin;
     view.requestLayout();
+  }
+
+  public static int getWidth(@NonNull View view) {
+    return view.getLayoutParams().width;
   }
 
   public static void setPaddingTop(@NonNull View view, int padding) {

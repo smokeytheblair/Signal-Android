@@ -10,6 +10,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -27,7 +28,7 @@ import com.airbnb.lottie.model.KeyPath;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.animation.AnimationCompleteListener;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
@@ -207,12 +208,16 @@ public class ConversationItemFooter extends ConstraintLayout {
     setBackground(null);
   }
 
-  public @Nullable Projection getProjection() {
+  public @Nullable Projection getProjection(@NonNull ViewGroup coordinateRoot) {
     if (getVisibility() == VISIBLE) {
-      return Projection.relativeToViewRoot(this, new Projection.Corners(ViewUtil.dpToPx(11)));
+      return Projection.relativeToParent(coordinateRoot, this, new Projection.Corners(ViewUtil.dpToPx(11)));
     } else {
       return null;
     }
+  }
+
+  public TextView getDateView() {
+    return dateView;
   }
 
   private void notifyTouchDelegateChanged(@NonNull Rect rect, @NonNull View touchDelegate) {
@@ -355,8 +360,11 @@ public class ConversationItemFooter extends ConstraintLayout {
           long                   id                = messageRecord.getId();
           boolean                mms               = messageRecord.isMms();
 
-          if (mms) DatabaseFactory.getMmsDatabase(getContext()).markExpireStarted(id);
-          else DatabaseFactory.getSmsDatabase(getContext()).markExpireStarted(id);
+          if (mms) {
+            SignalDatabase.mms().markExpireStarted(id);
+          } else {
+            SignalDatabase.sms().markExpireStarted(id);
+          }
 
           expirationManager.scheduleDeletion(id, mms, messageRecord.getExpiresIn());
         });

@@ -13,7 +13,6 @@ import com.annimon.stream.Stream;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
-import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
 import org.signal.libsignal.metadata.certificate.InvalidCertificateException;
 import org.signal.libsignal.metadata.certificate.SenderCertificate;
@@ -24,7 +23,7 @@ import org.thoughtcrime.securesms.blurhash.BlurHash;
 import org.thoughtcrime.securesms.contactshare.Contact;
 import org.thoughtcrime.securesms.contactshare.ContactModelMapper;
 import org.thoughtcrime.securesms.crypto.ProfileKeyUtil;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.Mention;
 import org.thoughtcrime.securesms.database.model.StickerRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
@@ -43,7 +42,6 @@ import org.thoughtcrime.securesms.net.NotPushRegisteredException;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.RecipientUtil;
-import org.thoughtcrime.securesms.registration.PushChallengeRequest;
 import org.thoughtcrime.securesms.transport.RetryLaterException;
 import org.thoughtcrime.securesms.util.Base64;
 import org.thoughtcrime.securesms.util.BitmapDecodingException;
@@ -54,7 +52,6 @@ import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.Util;
 import org.whispersystems.libsignal.util.guava.Optional;
-import org.whispersystems.signalservice.api.SignalServiceAccountManager;
 import org.whispersystems.signalservice.api.crypto.UnidentifiedAccessPair;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentPointer;
@@ -67,10 +64,7 @@ import org.whispersystems.signalservice.api.messages.shared.SharedContact;
 import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import org.whispersystems.signalservice.api.push.exceptions.NonSuccessfulResponseCodeException;
 import org.whispersystems.signalservice.api.push.exceptions.ProofRequiredException;
-import org.whispersystems.signalservice.api.push.exceptions.PushNetworkException;
 import org.whispersystems.signalservice.api.push.exceptions.ServerRejectedException;
-import org.whispersystems.signalservice.api.push.exceptions.UnregisteredUserException;
-import org.whispersystems.signalservice.internal.push.ProofRequiredResponse;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -125,7 +119,6 @@ public abstract class PushSendJob extends SendJob {
 
   @Override
   public void onRetry() {
-    super.onRetry();
     Log.i(TAG, "onRetry()");
 
     if (getRunAttempt() > 1) {
@@ -296,8 +289,8 @@ public abstract class PushSendJob extends SendJob {
   }
 
   protected static void notifyMediaMessageDeliveryFailed(Context context, long messageId) {
-    long      threadId  = DatabaseFactory.getMmsDatabase(context).getThreadIdForMessage(messageId);
-    Recipient recipient = DatabaseFactory.getThreadDatabase(context).getRecipientForThreadId(threadId);
+    long      threadId  = SignalDatabase.mms().getThreadIdForMessage(messageId);
+    Recipient recipient = SignalDatabase.threads().getRecipientForThreadId(threadId);
 
     if (threadId != -1 && recipient != null) {
       ApplicationDependencies.getMessageNotifier().notifyMessageDeliveryFailed(context, recipient, threadId);
@@ -347,7 +340,7 @@ public abstract class PushSendJob extends SendJob {
           thumbnail = builder.build();
         }
 
-        quoteAttachments.add(new SignalServiceDataMessage.Quote.QuotedAttachment(attachment.getContentType(),
+        quoteAttachments.add(new SignalServiceDataMessage.Quote.QuotedAttachment(attachment.isVideoGif() ? MediaUtil.IMAGE_GIF : attachment.getContentType(),
                                                                                  attachment.getFileName(),
                                                                                  thumbnail));
       } catch (BitmapDecodingException e) {
@@ -355,9 +348,14 @@ public abstract class PushSendJob extends SendJob {
       }
     }
 
-    Recipient            quoteAuthorRecipient = Recipient.resolved(quoteAuthor);
-    SignalServiceAddress quoteAddress         = RecipientUtil.toSignalServiceAddress(context, quoteAuthorRecipient);
-    return Optional.of(new SignalServiceDataMessage.Quote(quoteId, quoteAddress, quoteBody, quoteAttachments, quoteMentions));
+    Recipient quoteAuthorRecipient = Recipient.resolved(quoteAuthor);
+
+    if (quoteAuthorRecipient.isMaybeRegistered()) {
+      SignalServiceAddress quoteAddress = RecipientUtil.toSignalServiceAddress(context, quoteAuthorRecipient);
+      return Optional.of(new SignalServiceDataMessage.Quote(quoteId, quoteAddress, quoteBody, quoteAttachments, quoteMentions));
+    } else {
+      return Optional.absent();
+    }
   }
 
   protected Optional<SignalServiceDataMessage.Sticker> getStickerFor(OutgoingMediaMessage message) {
@@ -371,7 +369,7 @@ public abstract class PushSendJob extends SendJob {
       byte[]                  packId     = Hex.fromStringCondensed(stickerAttachment.getSticker().getPackId());
       byte[]                  packKey    = Hex.fromStringCondensed(stickerAttachment.getSticker().getPackKey());
       int                     stickerId  = stickerAttachment.getSticker().getStickerId();
-      StickerRecord           record     = DatabaseFactory.getStickerDatabase(context).getSticker(stickerAttachment.getSticker().getPackId(), stickerId, false);
+      StickerRecord           record     = SignalDatabase.stickers().getSticker(stickerAttachment.getSticker().getPackId(), stickerId, false);
       String                  emoji      = record != null ? record.getEmoji() : null;
       SignalServiceAttachment attachment = getAttachmentPointerFor(stickerAttachment);
 
@@ -411,7 +409,7 @@ public abstract class PushSendJob extends SendJob {
 
   List<SignalServiceDataMessage.Mention> getMentionsFor(@NonNull List<Mention> mentions) {
     return Stream.of(mentions)
-                 .map(m -> new SignalServiceDataMessage.Mention(Recipient.resolved(m.getRecipientId()).requireUuid(), m.getStart(), m.getLength()))
+                 .map(m -> new SignalServiceDataMessage.Mention(Recipient.resolved(m.getRecipientId()).requireAci(), m.getStart(), m.getLength()))
                  .toList();
   }
 
@@ -449,7 +447,7 @@ public abstract class PushSendJob extends SendJob {
   }
 
   protected SignalServiceSyncMessage buildSelfSendSyncMessage(@NonNull Context context, @NonNull SignalServiceDataMessage message, Optional<UnidentifiedAccessPair> syncAccess) {
-    SignalServiceAddress  localAddress = new SignalServiceAddress(TextSecurePreferences.getLocalUuid(context), TextSecurePreferences.getLocalNumber(context));
+    SignalServiceAddress  localAddress = new SignalServiceAddress(Recipient.self().requireAci(), Recipient.self().requireE164());
     SentTranscriptMessage transcript   = new SentTranscriptMessage(Optional.of(localAddress),
                                                                    message.getTimestamp(),
                                                                    message,
@@ -462,6 +460,8 @@ public abstract class PushSendJob extends SendJob {
   protected void handleProofRequiredException(@NonNull ProofRequiredException proofRequired, @Nullable Recipient recipient, long threadId, long messageId, boolean isMms)
       throws ProofRequiredException, RetryLaterException
   {
+    Log.w(TAG, "[Proof Required] Options: " + proofRequired.getOptions());
+
     try {
       if (proofRequired.getOptions().contains(ProofRequiredException.Option.PUSH_CHALLENGE)) {
         ApplicationDependencies.getSignalServiceAccountManager().requestRateLimitPushChallenge();
@@ -485,9 +485,9 @@ public abstract class PushSendJob extends SendJob {
 
     warn(TAG, "[Proof Required] Marking message as rate-limited. (id: " + messageId + ", mms: " + isMms + ", thread: " + threadId + ")");
     if (isMms) {
-      DatabaseFactory.getMmsDatabase(context).markAsRateLimited(messageId);
+      SignalDatabase.mms().markAsRateLimited(messageId);
     } else {
-      DatabaseFactory.getSmsDatabase(context).markAsRateLimited(messageId);
+      SignalDatabase.sms().markAsRateLimited(messageId);
     }
 
     if (proofRequired.getOptions().contains(ProofRequiredException.Option.RECAPTCHA)) {

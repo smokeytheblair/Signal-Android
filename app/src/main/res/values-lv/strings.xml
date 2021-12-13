@@ -185,9 +185,6 @@
   <string name="ConversationItem_this_message_was_deleted">Ziņa ir izdzēsts.</string>
   <string name="ConversationItem_you_deleted_this_message">Jūs izdzēsāt ziņu.</string>
   <!--ConversationActivity-->
-  <string name="ConversationActivity_reset_secure_session_question">Atstatīt šifrēto sarakstes sesiju?</string>
-  <string name="ConversationActivity_this_may_help_if_youre_having_encryption_problems">Tas var palīdzēt, ja sarakstē saskaraties ar šifrēšanas problēmām. Jūsu ziņas tiks saglabātas.</string>
-  <string name="ConversationActivity_reset">Atstatīt</string>
   <string name="ConversationActivity_add_attachment">Pievienot pielikumu</string>
   <string name="ConversationActivity_select_contact_info">Izvēlēties/atzīmēt kontaktinformāciju</string>
   <string name="ConversationActivity_compose_message">Rakstīt ziņu</string>
@@ -307,6 +304,7 @@
   <string name="ConversationFragment_not_now">Ne tagad</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed">Jūsu drošības numurs ar %s ir mainījies</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed_likey_because_they_reinstalled_signal">Jūsu drošības numurs ar %s ir mainījies, iespējams, tāpēc, ka viņi pārinstalēja signālu vai nomainīja ierīces. Pieskarieties \"Verificēt\", lai apstiprinātu jauno drošības numuru. Tas nav obligāti darāms.</string>
+  <!--Message shown to indicate which notification profile is on/active-->
   <plurals name="ConversationListFragment_delete_selected_conversations">
     <item quantity="zero">Vai izdzēst izvēlētās sarunas?</item>
     <item quantity="one">Vai izdzēst izvēlētās sarunu?</item>
@@ -330,6 +328,11 @@
     <item quantity="one">Pārvietoja sarunu uz iesūtni </item>
     <item quantity="other">Pārvietoja %d sarunas uz iesūtni</item>
   </plurals>
+  <string name="ConversationListFragment_select">Atlasīt</string>
+  <string name="ConversationListFragment_select_all">Atzīmēt visus</string>
+  <!--Show in conversation list overflow menu to open selection bottom sheet-->
+  <!--Tooltip shown after you have created your first notification profile-->
+  <!--Message shown in top toast to indicate the named profile is on-->
   <!--ConversationListItem-->
   <string name="ConversationListItem_key_exchange_message">Atslēgapmaiņas ziņa</string>
   <!--ConversationListItemAction-->
@@ -410,11 +413,6 @@
   <string name="DeviceListItem_today">Šodien</string>
   <!--DocumentView-->
   <string name="DocumentView_unnamed_file">Bezvārda fails</string>
-  <!--DonateMegaphone-->
-  <string name="DonateMegaphone_donate_to_signal">Ziedot/dāvināt Signālam</string>
-  <string name="DonateMegaphone_Signal_is_powered_by_people_like_you_show_your_support_today">Signālu veido un darbina tādi paši cilvēki kā jūs. Atbalstiet jau šodien!</string>
-  <string name="DonateMegaphone_donate">Ziedojiet</string>
-  <string name="DonateMegaphone_no_thanks">Nē, paldies</string>
   <!--GroupCallingMegaphone-->
   <string name="GroupCallingMegaphone__introducing_group_calls">Iepazīstināšana ar grupu zvaniem</string>
   <string name="GroupCallingMegaphone__open_a_new_group_to_start">Atveriet/izveidojiet jaunu grupu, lai sāktu bezmaksas šifrētu grupas zvanu</string>
@@ -720,6 +718,7 @@
   <string name="CustomNotificationsDialogFragment__enabled">Iespējota</string>
   <string name="CustomNotificationsDialogFragment__disabled">Atspējota</string>
   <string name="CustomNotificationsDialogFragment__default">Noklusējuma</string>
+  <string name="CustomNotificationsDialogFragment__unknown">Nezināms</string>
   <!--ShareableGroupLinkDialogFragment-->
   <string name="ShareableGroupLinkDialogFragment__shareable_group_link">Kopīgojama grupas saite</string>
   <string name="ShareableGroupLinkDialogFragment__manage_and_share">Pārvaldīt &amp; kopīgot</string>
@@ -786,16 +785,10 @@
   <!--InviteActivity-->
   <string name="InviteActivity_share">Kopīgot/koplietot</string>
   <string name="InviteActivity_share_with_contacts">Kopīgot ar kontaktpersonām</string>
-  <string name="InviteActivity_choose_how_to_share">Izvēlieties, kā kopīgot/koplietot</string>
   <string name="InviteActivity_cancel">Atcelt</string>
   <string name="InviteActivity_sending">Tiek sūtīts…</string>
   <string name="InviteActivity_invitations_sent">Uzaicinājums nosutīts</string>
   <string name="InviteActivity_invite_to_signal">Uzaicināt uz Signālu</string>
-  <plurals name="InviteActivity_send_sms_to_friends">
-    <item quantity="zero">SŪTĪT SMS %d DRAUGIEM</item>
-    <item quantity="one">SŪTĪT SMS %d DRAUGAM</item>
-    <item quantity="other">SŪTĪT SMS %d DRAUGIEM</item>
-  </plurals>
   <plurals name="InviteActivity_send_sms_invites">
     <item quantity="zero">Sūtīt %dSMS ielūgumus?</item>
     <item quantity="one">Sūtīt %d SMS Ielūgumu?</item>
@@ -803,7 +796,6 @@
   </plurals>
   <string name="InviteActivity_lets_switch_to_signal">Pārejam uz drošu saziņu, pārejam uz Signal: %1$s</string>
   <string name="InviteActivity_no_app_to_share_to">Izskatās, ka Tev nav nevienas aplikācijas, caur kuru dalīties.</string>
-  <string name="InviteActivity_friends_dont_let_friends_text_unencrypted">Draugi neļauj draugiem sazināties nedroši (nešifrēti).</string>
   <!--LearnMoreTextView-->
   <string name="LearnMoreTextView_learn_more">Lasīt vairāk</string>
   <!--LongMessageActivity-->
@@ -842,16 +834,7 @@
   <string name="MediaOverviewActivity_Grid_view_description">Režģa skats</string>
   <string name="MediaOverviewActivity_List_view_description">Saraksta skats</string>
   <string name="MediaOverviewActivity_Selected_description">Izvēlētais</string>
-  <plurals name="MediaOverviewActivity_d_items_s">
-    <item quantity="zero">%1$d vienums %2$s</item>
-    <item quantity="one">%1$d vienums%2$s</item>
-    <item quantity="other">%1$d vienumi %2$s</item>
-  </plurals>
-  <plurals name="MediaOverviewActivity_d_items">
-    <item quantity="zero">%1$d vienums</item>
-    <item quantity="one">%1$d vienums</item>
-    <item quantity="other">%1$d vienumi</item>
-  </plurals>
+  <string name="MediaOverviewActivity_select_all">Atzīmēt visus</string>
   <string name="MediaOverviewActivity_file">Fails</string>
   <string name="MediaOverviewActivity_audio">Audio</string>
   <string name="MediaOverviewActivity_video">Video</string>
@@ -879,10 +862,10 @@
   <string name="NotificationBarManager__establishing_signal_call">Signāla zvana savienojuma izveide</string>
   <string name="NotificationBarManager__incoming_signal_call">Ienākošs Signal zvans</string>
   <string name="NotificationBarManager__stopping_signal_call_service">Tiek apturēts Sigāla zvana pakalpojums</string>
-  <string name="NotificationBarManager__deny_call">Noraidīt</string>
   <string name="NotificationBarManager__answer_call">Atbildēt</string>
   <string name="NotificationBarManager__end_call">Beigt zvanu</string>
   <string name="NotificationBarManager__cancel_call">Atcelt zvanu</string>
+  <string name="NotificationBarManager__join_call">Pievienoties sarunai</string>
   <!--NotificationsMegaphone-->
   <string name="NotificationsMegaphone_turn_on_notifications">Iespējot Paziņojumus?</string>
   <string name="NotificationsMegaphone_never_miss_a_message">Nepalaidiet garām ziņas no Jūsu kontaktiem un grupām.</string>
@@ -976,7 +959,7 @@
   <string name="MessageRecord_s_made_s_an_admin">%1$spiešķīra%2$sadministratora tiesības.</string>
   <string name="MessageRecord_s_made_you_an_admin">%1$spiešķīra Jums administratora tiesības.</string>
   <string name="MessageRecord_you_revoked_admin_privileges_from_s">Jūs atsaucāt %1$sadministratora tiesības.</string>
-  <string name="MessageRecord_s_revoked_your_admin_privileges">%1$satsauca Jūsu administratora tiesības.\"</string>
+  <string name="MessageRecord_s_revoked_your_admin_privileges">%1$satsauca Jūsu administratora tiesības.</string>
   <string name="MessageRecord_s_revoked_admin_privileges_from_s">%1$satsauca administratora tiesības no %2$s.</string>
   <string name="MessageRecord_s_is_now_an_admin">%1$s tagad ir administrators.</string>
   <string name="MessageRecord_you_are_now_an_admin">Jūs tagad esat administrators.</string>
@@ -1259,13 +1242,12 @@
   <string name="WebRtcCallActivity__signal_s">Signal %1$s</string>
   <string name="WebRtcCallActivity__calling">Zvana…</string>
   <!--WebRtcCallView-->
-  <string name="WebRtcCallView__signal_voice_call">Signal balss zvans…</string>
-  <string name="WebRtcCallView__signal_video_call">Signal video zvans…</string>
+  <string name="WebRtcCallView__signal_call">Zvana signāls</string>
+  <string name="WebRtcCallView__signal_video_call">Signal videozvans</string>
   <string name="WebRtcCallView__start_call">Sākt zvanu</string>
   <string name="WebRtcCallView__join_call">Pievienoties zvanam/sarunai</string>
   <string name="WebRtcCallView__call_is_full">Zvana/sarunas dalībnieku limits izsmelts</string>
   <string name="WebRtcCallView__the_maximum_number_of_d_participants_has_been_Reached_for_this_call">Šīs sarunas maksimālais dalībnieku skaits %1$d ir sasniegts. Mēģiniet vēlāk.</string>
-  <string name="WebRtcCallView__s_group_call">\"%1$s\" Grupas zvans</string>
   <string name="WebRtcCallView__view_participants_list">Skatīt dalībniekus</string>
   <string name="WebRtcCallView__your_video_is_off">Jūsu video ir izslēgts</string>
   <string name="WebRtcCallView__reconnecting">Savienojas vēlreiz…</string>
@@ -1280,6 +1262,11 @@
     <item quantity="one">%1$s, %2$s un %3$d cits piedalās šai zvanā</item>
     <item quantity="other">%1$s, %2$s un %3$d citi piedalās šai zvanā</item>
   </plurals>
+  <string name="WebRtcCallView__flip">Pārslēgt</string>
+  <string name="WebRtcCallView__speaker">Skaļrunis</string>
+  <string name="WebRtcCallView__camera">Kamera</string>
+  <string name="WebRtcCallView__mute">Atspējot ziņas</string>
+  <string name="WebRtcCallView__end_call">Beigt zvanu</string>
   <!--CallParticipantsListDialog-->
   <plurals name="CallParticipantsListDialog_in_this_call_d_people">
     <item quantity="zero">Šajā zvanā · %1$d cilvēks</item>
@@ -1324,8 +1311,6 @@ tālruņa numurs
   <string name="RegistrationActivity_play_services_error">Google Play pakalpojumu kļūme</string>
   <string name="RegistrationActivity_google_play_services_is_updating_or_unavailable">Google Play pakalpojumi tiek aktualizēti vai īslaicīgi nav pieejami. Lūdzu, mēģiniet vēlreiz.</string>
   <string name="RegistrationActivity_terms_and_privacy">Noteikumi &amp; privātuma politika</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_and_media_in_order_to_connect_with_friends">Signal ir nepieciešama piekļuve Jūsu kontaktpersonām un multividei, lai sazinātos ar draugiem, apmainītos ar ziņām un veiktu drošus zvanus</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_in_order_to_connect_with_friends">Lietotnei Signal ir nepieciešama piekļuve jūsu kontaktpersonām, lai jūs varētu sazināties ar draugiem, apmainīties ar ziņām un veikt drošus zvanus</string>
   <string name="RegistrationActivity_rate_limited_to_service">Pārāk daudz šī numura reģistrēšanas mēģinājumu. Vēlāk mēģiniet vēlreiz.</string>
   <string name="RegistrationActivity_unable_to_connect_to_service">Nevar izveidot savienojumu ar pakalpojumu. Lūdzu, pārbaudiet tīkla savienojumu un mēģiniet vēlreiz.</string>
   <plurals name="RegistrationActivity_debug_log_hint">
@@ -1371,6 +1356,8 @@ tālruņa numurs
   <string name="SharedContactView_add_to_contacts">Pievienot kontaktiem</string>
   <string name="SharedContactView_invite_to_signal">Uzaicināt uz Signal</string>
   <string name="SharedContactView_message">Signal ziņa</string>
+  <!--SignalBottomActionBar-->
+  <string name="SignalBottomActionBar_more">Vēl</string>
   <!--SignalPinReminders-->
   <string name="SignalPinReminders_well_remind_you_again_later">Vēlāk atgādināsim vēlreiz.</string>
   <string name="SignalPinReminders_well_remind_you_again_tomorrow">Atkārtoti atgādināsim rīt.</string>
@@ -1699,6 +1686,7 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="ConversationUpdateItem_call_is_full">Zvana/sarunas dalībnieku limits izsmelts</string>
   <string name="ConversationUpdateItem_invite_friends">Uzaicināt draugus</string>
   <string name="ConversationUpdateItem_enable_call_notifications">Iespējot zvana paziņojumus</string>
+  <string name="ConversationUpdateItem_update_contact">Atjaunināt kontaktpersonu</string>
   <string name="ConversationUpdateItem_no_groups_in_common_review_requests_carefully">Nav kopīgu grupu. Pārskatiet pieprasījumus rūpīgi.</string>
   <string name="ConversationUpdateItem_no_contacts_in_this_group_review_requests_carefully">Šajā grupā nav kontaktpersonu. Pārskatiet pieprasījumus rūpīgi.</string>
   <string name="ConversationUpdateItem_view">Skatīt</string>
@@ -1710,12 +1698,19 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="QuoteView_audio">Audio</string>
   <string name="QuoteView_video">Video</string>
   <string name="QuoteView_photo">Attēls</string>
+  <string name="QuoteView_gif">GIF</string>
   <string name="QuoteView_view_once_media">Vienreiz skatāms multivides fails</string>
   <string name="QuoteView_sticker">Uzlīme</string>
   <string name="QuoteView_you">Jūs</string>
   <string name="QuoteView_original_missing">Oriģinālā ziņa netika atrasta</string>
   <!--conversation_fragment-->
   <string name="conversation_fragment__scroll_to_the_bottom_content_description">Ritināt līdz apakšai </string>
+  <!--BubbleOptOutTooltip-->
+  <!--Message to inform the user of what Android chat bubbles are-->
+  <!--Button to dismiss the tooltip for opting out of using Android bubbles-->
+  <string name="BubbleOptOutTooltip__not_now">Ne tagad</string>
+  <!--Button to move to the system settings to control the use of Android bubbles-->
+  <string name="BubbleOptOutTooltip__turn_off">Izslēgt</string>
   <!--safety_number_change_dialog-->
   <string name="safety_number_change_dialog__safety_number_changes">Drošības numura izmaiņas</string>
   <string name="safety_number_change_dialog__accept">Apstiprināt</string>
@@ -1867,21 +1862,18 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <!--recipients_panel-->
   <string name="recipients_panel__to"><small>Ievadiet vārdu vai numuru</small></string>
   <!--verify_display_fragment-->
-  <string name="verify_display_fragment__if_you_wish_to_verify_the_security_of_your_end_to_end_encryption_with_s"><![CDATA[Ja vēlaties pārbaudīt šifrēšanas drošību ar %s, salīdziniet iepriekš norādīto numuru ar numuru ierīcē. Variet noskenēt kodu viņu tālrunī vai palūgt, lai noskenē Jūsu kodu.<a href="https://signal.org/redirect/safety-numbers">Lasīt vairāk.</a>]]></string>
   <string name="verify_display_fragment__tap_to_scan">Pieskarieties, lai skenētu</string>
   <string name="verify_display_fragment__loading">Lādē…</string>
-  <string name="verify_display_fragment__verified">Pārbaudīts</string>
+  <string name="verify_display_fragment__mark_as_verified">Atzīmēt kā apstiprinātu</string>
   <!--verify_identity-->
   <string name="verify_identity__share_safety_number">Dalīties ar drošības numuru</string>
+  <!--verity_scan_fragment-->
+  <string name="verify_scan_fragment__scan_the_qr_code_on_your_contact">Skenējiet QR kodu savas kontaktpersonas ierīcē.</string>
   <!--webrtc_answer_decline_button-->
   <string name="webrtc_answer_decline_button__swipe_up_to_answer">Vilkt uz augšu, lai atbildētu</string>
   <string name="webrtc_answer_decline_button__swipe_down_to_reject">Vilkt uz leju, lai noraidītu</string>
   <!--message_details_header-->
   <string name="message_details_header__issues_need_your_attention">Daži jautājumi prasa jūsu uzmanību.</string>
-  <string name="message_details_header__sent">Nosūtīts</string>
-  <string name="message_details_header__received">Saņemts</string>
-  <string name="message_details_header__disappears">Pazūd</string>
-  <string name="message_details_header__via">Ar</string>
   <!--message_details_recipient_header-->
   <string name="message_details_recipient_header__pending_send">Gaidīšanas statusā</string>
   <string name="message_details_recipient_header__sent_to">Noūtīts</string>
@@ -1923,15 +1915,6 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="HelpFragment__debug_log">Atkļūdošanas žurnāls:</string>
   <string name="HelpFragment__could_not_upload_logs">Nebija iespējams augšuplādēt žurnālus</string>
   <string name="HelpFragment__please_be_as_descriptive_as_possible">Lūdzu, esiet pēc iespējas aprakstošāks, lai palīdzētu mums izprast problēmu.</string>
-  <string-array name="HelpFragment__categories">
-    <item>-- Atlasiet opciju --</item>
-    <item>Kaut kas nedarbojas</item>
-    <item>Funkcijas pieprasījums</item>
-    <item>Jautājums</item>
-    <item>Atsauksmes</item>
-    <item>Cits</item>
-    <item>Maksājumi</item>
-  </string-array>
   <!--ReactWithAnyEmojiBottomSheetDialogFragment-->
   <string name="ReactWithAnyEmojiBottomSheetDialogFragment__this_message">Šī ziņa</string>
   <string name="ReactWithAnyEmojiBottomSheetDialogFragment__recently_used">Nesen lietotie</string>
@@ -2385,7 +2368,6 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="Insights__title">Ieskati</string>
   <string name="InsightsDashboardFragment__title">Ieskati</string>
   <string name="InsightsDashboardFragment__signal_protocol_automatically_protected">Signāla protokols automātiski pasargājis %1$dno %% no tavām izejošajām ziņām pēdējo %2$d dienu laikā. Sarunas starp Signāla lietotājiem vienmēr tiek šifrētas no viena gala līdz otram (end-to-end).</string>
-  <string name="InsightsDashboardFragment__boost_your_signal">Uzlabot (boost) Signālu</string>
   <string name="InsightsDashboardFragment__not_enough_data">Nav pietiekami datu</string>
   <string name="InsightsDashboardFragment__your_insights_percentage_is_calculated_based_on">Jūsu Ieskatu procenti tiek aprēķināti balstoties uz izejošo ziņu skaita pēdējās %1$d dienās, kuras nav pagaisušas vai izdzēstas.</string>
   <string name="InsightsDashboardFragment__start_a_conversation">Sākt sarunu</string>
@@ -2567,6 +2549,7 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="RegistrationActivity_call_me_instead_available_in">Tā vietā piezvaniet man \n (Pieejams pēc %1$02d:%2$02d)</string>
   <string name="RegistrationActivity_contact_signal_support">Sazināties ar Signāla atbalstu</string>
   <string name="RegistrationActivity_code_support_subject">Signāla reģistrācija - Android ierīces verifikācijas kods </string>
+  <string name="RegistrationActivity_incorrect_code">Nepareizs kods</string>
   <string name="BackupUtil_never">Nekad</string>
   <string name="BackupUtil_unknown">Nezināms</string>
   <string name="preferences_app_protection__see_my_phone_number">Redzēt manu telefona #</string>
@@ -2726,6 +2709,7 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="RecipientBottomSheet_block">Bloķēt</string>
   <string name="RecipientBottomSheet_unblock">Atbloķēt</string>
   <string name="RecipientBottomSheet_add_to_contacts">Pievienot kontaktiem</string>
+  <!--Error message that displays when a user tries to tap to view system contact details but has no app that supports it-->
   <string name="RecipientBottomSheet_add_to_a_group">Pievienot grupai</string>
   <string name="RecipientBottomSheet_add_to_another_group">Pievienot citai grupai</string>
   <string name="RecipientBottomSheet_view_safety_number">Skatīt drošības numuru</string>
@@ -2763,8 +2747,8 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <!--VoiceNotePlaybackPreparer-->
   <string name="VoiceNotePlaybackPreparer__failed_to_play_voice_message">Neizdevās atskaņot balss ziņu</string>
   <!--VoiceNoteMediaDescriptionCompatFactory-->
-  <string name="VoiceNoteMediaDescriptionCompatFactory__voice_message">Balss ziņa · %1$s</string>
-  <string name="VoiceNoteMediaDescriptionCompatFactory__s_to_s">%1$s %2$s</string>
+  <string name="VoiceNoteMediaItemFactory__voice_message">Balss ziņa · %1$s</string>
+  <string name="VoiceNoteMediaItemFactory__s_to_s">%1$s %2$s</string>
   <!--StorageUtil-->
   <string name="StorageUtil__s_s">%1$s/%2$s</string>
   <string name="BlockedUsersActivity__s_has_been_blocked">\"%1$s\" ir bloķēts.</string>
@@ -2826,6 +2810,12 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="DeleteAccountFragment__failed_to_delete_account">Neizdevās izdzēst kontu. Vai jums ir savienojumus ar tīklu?</string>
   <string name="DeleteAccountFragment__failed_to_delete_local_data">Neizdevās izdzēst lokālos datus. Tos var manuāli dzēst sistēmas lietojumprogrammas iestatījumos.</string>
   <string name="DeleteAccountFragment__launch_app_settings">Atvērt lietotnes iestatījumus</string>
+  <!--Title of progress dialog shown when a user deletes their account and the process is leaving all groups-->
+  <!--Title of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <!--Message of progress dialog shown when a user deletes their account and the process is leaving groups-->
+  <!--Message of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <!--Title of error dialog shown when a network error occurs during account deletion-->
+  <!--Message of error dialog shown when a network error occurs during account deletion-->
   <!--DeleteAccountCountryPickerFragment-->
   <string name="DeleteAccountCountryPickerFragment__search_countries">Meklēt valstis</string>
   <!--CreateGroupActivity-->
@@ -2984,6 +2974,22 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="AccountSettingsFragment__account">Konts</string>
   <string name="AccountSettingsFragment__youll_be_asked_less_frequently">Laika gaitā jums tiks jautāts retāk</string>
   <string name="AccountSettingsFragment__require_your_signal_pin">Pieprasīt savu Signal PIN, lai vēlreiz reģistrētu savu tālruņa numuru lietotnē Signal</string>
+  <!--ChangeNumberFragment-->
+  <string name="ChangeNumberFragment__continue">Turpināt</string>
+  <!--ChangeNumberEnterPhoneNumberFragment-->
+  <string name="ChangeNumberEnterPhoneNumberFragment__change_number">Izmainīt numuru</string>
+  <string name="ChangeNumberEnterPhoneNumberFragment__the_phone_number_you_entered_doesnt_match_your_accounts">Ievadītais tālruņa numurs neatbilst jūsu kontā norādītajam.</string>
+  <!--ChangeNumberVerifyFragment-->
+  <string name="ChangeNumberVerifyFragment__change_number">Izmainīt numuru</string>
+  <!--ChangeNumberConfirmFragment-->
+  <string name="ChangeNumberConfirmFragment__edit_number">Rediģēt numuru</string>
+  <!--ChangeNumberRegistrationLockFragment-->
+  <!--ChangeNumberPinDiffersFragment-->
+  <string name="ChangeNumberPinDiffersFragment__update_pin">Aktualizēt PIN</string>
+  <!--ChangeNumberLockActivity-->
+  <string name="ChangeNumberLockActivity__retry">Mēģināt vēlreiz</string>
+  <string name="ChangeNumberLockActivity__leave">Pamest</string>
+  <string name="ChangeNumberLockActivity__submit_debug_log">Iesniegt atkļūdošanas žurnālu</string>
   <!--ChatsSettingsFragment-->
   <string name="ChatsSettingsFragment__keyboard">Tastatūra</string>
   <string name="ChatsSettingsFragment__enter_key_sends">Pogas Enter funkcija</string>
@@ -2994,6 +3000,12 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="NotificationsSettingsFragment__calls">Zvani</string>
   <string name="NotificationsSettingsFragment__notify_when">Paziņot, ja…</string>
   <string name="NotificationsSettingsFragment__contact_joins_signal">Kontaktpersona pievienojas lietotnei Signal</string>
+  <!--Notification preference header-->
+  <!--Notification preference option header-->
+  <!--Notification preference summary text-->
+  <!--NotificationProfilesFragment-->
+  <!--Title for notification profiles screen that shows all existing profiles-->
+  <!--Button text to create a notification profile-->
   <!--PrivacySettingsFragment-->
   <string name="PrivacySettingsFragment__blocked">Bloķēti</string>
   <string name="PrivacySettingsFragment__d_contacts">%1$d kontaktpersonas</string>
@@ -3035,6 +3047,9 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="HelpFragment__copyright_signal_messenger">Autortiesības Signal Messenger</string>
   <string name="HelpFragment__licenced_under_the_gplv3">Licencēta saskaņā ar GPLv3</string>
   <!--DataAndStorageSettingsFragment-->
+  <string name="DataAndStorageSettingsFragment__sending_high_quality_media_will_use_more_data">Sūtot augstas kvalitātes multivides saturu, tiks izmantots vairāk datu.</string>
+  <string name="DataAndStorageSettingsFragment__high">Augsta</string>
+  <string name="DataAndStorageSettingsFragment__standard">Standarta</string>
   <string name="DataAndStorageSettingsFragment__calls">Zvani</string>
   <!--ChatColorSelectionFragment-->
   <string name="ChatColorSelectionFragment__auto">Automātiski</string>
@@ -3083,6 +3098,8 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="AddAProfilePhotoMegaphone__choose_a_look_and_color">Izvēlieties izskatu un krāsu vai pielāgojiet savus iniciāļus.</string>
   <string name="AddAProfilePhotoMegaphone__not_now">Ne tagad</string>
   <string name="AddAProfilePhotoMegaphone__add_photo">Pievienot fotoattēlu</string>
+  <!--BecomeASustainerMegaphone-->
+  <string name="BecomeASustainerMegaphone__no_thanks">Nē, paldies</string>
   <!--KeyboardPagerFragment-->
   <string name="KeyboardPagerFragment_emoji">Emocijzīme</string>
   <string name="KeyboardPagerFragment_open_emoji_search">Atvērt emocijzīmju meklēšanu</string>
@@ -3161,7 +3178,11 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <!--ContactFilterView-->
   <string name="ContactFilterView__search_name_or_number">Meklēt vārdu vai numuru</string>
   <!--VoiceNotePlayerView-->
-  <string name="VoiceNotePlayerView__s_dot_s">%1$s · %2$s</string>
+  <string name="VoiceNotePlayerView__dot_s">· %1$s</string>
+  <string name="VoiceNotePlayerView__stop_voice_message">Pārtraukt atskaņot balss ziņu</string>
+  <string name="VoiceNotePlayerView__change_voice_message_speed">Mainīt balss ziņas atskaņošanas ātrumu</string>
+  <string name="VoiceNotePlayerView__pause_voice_message">Apturēt balss ziņu</string>
+  <string name="VoiceNotePlayerView__play_voice_message">Atskaņot balss ziņu</string>
   <!--AvatarPickerFragment-->
   <string name="AvatarPickerFragment__avatar_preview">Avatāra priekšskatījums</string>
   <string name="AvatarPickerFragment__camera">Kamera</string>
@@ -3186,5 +3207,121 @@ Saņemts nederīgas protokola versijas atslēgas apmaiņas ziņojums.
   <string name="ContactSelectionListItem__dot_s">· %1$s</string>
   <!--DSLSettingsToolbar-->
   <string name="DSLSettingsToolbar__navigate_up">Pārvietoties uz augšu</string>
+  <string name="MultiselectForwardFragment__forward_to">Pārsūtīt</string>
+  <string name="MultiselectForwardFragment__add_a_message">Pievienojiet ziņu</string>
+  <string name="MultiselectForwardFragment__faster_forwards">Pārsūtīt ātrāk</string>
+  <string name="MultiselectForwardFragment__forwarded_messages_are_now">Pārsūtītas ziņas tagad tiek nosūtītas nekavējoties</string>
+  <!--Media V2-->
+  <string name="MediaReviewFragment__add_a_message">Pievienojiet ziņu</string>
+  <string name="ImageEditorHud__cancel">Atcelt</string>
+  <string name="ImageEditorHud__undo">Atsaukt</string>
+  <string name="ImageEditorHud__delete">Dzēst</string>
+  <string name="MediaCountIndicatorButton__send">Sūtīt</string>
+  <string name="MediaReviewSelectedItem__tap_to_select">Pieskarieties, lai izvēlētos</string>
+  <string name="MediaReviewImagePageFragment__discard">Atmest</string>
+  <string name="SelectFeaturedBadgeFragment__preview">Priekšskatīt</string>
+  <string name="SubscribeFragment__signal_is_powered_by_people_like_you">Signal attīsta un uzlabo tādi cilvēki kā jūs.</string>
+  <string name="SubscribeFragment__not_now">Ne tagad</string>
+  <string name="SubscribeFragment__confirm">Apstiprināt</string>
+  <string name="SubscribeFragment__update">Aktualizēt</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__done">Darīts</string>
+  <string name="Boost__enter_custom_amount">Ievadīt pielāgotu summu</string>
+  <!--Displayed on "My Support" screen when user badge failed to be added to their account-->
+  <string name="ExpiredBadgeBottomSheetDialogFragment__not_now">Ne tagad</string>
+  <string name="Subscription__contact_support">Sazināties ar atbalstu</string>
+  <string name="SubscribeFragment__processing_payment">Maksājums tiek apstrādāts…</string>
+  <!--Displayed in notification when user payment fails to process on Stripe-->
+  <!--Displayed on "My Support" screen when user subscription payment method failed.-->
+  <string name="NetworkFailure__retry">Mēģināt vēlreiz</string>
+  <!--Title of create notification profile screen-->
+  <!--Hint text for create/edit notification profile name-->
+  <string name="EditNotificationProfileFragment__profile_name">Profila nosaukums</string>
+  <!--Name has a max length, this shows how many characters are used out of the max-->
+  <string name="EditNotificationProfileFragment__count">%1$d/%2$d</string>
+  <!--Call to action button once the profile is named to continue to the next create step-->
+  <string name="EditNotificationProfileFragment__next">Nākošais/Tālāk</string>
+  <!--Call to action button once the profile name is edited-->
+  <string name="EditNotificationProfileFragment__save">Saglabāt</string>
+  <!--Title of edit notification profile screen-->
+  <!--Error message shown when attempting to create or edit a profile name to an existing profile name-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <string name="EditNotificationProfileFragment__work">Darba</string>
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Error message shown when attempting to next/save without a profile name-->
+  <!--Title for add recipients to notification profile screen in create flow-->
+  <!--Description of what the user should be doing with this screen-->
+  <!--Button text that launches the contact picker to select from-->
+  <!--Call to action button on contact picker for adding to profile-->
+  <string name="SelectRecipientsFragment__add">Pievienot</string>
+  <!--Notification profiles home fragment, shown when no profiles have been created yet-->
+  <!--Header shown above list of all notification profiles-->
+  <!--Button that starts the create new notification profile flow-->
+  <!--Profile active status, indicating the current profile is on for an unknown amount of time-->
+  <string name="NotificationProfilesFragment__on">Ieslēgts</string>
+  <!--Button use to permanently delete a notification profile-->
+  <!--Snakbar message shown when removing a recipient from a profile-->
+  <!--Snackbar button text that will undo the recipient remove-->
+  <string name="NotificationProfileDetails__undo">Atsaukt</string>
+  <!--Dialog message shown to confirm deleting a profile-->
+  <!--Dialog button to delete profile-->
+  <string name="NotificationProfileDetails__delete">Dzēst</string>
+  <!--Title/accessibility text for edit icon to edit profile emoji/name-->
+  <!--Schedule description if all days are selected-->
+  <!--Profile status on if it is the active profile-->
+  <string name="NotificationProfileDetails__on">Ieslēgts</string>
+  <!--Profile status on if it is not the active profile-->
+  <string name="NotificationProfileDetails__off">Izslēgts</string>
+  <!--Description of hours for schedule (start to end) times-->
+  <string name="NotificationProfileDetails__s_to_s">%1$s %2$s</string>
+  <!--Section header for exceptions to the notification profile-->
+  <!--Profile exception to allow all calls through the profile restrictions-->
+  <!--Profile exception to allow all @mentions through the profile restrictions-->
+  <!--Section header for showing schedule information-->
+  <!--If member list is long, will truncate the list and show an option to then see all when tapped-->
+  <string name="NotificationProfileDetails__see_all">Skatīt visus</string>
+  <!--Title for add schedule to profile in create flow-->
+  <!--Descriptor text indicating what the user can do with this screen-->
+  <!--Text shown next to toggle switch to enable/disable schedule-->
+  <!--Label for showing the start time for the schedule-->
+  <string name="EditNotificationProfileSchedule__start">Sākt</string>
+  <!--Label for showing the end time for the schedule-->
+  <string name="EditNotificationProfileSchedule__end">Beigt</string>
+  <!--First letter of Sunday-->
+  <!--First letter of Monday-->
+  <!--First letter of Tuesday-->
+  <!--First letter of Wednesday-->
+  <!--First letter of Thursday-->
+  <!--First letter of Friday-->
+  <!--First letter of Saturday-->
+  <!--Title of select time dialog shown when setting start time for schedule-->
+  <!--Title of select time dialog shown when setting end time for schedule-->
+  <!--If in edit mode, call to action button text show to save schedule to profile-->
+  <string name="EditNotificationProfileSchedule__save">Saglabāt</string>
+  <!--If in create mode, call to action button text to show to skip enabling a schedule-->
+  <string name="EditNotificationProfileSchedule__skip">Izlaist</string>
+  <!--If in create mode, call to action button text to show to use the enabled schedule and move to the next screen-->
+  <string name="EditNotificationProfileSchedule__next">Nākošais/Tālāk</string>
+  <!--Error message shown if trying to save/use a schedule with no days selected-->
+  <!--Title for final screen shown after completing a profile creation-->
+  <!--Call to action button to press to close the created screen and move to the profile details screen-->
+  <string name="NotificationProfileCreated__done">Darīts</string>
+  <!--Descriptor text shown to indicate how to manually turn a profile on/off-->
+  <!--Descriptor text shown to indicate you can add a schedule later since you did not add one during create flow-->
+  <!--Descriptor text shown to indicate your profile will follow the schedule set during create flow-->
+  <!--Button text shown in profile selection bottom sheet to create a new profile-->
+  <!--Manual enable option to manually enable a profile for 1 hour-->
+  <!--Manual enable option to manually enable a profile until a set time (currently 6pm or 8am depending on what is next)-->
+  <string name="NotificationProfileSelection__until_s">Līdz %1$s</string>
+  <!--Option to view profile details-->
+  <!--Descriptor text indicating how long a profile will be on when there is a time component associated with it-->
+  <!--Title for notification profile megaphone-->
+  <!--Description for notification profile megaphone-->
+  <!--Call to action button to create a profile from megaphone-->
+  <!--Button to dismiss notification profile megaphone-->
+  <string name="NotificationProfilesMegaphone__not_now">Ne tagad</string>
+  <!--Displayed in a toast when we fail to open the ringtone picker-->
   <!--EOF-->
 </resources>

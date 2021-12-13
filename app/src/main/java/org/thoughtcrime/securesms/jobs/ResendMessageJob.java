@@ -9,10 +9,8 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
-import org.thoughtcrime.securesms.crypto.storage.SignalSenderKeyStore;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
-import org.thoughtcrime.securesms.database.GroupDatabase;
 import org.thoughtcrime.securesms.database.GroupDatabase.GroupRecord;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -125,14 +123,20 @@ public class ResendMessageJob extends BaseJob {
       ThreadUtil.sleep(10000);
     }
 
-    SignalServiceMessageSender       messageSender = ApplicationDependencies.getSignalServiceMessageSender();
-    Recipient                        recipient     = Recipient.resolved(recipientId);
+    SignalServiceMessageSender messageSender = ApplicationDependencies.getSignalServiceMessageSender();
+    Recipient                  recipient     = Recipient.resolved(recipientId);
+
+    if (recipient.isUnregistered()) {
+      Log.w(TAG, recipient.getId() + " is unregistered!");
+      return;
+    }
+
     SignalServiceAddress             address       = RecipientUtil.toSignalServiceAddress(context, recipient);
     Optional<UnidentifiedAccessPair> access        = UnidentifiedAccessUtil.getAccessFor(context, recipient);
     Content                          contentToSend = content;
 
     if (distributionId != null) {
-      Optional<GroupRecord> groupRecord = DatabaseFactory.getGroupDatabase(context).getGroupByDistributionId(distributionId);
+      Optional<GroupRecord> groupRecord = SignalDatabase.groups().getGroupByDistributionId(distributionId);
 
       if (!groupRecord.isPresent()) {
         Log.w(TAG, "Could not find a matching group for the distributionId! Skipping message send.");
@@ -157,7 +161,7 @@ public class ResendMessageJob extends BaseJob {
                                                     .map(device -> new SignalProtocolAddress(recipient.requireServiceId(), device))
                                                     .collect(Collectors.toList());
 
-      new SignalSenderKeyStore(context).markSenderKeySharedWith(distributionId, addresses);
+      ApplicationDependencies.getSenderKeyStore().markSenderKeySharedWith(distributionId, addresses);
     }
   }
 

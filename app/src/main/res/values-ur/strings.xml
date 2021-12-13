@@ -184,9 +184,6 @@
   <string name="ConversationItem_this_message_was_deleted">یہ پیغام حذف کردیا گیا تھا۔</string>
   <string name="ConversationItem_you_deleted_this_message">آپ نے یہ پیغام حذف کردیا۔</string>
   <!--ConversationActivity-->
-  <string name="ConversationActivity_reset_secure_session_question">محفوظ سیشن دوبارہ بحال کریں؟</string>
-  <string name="ConversationActivity_this_may_help_if_youre_having_encryption_problems">اگر اس گفتگو کی اینکرپشن میں کوئی مسئلہ ہے تو اس سے آپ کو مدد مل سکتی ہے۔ آپ کا پیغام اسی میں رہے گا۔</string>
-  <string name="ConversationActivity_reset">دوبارہ بحال کریں</string>
   <string name="ConversationActivity_add_attachment">اٹیچمنٹ شامل کریں</string>
   <string name="ConversationActivity_select_contact_info">رابطے کی معلومات منتخب کریں</string>
   <string name="ConversationActivity_compose_message">پیغام تحریر کریں</string>
@@ -209,8 +206,10 @@
   <string name="ConversationActivity_unable_to_record_audio">آڈیو ریکارڈ کرنے کے قابل نہیں ہے!
 ؐ</string>
   <string name="ConversationActivity_you_cant_send_messages_to_this_group">آپ اس گروپ کو پیغامات نہیں بھیج سکتے کیونکہ آپ اب ممبر نہیں رہیں۔</string>
+  <string name="ConversationActivity_only_s_can_send_messages">صرف %1$s ہی پیغامات بھیج سکتے ہیں.</string>
   <string name="ConversationActivity_admins">منتظمین</string>
   <string name="ConversationActivity_message_an_admin">کسی ایڈمن کو پیغام دیں</string>
+  <string name="ConversationActivity_cant_start_group_call">گروپ کال شروع نہیں کی جا سکتی۔</string>
   <string name="ConversationActivity_only_admins_of_this_group_can_start_a_call">صرف اس گروپ کے ایڈمن کال شروع کرسکتے ہیں۔</string>
   <string name="ConversationActivity_there_is_no_app_available_to_handle_this_link_on_your_device">ایسی کوئی ایپ موجود نہیں ہے جو آپ کی اس ڈیوائس پر اس لنک کو استعمال کر سکے۔</string>
   <string name="ConversationActivity_your_request_to_join_has_been_sent_to_the_group_admin">آپ کی شمولیت کی درخواست گروپ منتظم کو بھیج دی گئی ہے۔ جب وہ کارروائی کریں گے تو آپ کو مطلع کیا جائے گا۔</string>
@@ -299,6 +298,8 @@
   <string name="ConversationFragment_not_now">ابھی نہیں</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed">%s کے ساتھ آپ کا حفاظتی نمبر تبدیل کر دیا گیا ہے</string>
   <string name="ConversationFragment_your_safety_number_with_s_changed_likey_because_they_reinstalled_signal">%s کے ساتھ آپ کا حفاظتی نمبر تبدیل کر دیا گیا ہے ، ممکن ہے اس وجہ یہ ہے کہ انہوں نے Signal  کو دوبارہ انسٹال کیا ہےیا device تبدیل کردیئے۔ نئے حفاظتی نمبر کی تصدیق کے لئے تصدیق کریں پر ٹیپ کریں۔ یہ اختیاری ہے۔</string>
+  <!--Message shown to indicate which notification profile is on/active-->
+  <string name="ConversationFragment__s_on">%1$sشروع</string>
   <plurals name="ConversationListFragment_delete_selected_conversations">
     <item quantity="one">منتخب شدہ گفتگو حذف کریں؟</item>
     <item quantity="other">منتخب شدہ گفتگو حذف کریں؟</item>
@@ -318,6 +319,14 @@
     <item quantity="one">گفتگو ان باکس میں چلی گئی</item>
     <item quantity="other">%dگفتگو ان باکس میں چلی گئی</item>
   </plurals>
+  <string name="ConversationListFragment_select">منتخب کریں</string>
+  <string name="ConversationListFragment_select_all">تمام منتخب کریں</string>
+  <!--Show in conversation list overflow menu to open selection bottom sheet-->
+  <string name="ConversationListFragment__notification_profile">اطلاعات کی پروفائل</string>
+  <!--Tooltip shown after you have created your first notification profile-->
+  <string name="ConversationListFragment__turn_your_notification_profile_on_or_off_here"> یہاں اپنے اطلاعات کی پروفائل کو آن یا آف کریں.</string>
+  <!--Message shown in top toast to indicate the named profile is on-->
+  <string name="ConversationListFragment__s_on">%1$sشروع</string>
   <!--ConversationListItem-->
   <string name="ConversationListItem_key_exchange_message">Key تبادلہ کا پیغام</string>
   <!--ConversationListItemAction-->
@@ -398,11 +407,6 @@
   <string name="DeviceListItem_today">آج</string>
   <!--DocumentView-->
   <string name="DocumentView_unnamed_file">بینام فائل</string>
-  <!--DonateMegaphone-->
-  <string name="DonateMegaphone_donate_to_signal">Signal کے لئے عطیہ کریں</string>
-  <string name="DonateMegaphone_Signal_is_powered_by_people_like_you_show_your_support_today">Signal آپ جیسے لوگوں کے ذریعہ تقویت یافتہ ہے۔ آج آپ کی حمایت دکھائیں!</string>
-  <string name="DonateMegaphone_donate">عطیہ کریں</string>
-  <string name="DonateMegaphone_no_thanks">نہیں شکریہ</string>
   <!--GroupCallingMegaphone-->
   <string name="GroupCallingMegaphone__introducing_group_calls">گروپ کال متعارف کروانا</string>
   <string name="GroupCallingMegaphone__open_a_new_group_to_start">مفت خفیہ کردہ گروپ کال شروع کرنے کے لئے نیا گروپ کھولیں</string>
@@ -421,6 +425,7 @@
   <!--ShareActivity-->
   <string name="ShareActivity_share_with">کے ساتھ اشتراک کریں</string>
   <string name="ShareActivity_multiple_attachments_are_only_supported">متعدد منسلکات صرف تصاویر اور ویڈیوز کیلئے معاون ہیں</string>
+  <string name="ShareActivity_you_do_not_have_permission_to_send_to_this_group">آپ کو اس گروپ میں بھیجنے کی اجازت نہیں ہے۔</string>
   <!--GcmRefreshJob-->
   <string name="GcmRefreshJob_Permanent_Signal_communication_failure">Signal مواصلات مستقل ہونے میں ناکامی!</string>
   <string name="GcmRefreshJob_Signal_was_unable_to_register_with_Google_Play_Services">Signal گوگل پلے سروسز کے ساتھ رجسٹر ہونے کے قابل نہیں تھا۔Signal پیغامات اور کالیں غیر فعال ہو چکے ہیں،براہ کرم ترتیبات میں دوبارہ رجسٹر کرنے کی کوشش کریں اور ایڈوانس میں جائیں۔</string>
@@ -563,6 +568,7 @@
   <!--AddMembersActivity-->
   <string name="AddMembersActivity__done">ہو گیا</string>
   <string name="AddMembersActivity__this_person_cant_be_added_to_legacy_groups">اس شخص کو میراثی گروپوں میں شامل نہیں کیا جاسکتا۔</string>
+  <string name="AddMembersActivity__this_person_cant_be_added_to_announcement_groups">اس شخص کو اعلانیا گروپوں میں شامل نہیں کیا جا سکتا۔</string>
   <plurals name="AddMembersActivity__add_d_members_to_s">
     <item quantity="one">\"%1$s\" ممبر کو \"%2$s\" میں شامل کریں؟</item>
     <item quantity="other">\"%2$s\" میں\"%3$d\" ممبروں کو شامل کریں؟</item>
@@ -660,6 +666,7 @@
   <string name="ManageProfileFragment_your_name">آپ کا نام</string>
   <string name="ManageProfileFragment_your_username">اپکا اسم رکنیت</string>
   <string name="ManageProfileFragment_failed_to_set_avatar">اوتار سیٹ کرنے میں ناکام</string>
+  <string name="ManageProfileFragment__edit_photo">تصویر میں ترمیم  کریں</string>
   <!--ManageRecipientActivity-->
   <string name="ManageRecipientActivity_no_groups_in_common">مشترکہ طور پر کوئی گروپ نہیں</string>
   <plurals name="ManageRecipientActivity_d_groups_in_common">
@@ -681,6 +688,7 @@
   <string name="CustomNotificationsDialogFragment__enabled">فعال ہونا</string>
   <string name="CustomNotificationsDialogFragment__disabled">غیر فعال ہونا</string>
   <string name="CustomNotificationsDialogFragment__default">پہلے سے طے شدہ</string>
+  <string name="CustomNotificationsDialogFragment__unknown">نامعلوم</string>
   <!--ShareableGroupLinkDialogFragment-->
   <string name="ShareableGroupLinkDialogFragment__shareable_group_link">قابل اشتراک گروپ لنک</string>
   <string name="ShareableGroupLinkDialogFragment__manage_and_share"> انتظام کریں؛&amp;amp بانٹیں</string>
@@ -745,24 +753,19 @@
   <!--InviteActivity-->
   <string name="InviteActivity_share">اشتراک کریں</string>
   <string name="InviteActivity_share_with_contacts">رابطوں کے ساتھ شیئر کریں</string>
-  <string name="InviteActivity_choose_how_to_share">اشتراک کرنے کا طریقہ منتخب کریں</string>
   <string name="InviteActivity_cancel">منسوخ کریں</string>
   <string name="InviteActivity_sending">بھیج رہا ہے۔۔۔</string>
   <string name="InviteActivity_invitations_sent">دعوت نامے بھیجے گئے ہیں!</string>
   <string name="InviteActivity_invite_to_signal">Signal میں مدعو کریں</string>
-  <plurals name="InviteActivity_send_sms_to_friends">
-    <item quantity="one">%d دوست کو ایس ایم ایس بھیجے</item>
-    <item quantity="other">%d دوستوں کو ایس ایم ایس بھیجے </item>
-  </plurals>
   <plurals name="InviteActivity_send_sms_invites">
     <item quantity="one">%d ایس ایم ایس دعوت نامہ بھیجے؟</item>
     <item quantity="other">%d ایس ایم ایس دعوت نامے بھیجے؟</item>
   </plurals>
   <string name="InviteActivity_lets_switch_to_signal">Signal میں سو ئچ کریں:%1$s</string>
   <string name="InviteActivity_no_app_to_share_to">ایسا لگتا ہے جیسے آپ کے پاس اشتراک کرنے کیلئے کوئی ایپ نہیں ہے۔</string>
-  <string name="InviteActivity_friends_dont_let_friends_text_unencrypted">دوست دوست کو بغیر خفیہ گفتگو نہیں کرنے دیتے ہیں۔</string>
   <!--LearnMoreTextView-->
   <string name="LearnMoreTextView_learn_more">مزید پڑھیں</string>
+  <string name="SpanUtil__read_more">مزید پڑھیں</string>
   <!--LongMessageActivity-->
   <string name="LongMessageActivity_unable_to_find_message">پیغام تلاش کرنے کے قابل نہیں</string>
   <string name="LongMessageActivity_message_from_s">%1$sکی طرف سے پیغامات</string>
@@ -797,14 +800,7 @@
   <string name="MediaOverviewActivity_Grid_view_description">جالی دار نظارہ</string>
   <string name="MediaOverviewActivity_List_view_description">فہرست دیکھیں</string>
   <string name="MediaOverviewActivity_Selected_description">منتخب شدہ</string>
-  <plurals name="MediaOverviewActivity_d_items_s">
-    <item quantity="one">%1$dآئٹم%2$s</item>
-    <item quantity="other">%2$s آئٹم %1$d</item>
-  </plurals>
-  <plurals name="MediaOverviewActivity_d_items">
-    <item quantity="one">%1$dآئٹم</item>
-    <item quantity="other">%1$dآئٹم</item>
-  </plurals>
+  <string name="MediaOverviewActivity_select_all">تمام منتخب کریں</string>
   <string name="MediaOverviewActivity_file">فائل</string>
   <string name="MediaOverviewActivity_audio">آڈیو</string>
   <string name="MediaOverviewActivity_video">وڈیو</string>
@@ -832,10 +828,10 @@
   <string name="NotificationBarManager__establishing_signal_call">Signal کال قائم ہو رہی ہے</string>
   <string name="NotificationBarManager__incoming_signal_call">signal کال آ رہی ہے</string>
   <string name="NotificationBarManager__stopping_signal_call_service">Signal کال سروس روکنا</string>
-  <string name="NotificationBarManager__deny_call">کال رد کریں</string>
   <string name="NotificationBarManager__answer_call">کال کا جواب دیں</string>
   <string name="NotificationBarManager__end_call">کال ختم کریں</string>
   <string name="NotificationBarManager__cancel_call">کال منسوخ کریں</string>
+  <string name="NotificationBarManager__join_call">کال میں شامل ہوں</string>
   <!--NotificationsMegaphone-->
   <string name="NotificationsMegaphone_turn_on_notifications">اطلاعات آن کریں؟</string>
   <string name="NotificationsMegaphone_never_miss_a_message">اپنے رابطوں اور گروپس کا پیغام کبھی بھی مت چھوڑیں۔</string>
@@ -926,7 +922,6 @@
   <string name="MessageRecord_s_made_s_an_admin">%1$s نے %2$s کو ایڈمن بنایا۔</string>
   <string name="MessageRecord_s_made_you_an_admin">%1$s نے آپ کو ایڈمن بنایا۔</string>
   <string name="MessageRecord_you_revoked_admin_privileges_from_s">آپ نے%1$sکے ایڈمنسٹریٹو مراعات کو منسوخ کردیا۔</string>
-  <string name="MessageRecord_s_revoked_your_admin_privileges">%1$s نے آپ کے منتظم کے مراعات کو منسوخ کردیا۔ \"</string>
   <string name="MessageRecord_s_revoked_admin_privileges_from_s">%1$s نے %2$s سے منتظم کے استحقاق کو منسوخ کردیا۔</string>
   <string name="MessageRecord_s_is_now_an_admin">%1$s اب ایک ایڈمن ہے۔</string>
   <string name="MessageRecord_you_are_now_an_admin">اب آپ ایڈمن ہیں۔</string>
@@ -1194,13 +1189,11 @@
   <string name="WebRtcCallActivity__signal_s">Signal %1$s</string>
   <string name="WebRtcCallActivity__calling">کالنگ…</string>
   <!--WebRtcCallView-->
-  <string name="WebRtcCallView__signal_voice_call">Signal آڈیو کال…</string>
-  <string name="WebRtcCallView__signal_video_call">Signal ویڈیو کال…</string>
+  <string name="WebRtcCallView__signal_call">Signal  کال</string>
   <string name="WebRtcCallView__start_call">کال شروع کریں</string>
   <string name="WebRtcCallView__join_call">کال میں شامل ہوں</string>
   <string name="WebRtcCallView__call_is_full">کال پوری ہے</string>
   <string name="WebRtcCallView__the_maximum_number_of_d_participants_has_been_Reached_for_this_call">اس کال کے لئے شرکاء کی زیادہ سے زیادہ تعداد%1$d پہنچ چکی ہے۔ بعد میں دوبارہ کوشش کریں۔</string>
-  <string name="WebRtcCallView__s_group_call">\"%1$s\" گروپ کال</string>
   <string name="WebRtcCallView__view_participants_list">شرکاء کو دیکھیں</string>
   <string name="WebRtcCallView__your_video_is_off">آپ کا ویڈیو آف ہے</string>
   <string name="WebRtcCallView__reconnecting">دوبارہ رابطہ ہو رہا ہے۔۔۔</string>
@@ -1214,6 +1207,10 @@
     <item quantity="one">%1$s،%2$s ، اور %3$d دیگر اس کال میں ہیں</item>
     <item quantity="other">%1$s،%2$s ، اور%3$d دیگر اس کال میں ہیں</item>
   </plurals>
+  <string name="WebRtcCallView__speaker">سپیکر</string>
+  <string name="WebRtcCallView__camera">کیمرہ</string>
+  <string name="WebRtcCallView__mute">خاموش</string>
+  <string name="WebRtcCallView__end_call">کال ختم کریں</string>
   <!--CallParticipantsListDialog-->
   <plurals name="CallParticipantsListDialog_in_this_call_d_people">
     <item quantity="one">اس کال میں · %1$d شخص</item>
@@ -1253,10 +1250,11 @@
   <string name="RegistrationActivity_play_services_error">گوگل پلے سروسز خرابی</string>
   <string name="RegistrationActivity_google_play_services_is_updating_or_unavailable">گوگل پلے سروسز تجدید ہو رہی ہیں یا عارضی طور پر دستیاب نہیں۔ براہ کرم دوبارہ کوشش کریں۔</string>
   <string name="RegistrationActivity_terms_and_privacy">شرائط &amp;amp:رازداری کی پالیسی</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_and_media_in_order_to_connect_with_friends">Signal کو دوستوں کے ساتھ رابطے کیلئے میڈیا اور رابطوں تک رسائی کی ضرورت ہے، پیغامات کا تبادلہ کریں، اور محفوظ کال بنائیں</string>
-  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_in_order_to_connect_with_friends">دوستوں سے رابطہ قائم کرنے ، پیغامات کا تبادلہ کرنے اور محفوظ کال کرنے کیلئے Signal کو آپ کے رابطوں تک رسائی کی ضرورت ہے</string>
+  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_and_media_in_order_to_connect_with_friends">سگنل کو آپ کے دوستوں سے رابطہ قائم کرنے اور پیغامات بھیجنے کے لیے رابطوں اور میڈیا کی اجازت کی ضرورت ہوتی ہے۔ آپ کے رابطے سگنل کی نجی رابطہ دریافت کا استعمال کرتے ہوئے اپ لوڈ کیے جاتے ہیں، جس کا مطلب ہے کہ یہ شروع سے آخر تک خفیہ ہوتے ہیں اور سگنل سروس کو کبھی نظر نہیں آتے۔</string>
+  <string name="RegistrationActivity_signal_needs_access_to_your_contacts_in_order_to_connect_with_friends">سگنل کو آپ کے دوستوں سے رابطہ قائم کرنے اور پیغامات بھیجنے کے لیے رابطوں  کی اجازت کی ضرورت ہوتی ہے۔ آپ کے رابطے سگنل کی نجی رابطہ دریافت کا استعمال کرتے ہوئے اپ لوڈ کیے جاتے ہیں، جس کا مطلب ہے کہ یہ شروع سے آخر تک خفیہ ہوتے ہیں اور سگنل سروس کو کبھی نظر نہیں آتے۔</string>
   <string name="RegistrationActivity_rate_limited_to_service">آپ نے اس نمبر کو رجسٹر کرنے کے لئے بہت زیادہ کوششیں کی ہیں۔ براہ کرم کچھ دیر بعد کوشش کریں.</string>
   <string name="RegistrationActivity_unable_to_connect_to_service">سروس سے رابطے کے قابل نہیں۔ براہ کرم نیٹ ورک کنکشن چیک کریں اور دوبارہ کوشش کریں۔</string>
+  <string name="RegistrationActivity_non_standard_number_format">غیر معیاری ہندسوں کی ترتیب</string>
   <plurals name="RegistrationActivity_debug_log_hint">
     <item quantity="one">کسی ڈی بَگ لاگ کو شامل کرنے سے آپ %d مرحلے دور ہیں۔</item>
     <item quantity="other">کسی ڈی بَگ لاگ کو پیش کرنے کیلئے اب آپ %d مرحلے دور ہیں۔</item>
@@ -1299,6 +1297,8 @@
   <string name="SharedContactView_add_to_contacts">رابطوں میں شامل کریں</string>
   <string name="SharedContactView_invite_to_signal">Signal میں مدعو کریں</string>
   <string name="SharedContactView_message">Signal پیغام</string>
+  <!--SignalBottomActionBar-->
+  <string name="SignalBottomActionBar_more">مزید</string>
   <!--SignalPinReminders-->
   <string name="SignalPinReminders_well_remind_you_again_later">ہم آپ کو بعد میں ایک بار پھر یاد دلائیں گے۔</string>
   <string name="SignalPinReminders_well_remind_you_again_tomorrow">ہم کل آپ کو دوبارہ یاد دلائیں گے۔</string>
@@ -1620,6 +1620,7 @@
   <string name="ConversationUpdateItem_call_is_full">کال پوری ہے</string>
   <string name="ConversationUpdateItem_invite_friends">دوستوں کو مدعو کریں</string>
   <string name="ConversationUpdateItem_enable_call_notifications">کال اطلاعات کو فعال کریں</string>
+  <string name="ConversationUpdateItem_update_contact">رابطہ اپ ڈیٹ کریں</string>
   <string name="ConversationUpdateItem_no_groups_in_common_review_requests_carefully">مشترکہ طور پر کوئی گروپ نہیں۔ درخواستوں کا بغور جائزہ لیں۔</string>
   <string name="ConversationUpdateItem_no_contacts_in_this_group_review_requests_carefully">اس گروپ میں کوئی رابطہ نہیں ہے۔ درخواستوں کا بغور جائزہ لیں۔</string>
   <string name="ConversationUpdateItem_view">دیکھیں</string>
@@ -1631,12 +1632,19 @@
   <string name="QuoteView_audio">آڈیو</string>
   <string name="QuoteView_video">ویڈیو</string>
   <string name="QuoteView_photo">تصویر</string>
+  <string name="QuoteView_gif">گِف</string>
   <string name="QuoteView_view_once_media">صرف ایک بار دیکھنے کے قابل میڈیا</string>
   <string name="QuoteView_sticker">اسٹیکر</string>
   <string name="QuoteView_you">تم</string>
   <string name="QuoteView_original_missing">اصل میسج نہیں ملا</string>
   <!--conversation_fragment-->
   <string name="conversation_fragment__scroll_to_the_bottom_content_description">نیچے سکرول کریں</string>
+  <!--BubbleOptOutTooltip-->
+  <!--Message to inform the user of what Android chat bubbles are-->
+  <!--Button to dismiss the tooltip for opting out of using Android bubbles-->
+  <string name="BubbleOptOutTooltip__not_now">ابھی نہیں</string>
+  <!--Button to move to the system settings to control the use of Android bubbles-->
+  <string name="BubbleOptOutTooltip__turn_off">بند کریں</string>
   <!--safety_number_change_dialog-->
   <string name="safety_number_change_dialog__safety_number_changes">حفاظت نمبر میں تبدیلیاں</string>
   <string name="safety_number_change_dialog__accept">قبول کریں</string>
@@ -1781,21 +1789,18 @@
   <!--recipients_panel-->
   <string name="recipients_panel__to"><small>نام یا نمبر داخل کریں</small></string>
   <!--verify_display_fragment-->
-  <string name="verify_display_fragment__if_you_wish_to_verify_the_security_of_your_end_to_end_encryption_with_s"><![CDATA[ اگر آپ اپنی خفیہ کاری کی حفاظت کی تصدیق کرنا چاہتے ہیں تو %s ، مندرجہ بالا نمبر کو ان کے آلے کے نمبر سے موازنہ کریں۔ متبادل کے طور پر ، آپ ان کے فون پر کوڈ اسکین کرسکتے ہیں ، یا ان سے اپنا کوڈ اسکین کرنے کے لئے کہہ سکتے ہیں۔ <a href="https://signal.org/redirect/safety-numbers">مزید معلومات حاصل کریں۔</a>]]></string>
   <string name="verify_display_fragment__tap_to_scan">اسکین کرنے کے لیے کلک کریں</string>
   <string name="verify_display_fragment__loading">لوڈ ہو رہا ہے۔۔۔</string>
-  <string name="verify_display_fragment__verified">تصدیق شدہ</string>
+  <string name="verify_display_fragment__mark_as_verified">تصدیق کے طور پر نشان لگائیں</string>
   <!--verify_identity-->
   <string name="verify_identity__share_safety_number">حفاظتی نمبر اشتراک کریں</string>
+  <!--verity_scan_fragment-->
+  <string name="verify_scan_fragment__scan_the_qr_code_on_your_contact">اپنی رابطہ ڈیوائس پر QR کوڈ سکین کریں۔</string>
   <!--webrtc_answer_decline_button-->
   <string name="webrtc_answer_decline_button__swipe_up_to_answer">جواب دینے کے لیے اوپر سوائپ کریں</string>
   <string name="webrtc_answer_decline_button__swipe_down_to_reject">مسترد کرنے کے لیے نیچے سوائپ کریں</string>
   <!--message_details_header-->
   <string name="message_details_header__issues_need_your_attention">کچھ مسائل کو آپ کی توجہ کی ضرورت ہے۔</string>
-  <string name="message_details_header__sent">بھیجا</string>
-  <string name="message_details_header__received">وصول ہو گیا ہے</string>
-  <string name="message_details_header__disappears">غائب ہونا</string>
-  <string name="message_details_header__via">کے ذریعے</string>
   <!--message_details_recipient_header-->
   <string name="message_details_recipient_header__pending_send">زیر التواء</string>
   <string name="message_details_recipient_header__sent_to">کو بھیجا</string>
@@ -1837,15 +1842,6 @@
   <string name="HelpFragment__debug_log">ڈیبگ لاگ:</string>
   <string name="HelpFragment__could_not_upload_logs">لوگز اپ لوڈ نہیں کیا جاسکا</string>
   <string name="HelpFragment__please_be_as_descriptive_as_possible">براہ کرم اس مسئلے کو سمجھنے میں ہماری مدد کرنے کے لئے زیادہ سے زیادہ وضاحتی بیان کریں۔</string>
-  <string-array name="HelpFragment__categories">
-    <item>- براہ کرم کوئی آپشن منتخب کریں۔</item>
-    <item>کچھ کام نہیں کررہا ہے</item>
-    <item>خصوصیت کی درخواست</item>
-    <item>سوال</item>
-    <item>آراء</item>
-    <item>دیگر</item>
-    <item>ادائیگی</item>
-  </string-array>
   <!--ReactWithAnyEmojiBottomSheetDialogFragment-->
   <string name="ReactWithAnyEmojiBottomSheetDialogFragment__this_message">یہ پیغام</string>
   <string name="ReactWithAnyEmojiBottomSheetDialogFragment__recently_used">حالیہ استعمال شدہ</string>
@@ -2298,7 +2294,6 @@
   <string name="Insights__title">Insights</string>
   <string name="InsightsDashboardFragment__title">Insights</string>
   <string name="InsightsDashboardFragment__signal_protocol_automatically_protected">پچھلے دنوں Signal پروٹوکول آپ کے جانے والے پیغامات کا خود بخود محفوظ%1$d%% ہے۔ Signal استعمال کرنے والوں کے درمیان بات چیت ہمیشہ اختتام%2$d سے آخر میں خفیہ ہوتی ہے۔</string>
-  <string name="InsightsDashboardFragment__boost_your_signal">Signal boost</string>
   <string name="InsightsDashboardFragment__not_enough_data">کافی اعداد و شمار نہیں ہیں</string>
   <string name="InsightsDashboardFragment__your_insights_percentage_is_calculated_based_on">آپ کی insight کی فیصد کا حساب گزشتہ%1$d دنوں میں جانے والے پیغامات کی بنیاد پر کیا جاتا ہے جو غائب نہیں ہوئے ہیں یا حذف نہیں ہوئے ہیں۔</string>
   <string name="InsightsDashboardFragment__start_a_conversation">گفتگو شروع کریں</string>
@@ -2632,6 +2627,7 @@
   <string name="RecipientBottomSheet_block">بلاک</string>
   <string name="RecipientBottomSheet_unblock">ان بلاک</string>
   <string name="RecipientBottomSheet_add_to_contacts">رابطوں میں شامل کریں</string>
+  <!--Error message that displays when a user tries to tap to view system contact details but has no app that supports it-->
   <string name="RecipientBottomSheet_add_to_a_group">کسی گروپ میں شامل کریں</string>
   <string name="RecipientBottomSheet_add_to_another_group">کسی دوسرے گروپ میں شامل کریں</string>
   <string name="RecipientBottomSheet_view_safety_number">حفاظتی نمبر دیکھیں</string>
@@ -2669,8 +2665,8 @@
   <!--VoiceNotePlaybackPreparer-->
   <string name="VoiceNotePlaybackPreparer__failed_to_play_voice_message">آڈیو پیغام چلانے میں ناکام</string>
   <!--VoiceNoteMediaDescriptionCompatFactory-->
-  <string name="VoiceNoteMediaDescriptionCompatFactory__voice_message">آڈیو پیغام · %1$s</string>
-  <string name="VoiceNoteMediaDescriptionCompatFactory__s_to_s">%1$sسے%2$s</string>
+  <string name="VoiceNoteMediaItemFactory__voice_message">آڈیو پیغام · %1$s</string>
+  <string name="VoiceNoteMediaItemFactory__s_to_s">%1$sسے%2$s</string>
   <!--StorageUtil-->
   <string name="StorageUtil__s_s">%1$s/%2$s</string>
   <string name="BlockedUsersActivity__s_has_been_blocked">\"%1$s\" کو مسدود کردیا گیا ہے۔</string>
@@ -2730,6 +2726,12 @@
   <string name="DeleteAccountFragment__failed_to_delete_account">اکاؤنٹ حذف کرنے میں ناکام۔ کیا آپ کے پاس نیٹ ورک کنکشن ہے؟</string>
   <string name="DeleteAccountFragment__failed_to_delete_local_data">مقامی ڈیٹا کو حذف کرنے میں ناکام۔ آپ اسے سسٹم ایپلیکیشن کی ترتیبات میں دستی طور پر صاف کرسکتے ہیں۔</string>
   <string name="DeleteAccountFragment__launch_app_settings">ایپ کی ترتیبات لانچ کریں</string>
+  <!--Title of progress dialog shown when a user deletes their account and the process is leaving all groups-->
+  <!--Title of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <!--Message of progress dialog shown when a user deletes their account and the process is leaving groups-->
+  <!--Message of progress dialog shown when a user deletes their account and the process has left all groups-->
+  <!--Title of error dialog shown when a network error occurs during account deletion-->
+  <!--Message of error dialog shown when a network error occurs during account deletion-->
   <!--DeleteAccountCountryPickerFragment-->
   <string name="DeleteAccountCountryPickerFragment__search_countries">ممالک تلاش کریں</string>
   <!--CreateGroupActivity-->
@@ -2887,6 +2889,20 @@
   <string name="AccountSettingsFragment__account">اکاؤنٹ</string>
   <string name="AccountSettingsFragment__youll_be_asked_less_frequently">وقت کے ساتھ آپ سے کم پوچھا جائے گا</string>
   <string name="AccountSettingsFragment__require_your_signal_pin">اپنے فون نمبر کو دوبارہ Signal کے ساتھ رجسٹر کرنے کیلئے اپنے Signal پن کی ضرورت ہے</string>
+  <!--ChangeNumberFragment-->
+  <string name="ChangeNumberFragment__continue">جاری رکھیں</string>
+  <!--ChangeNumberEnterPhoneNumberFragment-->
+  <string name="ChangeNumberEnterPhoneNumberFragment__the_phone_number_you_entered_doesnt_match_your_accounts">آپ نے جو فون نمبر داخل کیا ہے وہ آپ کے اکاؤنٹ کے مماثل نہیں ہے۔</string>
+  <!--ChangeNumberVerifyFragment-->
+  <!--ChangeNumberConfirmFragment-->
+  <string name="ChangeNumberConfirmFragment__edit_number">نمبر ترتیب کرے</string>
+  <!--ChangeNumberRegistrationLockFragment-->
+  <!--ChangeNumberPinDiffersFragment-->
+  <string name="ChangeNumberPinDiffersFragment__update_pin">پن کو اپ ڈیٹ کریں</string>
+  <!--ChangeNumberLockActivity-->
+  <string name="ChangeNumberLockActivity__retry">دوبارہ کوشش کریں</string>
+  <string name="ChangeNumberLockActivity__leave">چھوڑ دیں</string>
+  <string name="ChangeNumberLockActivity__submit_debug_log">ڈی بَگ لاگ پیش کریں</string>
   <!--ChatsSettingsFragment-->
   <string name="ChatsSettingsFragment__keyboard">کی بورڈ</string>
   <string name="ChatsSettingsFragment__enter_key_sends">بھیجے گئے key داخل کریں</string>
@@ -2897,6 +2913,12 @@
   <string name="NotificationsSettingsFragment__calls">کالز</string>
   <string name="NotificationsSettingsFragment__notify_when">مطلع کریں جب…</string>
   <string name="NotificationsSettingsFragment__contact_joins_signal">رابطہ Signal میں شامل ہوتا ہے</string>
+  <!--Notification preference header-->
+  <!--Notification preference option header-->
+  <!--Notification preference summary text-->
+  <!--NotificationProfilesFragment-->
+  <!--Title for notification profiles screen that shows all existing profiles-->
+  <!--Button text to create a notification profile-->
   <!--PrivacySettingsFragment-->
   <string name="PrivacySettingsFragment__blocked">بلاک ہوگیا</string>
   <string name="PrivacySettingsFragment__d_contacts">%1$dرابطے</string>
@@ -2938,6 +2960,8 @@
   <string name="HelpFragment__copyright_signal_messenger">کاپی رائٹ Signal میسنجر</string>
   <string name="HelpFragment__licenced_under_the_gplv3">GPLv3 کے تحت لائسنس یافتہ</string>
   <!--DataAndStorageSettingsFragment-->
+  <string name="DataAndStorageSettingsFragment__high">اونچا</string>
+  <string name="DataAndStorageSettingsFragment__standard">معیار</string>
   <string name="DataAndStorageSettingsFragment__calls">کالز</string>
   <!--ChatColorSelectionFragment-->
   <string name="ChatColorSelectionFragment__auto">آٹو</string>
@@ -2984,6 +3008,8 @@
   <string name="AddAProfilePhotoMegaphone__choose_a_look_and_color">ایک شکل اور رنگ منتخب کریں یا اپنے initials کو اپنی مرضی کے مطابق بنائیں۔</string>
   <string name="AddAProfilePhotoMegaphone__not_now">ابھی نہیں</string>
   <string name="AddAProfilePhotoMegaphone__add_photo">تصویر لگاو</string>
+  <!--BecomeASustainerMegaphone-->
+  <string name="BecomeASustainerMegaphone__no_thanks">نہیں شکریہ</string>
   <!--KeyboardPagerFragment-->
   <string name="KeyboardPagerFragment_emoji">ایموجی</string>
   <string name="KeyboardPagerFragment_open_emoji_search">ایموجی تلاش کھولیں</string>
@@ -3060,7 +3086,7 @@
   <!--ContactFilterView-->
   <string name="ContactFilterView__search_name_or_number">نام یا نمبر تلاش کریں</string>
   <!--VoiceNotePlayerView-->
-  <string name="VoiceNotePlayerView__s_dot_s">%1$s · %2$s</string>
+  <string name="VoiceNotePlayerView__dot_s">· %1$s</string>
   <!--AvatarPickerFragment-->
   <string name="AvatarPickerFragment__avatar_preview">اوتار پیش نظارہ</string>
   <string name="AvatarPickerFragment__camera">کیمرہ</string>
@@ -3084,5 +3110,115 @@
   <string name="ContactSelectionListItem__sms">ایس ایم ایس</string>
   <string name="ContactSelectionListItem__dot_s">· %1$s</string>
   <!--DSLSettingsToolbar-->
+  <!--Media V2-->
+  <string name="ImageEditorHud__cancel">منسوخ کریں</string>
+  <string name="ImageEditorHud__undo">کالعدم کریں</string>
+  <string name="ImageEditorHud__delete">حذف کریں</string>
+  <string name="MediaCountIndicatorButton__send">بھیجیں</string>
+  <string name="MediaReviewSelectedItem__tap_to_select">منتخب کرنے کے لیے ٹیپ کریں</string>
+  <string name="MediaReviewImagePageFragment__discard">مسترد کیجئے</string>
+  <string name="SelectFeaturedBadgeFragment__preview">پیش نظارہ</string>
+  <string name="SubscribeFragment__signal_is_powered_by_people_like_you">Signal آپ جیسے لوگوں کے ذریعہ تقویت یافتہ ہے۔</string>
+  <string name="SubscribeFragment__not_now">ابھی نہیں</string>
+  <string name="SubscribeFragment__confirm">تصدیق</string>
+  <string name="SubscribeFragment__update">اَپ ڈیٹ</string>
+  <string name="SubscribeThanksForYourSupportBottomSheetDialogFragment__done">ہو گیا</string>
+  <string name="Boost__enter_custom_amount">اپنی مرضی کی رقم درج کریں۔</string>
+  <!--Displayed on "My Support" screen when user badge failed to be added to their account-->
+  <string name="ExpiredBadgeBottomSheetDialogFragment__not_now">ابھی نہیں</string>
+  <string name="Subscription__contact_support">سپورٹ سے رابطہ کریں</string>
+  <string name="SubscribeFragment__processing_payment">ادائیگی پر کارروائی ہو رہی ہے…</string>
+  <!--Displayed in notification when user payment fails to process on Stripe-->
+  <!--Displayed on "My Support" screen when user subscription payment method failed.-->
+  <string name="NetworkFailure__retry">دوبارہ کوشش کریں</string>
+  <!--Title of create notification profile screen-->
+  <!--Hint text for create/edit notification profile name-->
+  <string name="EditNotificationProfileFragment__profile_name">پروفائل کا نام</string>
+  <!--Name has a max length, this shows how many characters are used out of the max-->
+  <string name="EditNotificationProfileFragment__count">%1$d/%2$d</string>
+  <!--Call to action button once the profile is named to continue to the next create step-->
+  <string name="EditNotificationProfileFragment__next">اگلا</string>
+  <!--Call to action button once the profile name is edited-->
+  <string name="EditNotificationProfileFragment__save">محفوظ کریں</string>
+  <!--Title of edit notification profile screen-->
+  <!--Error message shown when attempting to create or edit a profile name to an existing profile name-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <string name="EditNotificationProfileFragment__work">کام</string>
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Preset selectable name for a profile name, shown as list in edit/create screen-->
+  <!--Error message shown when attempting to next/save without a profile name-->
+  <!--Title for add recipients to notification profile screen in create flow-->
+  <!--Description of what the user should be doing with this screen-->
+  <!--Button text that launches the contact picker to select from-->
+  <!--Call to action button on contact picker for adding to profile-->
+  <string name="SelectRecipientsFragment__add">شامل کریں</string>
+  <!--Notification profiles home fragment, shown when no profiles have been created yet-->
+  <!--Header shown above list of all notification profiles-->
+  <!--Button that starts the create new notification profile flow-->
+  <!--Profile active status, indicating the current profile is on for an unknown amount of time-->
+  <string name="NotificationProfilesFragment__on">چلائیں</string>
+  <!--Button use to permanently delete a notification profile-->
+  <!--Snakbar message shown when removing a recipient from a profile-->
+  <!--Snackbar button text that will undo the recipient remove-->
+  <string name="NotificationProfileDetails__undo">کالعدم کریں</string>
+  <!--Dialog message shown to confirm deleting a profile-->
+  <!--Dialog button to delete profile-->
+  <string name="NotificationProfileDetails__delete">حذف کریں</string>
+  <!--Title/accessibility text for edit icon to edit profile emoji/name-->
+  <!--Schedule description if all days are selected-->
+  <!--Profile status on if it is the active profile-->
+  <string name="NotificationProfileDetails__on">چلائیں</string>
+  <!--Profile status on if it is not the active profile-->
+  <string name="NotificationProfileDetails__off">بند کریں</string>
+  <!--Description of hours for schedule (start to end) times-->
+  <string name="NotificationProfileDetails__s_to_s">%1$sسے%2$s</string>
+  <!--Section header for exceptions to the notification profile-->
+  <!--Profile exception to allow all calls through the profile restrictions-->
+  <!--Profile exception to allow all @mentions through the profile restrictions-->
+  <!--Section header for showing schedule information-->
+  <!--If member list is long, will truncate the list and show an option to then see all when tapped-->
+  <string name="NotificationProfileDetails__see_all">تمام دیکھیں</string>
+  <!--Title for add schedule to profile in create flow-->
+  <!--Descriptor text indicating what the user can do with this screen-->
+  <!--Text shown next to toggle switch to enable/disable schedule-->
+  <!--Label for showing the start time for the schedule-->
+  <string name="EditNotificationProfileSchedule__start">شروع کریں</string>
+  <!--Label for showing the end time for the schedule-->
+  <!--First letter of Sunday-->
+  <!--First letter of Monday-->
+  <!--First letter of Tuesday-->
+  <!--First letter of Wednesday-->
+  <!--First letter of Thursday-->
+  <!--First letter of Friday-->
+  <!--First letter of Saturday-->
+  <!--Title of select time dialog shown when setting start time for schedule-->
+  <!--Title of select time dialog shown when setting end time for schedule-->
+  <!--If in edit mode, call to action button text show to save schedule to profile-->
+  <string name="EditNotificationProfileSchedule__save">محفوظ کریں</string>
+  <!--If in create mode, call to action button text to show to skip enabling a schedule-->
+  <string name="EditNotificationProfileSchedule__skip">چھوڑ دو</string>
+  <!--If in create mode, call to action button text to show to use the enabled schedule and move to the next screen-->
+  <string name="EditNotificationProfileSchedule__next">اگلا</string>
+  <!--Error message shown if trying to save/use a schedule with no days selected-->
+  <!--Title for final screen shown after completing a profile creation-->
+  <!--Call to action button to press to close the created screen and move to the profile details screen-->
+  <string name="NotificationProfileCreated__done">ہو گیا</string>
+  <!--Descriptor text shown to indicate how to manually turn a profile on/off-->
+  <!--Descriptor text shown to indicate you can add a schedule later since you did not add one during create flow-->
+  <!--Descriptor text shown to indicate your profile will follow the schedule set during create flow-->
+  <!--Button text shown in profile selection bottom sheet to create a new profile-->
+  <!--Manual enable option to manually enable a profile for 1 hour-->
+  <!--Manual enable option to manually enable a profile until a set time (currently 6pm or 8am depending on what is next)-->
+  <string name="NotificationProfileSelection__until_s">جب تک %1$s</string>
+  <!--Option to view profile details-->
+  <!--Descriptor text indicating how long a profile will be on when there is a time component associated with it-->
+  <!--Title for notification profile megaphone-->
+  <!--Description for notification profile megaphone-->
+  <!--Call to action button to create a profile from megaphone-->
+  <!--Button to dismiss notification profile megaphone-->
+  <string name="NotificationProfilesMegaphone__not_now">ابھی نہیں</string>
+  <!--Displayed in a toast when we fail to open the ringtone picker-->
   <!--EOF-->
 </resources>

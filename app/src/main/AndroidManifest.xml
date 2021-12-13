@@ -102,6 +102,10 @@
                  android:largeHeap="true">
 
     <meta-data
+            android:name="com.google.android.gms.wallet.api.enabled"
+            android:value="true" />
+
+    <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyCSx9xea86GwDKGznCAULE9Y5a8b-TfN9U"/>
 
@@ -176,7 +180,6 @@
     <activity android:name=".sharing.ShareActivity"
               android:theme="@style/Theme.Signal.DayNight.NoActionBar"
               android:excludeFromRecents="true"
-              android:launchMode="singleTask"
               android:taskAffinity=""
               android:windowSoftInputMode="stateHidden"
               android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize">
@@ -242,6 +245,9 @@
                    android:resource="@mipmap/ic_launcher" />
         <meta-data android:name="com.sec.minimode.icon.landscape.normal"
                    android:resource="@mipmap/ic_launcher" />
+
+        <meta-data android:name="android.app.shortcuts"
+                   android:resource="@xml/shortcuts" />
 
     </activity-alias>
 
@@ -315,7 +321,8 @@
     <activity android:name=".messagedetails.MessageDetailsActivity"
               android:windowSoftInputMode="stateHidden"
               android:launchMode="singleTask"
-              android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"/>
+              android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"
+              android:theme="@style/Signal.DayNight.NoActionBar" />
 
     <activity android:name=".groups.ui.invitesandrequests.ManagePendingAndRequestingMembersActivity"
               android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize|uiMode"
@@ -363,17 +370,18 @@
               android:windowSoftInputMode="stateHidden"
               android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"/>
 
-    <activity android:name=".mediasend.MediaSendActivity"
-              android:theme="@style/TextSecure.FullScreenMedia"
-              android:windowSoftInputMode="stateHidden"
-              android:launchMode="singleTop"
-              android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"/>
+        <activity android:name=".mediasend.v2.MediaSelectionActivity"
+            android:theme="@style/TextSecure.FullScreenMedia"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustNothing"
+            android:launchMode="singleTop"
+            android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"/>
 
     <activity android:name=".PassphraseChangeActivity"
               android:label="@string/AndroidManifest__change_passphrase"
               android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"/>
 
     <activity android:name=".VerifyIdentityActivity"
+              android:theme="@style/Signal.DayNight.NoActionBar"
               android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"/>
 
     <activity android:name=".components.settings.app.AppSettingsActivity"
@@ -386,8 +394,12 @@
         </intent-filter>
     </activity>
 
+        <activity android:name=".components.settings.app.changenumber.ChangeNumberLockActivity"
+            android:theme="@style/Signal.DayNight.NoActionBar"
+            android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"/>
+
         <activity android:name=".components.settings.conversation.ConversationSettingsActivity"
-            android:configChanges="touchscreen|keyboard|keyboardHidden|orientation|screenLayout|screenSize"
+            android:configChanges="touchscreen|keyboard|keyboardHidden|screenLayout|screenSize"
             android:theme="@style/Signal.DayNight.ConversationSettings"
             android:windowSoftInputMode="stateAlwaysHidden">
         </activity>
@@ -757,22 +769,6 @@
         <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_provider_paths" />
 
     </provider>
-
-    <provider android:name=".database.DatabaseContentProviders$Conversation"
-              android:authorities="${applicationId}.database.conversation"
-              android:exported="false" />
-
-    <provider android:name=".database.DatabaseContentProviders$Attachment"
-              android:authorities="${applicationId}.database.attachment"
-              android:exported="false" />
-
-    <provider android:name=".database.DatabaseContentProviders$Sticker"
-              android:authorities="${applicationId}.database.sticker"
-              android:exported="false" />
-
-    <provider android:name=".database.DatabaseContentProviders$StickerPack"
-              android:authorities="${applicationId}.database.stickerpack"
-              android:exported="false" />
 
     <receiver android:name=".service.BootReceiver">
         <intent-filter>

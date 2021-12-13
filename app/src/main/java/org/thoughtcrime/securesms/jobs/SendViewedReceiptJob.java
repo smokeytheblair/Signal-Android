@@ -7,8 +7,8 @@ import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.MessageDatabase.MarkedMessageInfo;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageId;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -149,6 +149,7 @@ public class SendViewedReceiptJob extends BaseJob {
     }
 
     Recipient recipient = Recipient.resolved(recipientId);
+
     if (recipient.isBlocked()) {
       Log.w(TAG, "Refusing to send receipts to blocked recipient");
       return;
@@ -156,6 +157,11 @@ public class SendViewedReceiptJob extends BaseJob {
 
     if (recipient.isGroup()) {
       Log.w(TAG, "Refusing to send receipts to group");
+      return;
+    }
+
+    if (recipient.isUnregistered()) {
+      Log.w(TAG, recipient.getId() + " not registered!");
       return;
     }
 
@@ -170,7 +176,7 @@ public class SendViewedReceiptJob extends BaseJob {
                                                          receiptMessage);
 
     if (Util.hasItems(messageIds)) {
-      DatabaseFactory.getMessageLogDatabase(context).insertIfPossible(recipientId, timestamp, result, ContentHint.IMPLICIT, messageIds);
+      SignalDatabase.messageLog().insertIfPossible(recipientId, timestamp, result, ContentHint.IMPLICIT, messageIds);
     }
   }
 

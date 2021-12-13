@@ -1,11 +1,12 @@
 package org.thoughtcrime.securesms.conversation.colors
 
-import org.thoughtcrime.securesms.util.Projection
+import android.view.ViewGroup
+import org.thoughtcrime.securesms.util.ProjectionList
 
 /**
  * Denotes that a class can be colorized. The class is responsible for
  * generating its own projection.
  */
 interface Colorizable {
-  val colorizerProjections: List<Projection>
+  fun getColorizerProjections(coordinateRoot: ViewGroup): ProjectionList
 }

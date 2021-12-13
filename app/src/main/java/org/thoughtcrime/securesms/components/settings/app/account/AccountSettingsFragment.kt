@@ -14,7 +14,7 @@ import androidx.autofill.HintConstants
 import androidx.core.app.DialogCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
-import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.Navigation
 import com.google.android.material.snackbar.Snackbar
 import org.thoughtcrime.securesms.R
@@ -30,6 +30,8 @@ import org.thoughtcrime.securesms.lock.v2.CreateKbsPinActivity
 import org.thoughtcrime.securesms.lock.v2.KbsConstants
 import org.thoughtcrime.securesms.lock.v2.PinKeyboardType
 import org.thoughtcrime.securesms.pin.RegistrationLockV2Dialog
+import org.thoughtcrime.securesms.recipients.Recipient
+import org.thoughtcrime.securesms.util.FeatureFlags
 import org.thoughtcrime.securesms.util.ServiceUtil
 import org.thoughtcrime.securesms.util.ThemeUtil
 
@@ -49,7 +51,7 @@ class AccountSettingsFragment : DSLSettingsFragment(R.string.AccountSettingsFrag
   }
 
   override fun bindAdapter(adapter: DSLSettingsAdapter) {
-    viewModel = ViewModelProviders.of(this)[AccountSettingsViewModel::class.java]
+    viewModel = ViewModelProvider(this)[AccountSettingsViewModel::class.java]
 
     viewModel.state.observe(viewLifecycleOwner) { state ->
       adapter.submitList(getConfiguration(state).toMappingModelList())
@@ -61,6 +63,7 @@ class AccountSettingsFragment : DSLSettingsFragment(R.string.AccountSettingsFrag
 
       sectionHeaderPref(R.string.preferences_app_protection__signal_pin)
 
+      @Suppress("DEPRECATION")
       clickPref(
         title = DSLSettingsText.from(if (state.hasPin) R.string.preferences_app_protection__change_your_pin else R.string.preferences_app_protection__create_a_pin),
         onClick = {
@@ -102,6 +105,15 @@ class AccountSettingsFragment : DSLSettingsFragment(R.string.AccountSettingsFrag
       dividerPref()
 
       sectionHeaderPref(R.string.AccountSettingsFragment__account)
+
+      if (FeatureFlags.changeNumber() && Recipient.self().changeNumberCapability == Recipient.Capability.SUPPORTED) {
+        clickPref(
+          title = DSLSettingsText.from(R.string.AccountSettingsFragment__change_phone_number),
+          onClick = {
+            Navigation.findNavController(requireView()).navigate(R.id.action_accountSettingsFragment_to_changePhoneNumberFragment)
+          }
+        )
+      }
 
       clickPref(
         title = DSLSettingsText.from(R.string.preferences_chats__transfer_account),

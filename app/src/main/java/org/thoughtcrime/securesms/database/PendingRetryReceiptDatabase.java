@@ -6,7 +6,8 @@ import android.database.Cursor;
 
 import androidx.annotation.NonNull;
 
-import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
+import net.zetetic.database.sqlcipher.SQLiteDatabase;
+
 import org.thoughtcrime.securesms.database.model.PendingRetryReceiptModel;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.util.CursorUtil;
@@ -39,7 +40,7 @@ public final class PendingRetryReceiptDatabase extends Database {
                                                                                  THREAD_ID          + " INTEGER NOT NULL, " +
                                                                                  "UNIQUE(" + AUTHOR + "," + SENT_TIMESTAMP + ") ON CONFLICT REPLACE);";
 
-  PendingRetryReceiptDatabase(Context context, SQLCipherOpenHelper databaseHelper) {
+  PendingRetryReceiptDatabase(Context context, SignalDatabase databaseHelper) {
     super(context, databaseHelper);
   }
 
@@ -51,7 +52,7 @@ public final class PendingRetryReceiptDatabase extends Database {
     values.put(RECEIVED_TIMESTAMP, receivedTimestamp);
     values.put(THREAD_ID, threadId);
 
-    long id = databaseHelper.getWritableDatabase().insertWithOnConflict(TABLE_NAME, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+    long id = databaseHelper.getSignalWritableDatabase().insertWithOnConflict(TABLE_NAME, null, values, SQLiteDatabase.CONFLICT_REPLACE);
 
     return new PendingRetryReceiptModel(id, author, authorDevice, sentTimestamp, receivedTimestamp, threadId);
   }
@@ -59,7 +60,7 @@ public final class PendingRetryReceiptDatabase extends Database {
   @NonNull List<PendingRetryReceiptModel> getAll() {
     List<PendingRetryReceiptModel> models = new LinkedList<>();
 
-    try (Cursor cursor = databaseHelper.getReadableDatabase().query(TABLE_NAME, null, null, null, null, null, null)) {
+    try (Cursor cursor = databaseHelper.getSignalReadableDatabase().query(TABLE_NAME, null, null, null, null, null, null)) {
       while (cursor.moveToNext()) {
         models.add(fromCursor(cursor));
       }
@@ -69,7 +70,7 @@ public final class PendingRetryReceiptDatabase extends Database {
   }
 
   void delete(@NonNull PendingRetryReceiptModel model) {
-    databaseHelper.getWritableDatabase().delete(TABLE_NAME, ID_WHERE, SqlUtil.buildArgs(model.getId()));
+    databaseHelper.getSignalWritableDatabase().delete(TABLE_NAME, ID_WHERE, SqlUtil.buildArgs(model.getId()));
   }
 
   private static @NonNull PendingRetryReceiptModel fromCursor(@NonNull Cursor cursor) {

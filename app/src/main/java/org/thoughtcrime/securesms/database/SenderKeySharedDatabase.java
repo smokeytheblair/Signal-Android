@@ -8,7 +8,6 @@ import android.database.Cursor;
 import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.whispersystems.libsignal.SignalProtocolAddress;
 import org.whispersystems.signalservice.api.push.DistributionId;
@@ -34,14 +33,16 @@ public class SenderKeySharedDatabase extends Database {
   public static final  String DISTRIBUTION_ID = "distribution_id";
   public static final  String ADDRESS         = "address";
   public static final  String DEVICE          = "device";
+  public static final  String TIMESTAMP       = "timestamp";
 
   public static final String CREATE_TABLE = "CREATE TABLE " + TABLE_NAME + "(" + ID              + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
                                                                                  DISTRIBUTION_ID + " TEXT NOT NULL, " +
                                                                                  ADDRESS         + " TEXT NOT NULL, " +
                                                                                  DEVICE          + " INTEGER NOT NULL, " +
+                                                                                 TIMESTAMP       + " INTEGER DEFAULT 0, " +
                                                                                  "UNIQUE(" + DISTRIBUTION_ID + "," + ADDRESS + ", " + DEVICE + ") ON CONFLICT REPLACE);";
 
-  SenderKeySharedDatabase(Context context, SQLCipherOpenHelper databaseHelper) {
+  SenderKeySharedDatabase(Context context, SignalDatabase databaseHelper) {
     super(context, databaseHelper);
   }
 
@@ -49,7 +50,7 @@ public class SenderKeySharedDatabase extends Database {
    * Mark that a distributionId has been shared with the provided recipients
    */
   public void markAsShared(@NonNull DistributionId distributionId, @NonNull Collection<SignalProtocolAddress> addresses) {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
 
     db.beginTransaction();
     try {
@@ -58,6 +59,7 @@ public class SenderKeySharedDatabase extends Database {
         values.put(ADDRESS, address.getName());
         values.put(DEVICE, address.getDeviceId());
         values.put(DISTRIBUTION_ID, distributionId.toString());
+        values.put(TIMESTAMP, System.currentTimeMillis());
 
         db.insertWithOnConflict(TABLE_NAME, null, values, SQLiteDatabase.CONFLICT_REPLACE);
       }
@@ -72,7 +74,7 @@ public class SenderKeySharedDatabase extends Database {
    * Get the set of recipientIds that know about the distributionId in question.
    */
   public @NonNull Set<SignalProtocolAddress> getSharedWith(@NonNull DistributionId distributionId) {
-    SQLiteDatabase db    = databaseHelper.getReadableDatabase();
+    SQLiteDatabase db    = databaseHelper.getSignalReadableDatabase();
     String         query = DISTRIBUTION_ID + " = ?";
     String[]       args  = SqlUtil.buildArgs(distributionId);
 
@@ -94,7 +96,7 @@ public class SenderKeySharedDatabase extends Database {
    * Clear the shared statuses for all provided addresses.
    */
   public void delete(@NonNull DistributionId distributionId, @NonNull Collection<SignalProtocolAddress> addresses) {
-    SQLiteDatabase db    = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db    = databaseHelper.getSignalWritableDatabase();
     String         query = DISTRIBUTION_ID + " = ? AND " + ADDRESS + " = ? AND " + DEVICE + " = ?";
 
     db.beginTransaction();
@@ -113,7 +115,7 @@ public class SenderKeySharedDatabase extends Database {
    * Clear all shared statuses for a given distributionId.
    */
   public void deleteAllFor(@NonNull DistributionId distributionId) {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
     db.delete(TABLE_NAME, DISTRIBUTION_ID + " = ?", SqlUtil.buildArgs(distributionId));
   }
 
@@ -121,7 +123,7 @@ public class SenderKeySharedDatabase extends Database {
    * Clear the shared status for all distributionIds for a set of addresses.
    */
   public void deleteAllFor(@NonNull Collection<SignalProtocolAddress> addresses) {
-    SQLiteDatabase db    = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db    = databaseHelper.getSignalWritableDatabase();
     String         query = ADDRESS + " = ? AND " + DEVICE + " = ?";
 
     db.beginTransaction();
@@ -140,11 +142,11 @@ public class SenderKeySharedDatabase extends Database {
    * Clear the shared status for all distributionIds for a given recipientId.
    */
   public void deleteAllFor(@NonNull RecipientId recipientId) {
-    SQLiteDatabase db        = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db        = databaseHelper.getSignalWritableDatabase();
     Recipient      recipient = Recipient.resolved(recipientId);
 
-    if (recipient.hasUuid()) {
-      db.delete(TABLE_NAME, ADDRESS + " = ?", SqlUtil.buildArgs(recipient.getUuid().get().toString()));
+    if (recipient.hasAci()) {
+      db.delete(TABLE_NAME, ADDRESS + " = ?", SqlUtil.buildArgs(recipient.requireAci().toString()));
     } else {
       Log.w(TAG, "Recipient doesn't have a UUID! " + recipientId);
     }
@@ -154,7 +156,15 @@ public class SenderKeySharedDatabase extends Database {
    * Clears all database content.
    */
   public void deleteAll() {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
     db.delete(TABLE_NAME, null, null);
+  }
+
+  /**
+   * Gets the shared state of all of our sender keys. Used for debugging.
+   */
+  public Cursor getAllSharedWithCursor() {
+    SQLiteDatabase db = databaseHelper.getSignalReadableDatabase();
+    return db.query(TABLE_NAME, null, null, null, null, null, DISTRIBUTION_ID + ", " + ADDRESS + ", " + DEVICE);
   }
 }

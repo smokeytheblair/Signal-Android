@@ -20,7 +20,7 @@ import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.MainActivity
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.conversation.ConversationIntents
-import org.thoughtcrime.securesms.database.DatabaseFactory
+import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.model.InMemoryMessageRecord
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.notifications.NotificationChannels
@@ -188,6 +188,7 @@ object NotificationFactory {
       setLargeIcon(conversation.getContactLargeIcon(context).toLargeBitmap(context))
       addPerson(conversation.recipient)
       setShortcutId(ConversationUtil.getShortcutId(conversation.recipient))
+      setLocusId(ConversationUtil.getShortcutId(conversation.recipient))
       setContentInfo(conversation.messageCount.toString())
       setNumber(conversation.messageCount)
       setContentText(conversation.getContentText(context))
@@ -368,6 +369,7 @@ object NotificationFactory {
       setLargeIcon(conversation.getContactLargeIcon(context).toLargeBitmap(context))
       addPerson(conversation.recipient)
       setShortcutId(ConversationUtil.getShortcutId(conversation.recipient))
+      setLocusId(ConversationUtil.getShortcutId(conversation.recipient))
       addMessages(conversation)
       setBubbleMetadata(conversation, BubbleUtil.BubbleState.SHOWN)
     }
@@ -384,7 +386,7 @@ object NotificationFactory {
       Log.i(TAG, "Security exception when posting notification, clearing ringtone")
       if (threadRecipient != null) {
         SignalExecutors.BOUNDED.execute {
-          DatabaseFactory.getRecipientDatabase(context).setMessageRingtone(threadRecipient.id, null)
+          SignalDatabase.recipients.setMessageRingtone(threadRecipient.id, null)
           NotificationChannels.updateMessageRingtone(context, threadRecipient, null)
         }
       }

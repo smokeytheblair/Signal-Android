@@ -17,8 +17,6 @@
 
 package org.thoughtcrime.securesms;
 
-import static org.thoughtcrime.securesms.components.sensors.Orientation.PORTRAIT_BOTTOM_EDGE;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.PictureInPictureParams;
@@ -34,6 +32,7 @@ import android.os.Bundle;
 import android.util.Rational;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
@@ -71,16 +70,22 @@ import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.service.webrtc.SignalCallManager;
 import org.thoughtcrime.securesms.sms.MessageSender;
 import org.thoughtcrime.securesms.util.EllapsedTimeFormatter;
+import org.thoughtcrime.securesms.util.FeatureFlags;
 import org.thoughtcrime.securesms.util.FullscreenHelper;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
+import org.thoughtcrime.securesms.util.ThrottledDebouncer;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.util.livedata.LiveDataUtil;
 import org.thoughtcrime.securesms.webrtc.CallParticipantsViewState;
+import org.thoughtcrime.securesms.webrtc.audio.SignalAudioManager;
 import org.whispersystems.libsignal.IdentityKey;
 import org.whispersystems.signalservice.api.messages.calls.HangupMessage;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+
+import static org.thoughtcrime.securesms.components.sensors.Orientation.PORTRAIT_BOTTOM_EDGE;
 
 public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChangeDialog.Callback {
 
@@ -104,6 +109,7 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
   private boolean                       enableVideoIfAvailable;
   private androidx.window.WindowManager windowManager;
   private WindowLayoutInfoConsumer      windowLayoutInfoConsumer;
+  private ThrottledDebouncer            requestNewSizesThrottle;
 
   @Override
   protected void attachBaseContext(@NonNull Context newBase) {
@@ -143,6 +149,8 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
     windowLayoutInfoConsumer = new WindowLayoutInfoConsumer();
 
     windowManager.registerLayoutChangeCallback(SignalExecutors.BOUNDED, windowLayoutInfoConsumer);
+
+    requestNewSizesThrottle = new ThrottledDebouncer(TimeUnit.SECONDS.toMillis(1));
   }
 
   @Override
@@ -187,6 +195,7 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
 
     if (!isInPipMode() || isFinishing()) {
       EventBus.getDefault().unregister(this);
+      requestNewSizesThrottle.clear();
     }
 
     if (!viewModel.isCallStarting()) {
@@ -284,20 +293,22 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
     viewModel.getWebRtcControls().observe(this, callScreen::setWebRtcControls);
     viewModel.getEvents().observe(this, this::handleViewModelEvent);
     viewModel.getCallTime().observe(this, this::handleCallTime);
+
     LiveDataUtil.combineLatest(viewModel.getCallParticipantsState(),
                                viewModel.getOrientationAndLandscapeEnabled(),
                                (s, o) -> new CallParticipantsViewState(s, o.first == PORTRAIT_BOTTOM_EDGE, o.second))
                 .observe(this, p -> callScreen.updateCallParticipants(p));
     viewModel.getCallParticipantListUpdate().observe(this, participantUpdateWindow::addCallParticipantListUpdate);
     viewModel.getSafetyNumberChangeEvent().observe(this, this::handleSafetyNumberChangeEvent);
-    viewModel.getGroupMembers().observe(this, unused -> updateGroupMembersForGroupCall());
+    viewModel.getGroupMembersChanged().observe(this, unused -> updateGroupMembersForGroupCall());
+    viewModel.getGroupMemberCount().observe(this, this::handleGroupMemberCountChange);
     viewModel.shouldShowSpeakerHint().observe(this, this::updateSpeakerHint);
 
     callScreen.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
       CallParticipantsState state = viewModel.getCallParticipantsState().getValue();
       if (state != null) {
         if (state.needsNewRequestSizes()) {
-          ApplicationDependencies.getSignalCallManager().updateRenderedResolutions();
+          requestNewSizesThrottle.publish(() -> ApplicationDependencies.getSignalCallManager().updateRenderedResolutions());
         }
       }
     });
@@ -356,15 +367,15 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
   }
 
   private void handleSetAudioHandset() {
-    ApplicationDependencies.getSignalCallManager().setAudioSpeaker(false);
+    ApplicationDependencies.getSignalCallManager().selectAudioDevice(SignalAudioManager.AudioDevice.EARPIECE);
   }
 
   private void handleSetAudioSpeaker() {
-    ApplicationDependencies.getSignalCallManager().setAudioSpeaker(true);
+    ApplicationDependencies.getSignalCallManager().selectAudioDevice(SignalAudioManager.AudioDevice.SPEAKER_PHONE);
   }
 
   private void handleSetAudioBluetooth() {
-    ApplicationDependencies.getSignalCallManager().setAudioBluetooth(true);
+    ApplicationDependencies.getSignalCallManager().selectAudioDevice(SignalAudioManager.AudioDevice.BLUETOOTH);
   }
 
   private void handleSetMuteAudio(boolean enabled) {
@@ -473,6 +484,12 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
     delayedFinish();
   }
 
+  private void handleGlare(@NonNull Recipient recipient) {
+    Log.i(TAG, "handleGlare: " + recipient.getId());
+
+    callScreen.setStatus("");
+  }
+
   private void handleCallRinging() {
     callScreen.setStatus(getString(R.string.RedPhone_ringing));
   }
@@ -538,6 +555,12 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
 
   private void updateGroupMembersForGroupCall() {
     ApplicationDependencies.getSignalCallManager().requestUpdateGroupMembers();
+  }
+
+  public void handleGroupMemberCountChange(int count) {
+    boolean canRing = count <= FeatureFlags.maxGroupCallRingSize() && FeatureFlags.groupCallRinging();
+    callScreen.enableRingGroup(canRing);
+    ApplicationDependencies.getSignalCallManager().setRingGroup(canRing);
   }
 
   private void updateSpeakerHint(boolean showSpeakerHint) {
@@ -612,6 +635,8 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
         handleCallRinging(); break;
       case CALL_DISCONNECTED:
         handleTerminate(event.getRecipient(), HangupMessage.Type.NORMAL); break;
+      case CALL_DISCONNECTED_GLARE:
+        handleGlare(event.getRecipient()); break;
       case CALL_ACCEPTED_ELSEWHERE:
         handleTerminate(event.getRecipient(), HangupMessage.Type.ACCEPTED); break;
       case CALL_DECLINED_ELSEWHERE:
@@ -645,6 +670,11 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
   private void handleCallPreJoin(@NonNull WebRtcViewModel event) {
     if (event.getGroupState().isNotIdle()) {
       callScreen.setStatusFromGroupCallState(event.getGroupState());
+      callScreen.setRingGroup(event.shouldRingGroup());
+
+      if (event.shouldRingGroup() && event.areRemoteDevicesInCall()) {
+        ApplicationDependencies.getSignalCallManager().setRingGroup(false);
+      }
     }
   }
 
@@ -759,6 +789,16 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
     public void onLocalPictureInPictureClicked() {
       viewModel.onLocalPictureInPictureClicked();
     }
+
+    @Override
+    public void onRingGroupChanged(boolean ringGroup, boolean ringingAllowed) {
+      if (ringingAllowed) {
+        ApplicationDependencies.getSignalCallManager().setRingGroup(ringGroup);
+      } else {
+        ApplicationDependencies.getSignalCallManager().setRingGroup(false);
+        Toast.makeText(WebRtcCallActivity.this, R.string.WebRtcCallActivity__group_is_too_large_to_ring_the_participants, Toast.LENGTH_SHORT).show();
+      }
+    }
   }
 
   private class WindowLayoutInfoConsumer implements Consumer<WindowLayoutInfo> {
@@ -772,7 +812,7 @@ public class WebRtcCallActivity extends BaseActivity implements SafetyNumberChan
       setRequestedOrientation(feature.isPresent() ? ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
       if (feature.isPresent()) {
         FoldingFeature foldingFeature = (FoldingFeature) feature.get();
-        Rect bounds = foldingFeature.getBounds();
+        Rect           bounds         = foldingFeature.getBounds();
         if (foldingFeature.getState() == FoldingFeature.State.HALF_OPENED && bounds.top == bounds.bottom) {
           Log.d(TAG, "OnWindowLayoutInfo accepted: ensure call view is in table-top display mode");
           viewModel.setFoldableState(WebRtcControls.FoldableState.folded(bounds.top));

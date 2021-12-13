@@ -10,7 +10,6 @@ import androidx.annotation.Nullable;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.database.helpers.SQLCipherOpenHelper;
 import org.thoughtcrime.securesms.util.CursorUtil;
 import org.thoughtcrime.securesms.util.SqlUtil;
 
@@ -35,12 +34,12 @@ public class DraftDatabase extends Database {
     "CREATE INDEX IF NOT EXISTS draft_thread_index ON " + TABLE_NAME + " (" + THREAD_ID + ");",
   };
 
-  public DraftDatabase(Context context, SQLCipherOpenHelper databaseHelper) {
+  public DraftDatabase(Context context, SignalDatabase databaseHelper) {
     super(context, databaseHelper);
   }
 
   public void replaceDrafts(long threadId, List<Draft> drafts) {
-    SQLiteDatabase db    = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
 
     try {
       db.beginTransaction();
@@ -64,13 +63,13 @@ public class DraftDatabase extends Database {
   }
 
   public void clearDrafts(long threadId) {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
     int deletedRowCount = db.delete(TABLE_NAME, THREAD_ID + " = ?", SqlUtil.buildArgs(threadId));
     Log.d(TAG, "[clearDrafts] Deleted " + deletedRowCount + " rows for thread " + threadId);
   }
 
   void clearDrafts(Set<Long> threadIds) {
-    SQLiteDatabase db        = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db        = databaseHelper.getSignalWritableDatabase();
     StringBuilder  where     = new StringBuilder();
     List<String>   arguments = new LinkedList<>();
 
@@ -86,12 +85,12 @@ public class DraftDatabase extends Database {
   }
 
   void clearAllDrafts() {
-    SQLiteDatabase db = databaseHelper.getWritableDatabase();
+    SQLiteDatabase db = databaseHelper.getSignalWritableDatabase();
     db.delete(TABLE_NAME, null, null);
   }
 
   public Drafts getDrafts(long threadId) {
-    SQLiteDatabase db      = databaseHelper.getReadableDatabase();
+    SQLiteDatabase db      = databaseHelper.getSignalReadableDatabase();
     Drafts         results = new Drafts();
 
     try (Cursor cursor = db.query(TABLE_NAME, null, THREAD_ID + " = ?", new String[] {threadId+""}, null, null, null)) {
@@ -107,7 +106,7 @@ public class DraftDatabase extends Database {
   }
 
   public @NonNull Drafts getAllVoiceNoteDrafts() {
-    SQLiteDatabase db      = databaseHelper.getReadableDatabase();
+    SQLiteDatabase db      = databaseHelper.getSignalReadableDatabase();
     Drafts         results = new Drafts();
     String         where   = DRAFT_TYPE + " = ?";
     String[]       args    = SqlUtil.buildArgs(Draft.VOICE_NOTE);

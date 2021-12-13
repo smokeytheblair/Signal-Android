@@ -15,11 +15,13 @@ import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
 import org.signal.zkgroup.profiles.ProfileKey;
 import org.signal.zkgroup.profiles.ProfileKeyCredential;
+import org.thoughtcrime.securesms.badges.Badges;
+import org.thoughtcrime.securesms.badges.models.Badge;
 import org.thoughtcrime.securesms.crypto.ProfileKeyUtil;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.GroupDatabase;
 import org.thoughtcrime.securesms.database.RecipientDatabase;
 import org.thoughtcrime.securesms.database.RecipientDatabase.UnidentifiedAccessMode;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
@@ -36,7 +38,6 @@ import org.thoughtcrime.securesms.util.IdentityUtil;
 import org.thoughtcrime.securesms.util.ProfileUtil;
 import org.thoughtcrime.securesms.util.SetUtil;
 import org.thoughtcrime.securesms.util.Stopwatch;
-import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.Util;
 import org.whispersystems.libsignal.IdentityKey;
 import org.whispersystems.libsignal.InvalidKeyException;
@@ -46,6 +47,7 @@ import org.whispersystems.signalservice.api.crypto.InvalidCiphertextException;
 import org.whispersystems.signalservice.api.crypto.ProfileCipher;
 import org.whispersystems.signalservice.api.profiles.ProfileAndCredential;
 import org.whispersystems.signalservice.api.profiles.SignalServiceProfile;
+import org.whispersystems.signalservice.api.push.ACI;
 import org.whispersystems.signalservice.api.services.ProfileService;
 import org.whispersystems.signalservice.internal.ServiceResponse;
 
@@ -57,7 +59,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.rxjava3.core.Observable;
@@ -118,7 +119,7 @@ public class RetrieveProfileJob extends BaseJob {
       return new RefreshOwnProfileJob();
     } else if (recipient.isGroup()) {
       Context         context    = ApplicationDependencies.getApplication();
-      List<Recipient> recipients = DatabaseFactory.getGroupDatabase(context).getGroupMembers(recipient.requireGroupId(), GroupDatabase.MemberSet.FULL_MEMBERS_EXCLUDING_SELF);
+      List<Recipient> recipients = SignalDatabase.groups().getGroupMembers(recipient.requireGroupId(), GroupDatabase.MemberSet.FULL_MEMBERS_EXCLUDING_SELF);
 
       return new RetrieveProfileJob(Stream.of(recipients).map(Recipient::getId).collect(Collectors.toSet()));
     } else {
@@ -143,7 +144,7 @@ public class RetrieveProfileJob extends BaseJob {
       if (recipient.isSelf()) {
         includeSelf = true;
       } else if (recipient.isGroup()) {
-        List<Recipient> recipients = DatabaseFactory.getGroupDatabase(context).getGroupMembers(recipient.requireGroupId(), GroupDatabase.MemberSet.FULL_MEMBERS_EXCLUDING_SELF);
+        List<Recipient> recipients = SignalDatabase.groups().getGroupMembers(recipient.requireGroupId(), GroupDatabase.MemberSet.FULL_MEMBERS_EXCLUDING_SELF);
         combined.addAll(Stream.of(recipients).map(Recipient::getId).toList());
       } else {
         combined.add(recipientId);
@@ -169,8 +170,8 @@ public class RetrieveProfileJob extends BaseJob {
    */
   public static void enqueueRoutineFetchIfNecessary(Application application) {
     if (!SignalStore.registrationValues().isRegistrationComplete() ||
-        !TextSecurePreferences.isPushRegistered(application) ||
-        TextSecurePreferences.getLocalUuid(application) == null)
+        !SignalStore.account().isRegistered()                      ||
+        SignalStore.account().getAci() == null)
     {
       Log.i(TAG, "Registration not complete. Skipping.");
       return;
@@ -183,7 +184,7 @@ public class RetrieveProfileJob extends BaseJob {
     }
 
     SignalExecutors.BOUNDED.execute(() -> {
-      RecipientDatabase db      = DatabaseFactory.getRecipientDatabase(application);
+      RecipientDatabase db      = SignalDatabase.recipients();
       long              current = System.currentTimeMillis();
 
       List<RecipientId> ids = db.getRecipientsForRoutineProfileFetch(current - TimeUnit.DAYS.toMillis(30),
@@ -235,13 +236,13 @@ public class RetrieveProfileJob extends BaseJob {
 
   @Override
   public void onRun() throws IOException, RetryLaterException {
-    if (!TextSecurePreferences.isPushRegistered(context)) {
+    if (!SignalStore.account().isRegistered()) {
       Log.w(TAG, "Unregistered. Skipping.");
       return;
     }
 
     Stopwatch         stopwatch         = new Stopwatch("RetrieveProfile");
-    RecipientDatabase recipientDatabase = DatabaseFactory.getRecipientDatabase(context);
+    RecipientDatabase recipientDatabase = SignalDatabase.recipients();
 
     RecipientUtil.ensureUuidsAreAvailable(context, Stream.of(Recipient.resolvedList(recipientIds))
                                                          .filter(r -> r.getRegistered() != RecipientDatabase.RegisteredState.NOT_REGISTERED)
@@ -288,11 +289,11 @@ public class RetrieveProfileJob extends BaseJob {
     Set<RecipientId> success = SetUtil.difference(recipientIds, operationState.retries);
     recipientDatabase.markProfilesFetched(success, System.currentTimeMillis());
 
-    Map<RecipientId, String> newlyRegistered = Stream.of(operationState.profiles)
-                                                     .map(Pair::first)
-                                                     .filterNot(Recipient::isRegistered)
-                                                     .collect(Collectors.toMap(Recipient::getId,
-                                                                               r -> r.getUuid().transform(UUID::toString).orNull()));
+    Map<RecipientId, ACI> newlyRegistered = Stream.of(operationState.profiles)
+                                                  .map(Pair::first)
+                                                  .filterNot(Recipient::isRegistered)
+                                                  .collect(Collectors.toMap(Recipient::getId,
+                                                                            r -> r.getAci().orNull()));
 
     if (operationState.unregistered.size() > 0 || newlyRegistered.size() > 0) {
       Log.i(TAG, "Marking " + newlyRegistered.size() + " users as registered and " + operationState.unregistered.size() + " users as unregistered.");
@@ -329,6 +330,7 @@ public class RetrieveProfileJob extends BaseJob {
     setProfileName(recipient, profile.getName());
     setProfileAbout(recipient, profile.getAbout(), profile.getAboutEmoji());
     setProfileAvatar(recipient, profile.getAvatar());
+    setProfileBadges(recipient, profile.getBadges());
     clearUsername(recipient);
     setProfileCapabilities(recipient, profile.getCapabilities());
     setIdentityKey(recipient, profile.getIdentityKey());
@@ -342,11 +344,25 @@ public class RetrieveProfileJob extends BaseJob {
     }
   }
 
+  private void setProfileBadges(@NonNull Recipient recipient, @Nullable List<SignalServiceProfile.Badge> serviceBadges) {
+    if (serviceBadges == null) {
+      return;
+    }
+
+    List<Badge> badges = serviceBadges.stream().map(Badges::fromServiceBadge).collect(java.util.stream.Collectors.toList());
+
+    if (badges.size() != recipient.getBadges().size()) {
+      Log.i(TAG, "Likely change in badges for " + recipient.getId() + ". Going from " + recipient.getBadges().size() + " badge(s) to " + badges.size() + ".");
+    }
+
+    SignalDatabase.recipients().setBadges(recipient.getId(), badges);
+  }
+
   private void setProfileKeyCredential(@NonNull Recipient recipient,
                                        @NonNull ProfileKey recipientProfileKey,
                                        @NonNull ProfileKeyCredential credential)
   {
-    RecipientDatabase recipientDatabase = DatabaseFactory.getRecipientDatabase(context);
+    RecipientDatabase recipientDatabase = SignalDatabase.recipients();
     recipientDatabase.setProfileKeyCredential(recipient.getId(), recipientProfileKey, credential);
   }
 
@@ -365,22 +381,19 @@ public class RetrieveProfileJob extends BaseJob {
 
       IdentityKey identityKey = new IdentityKey(Base64.decode(identityKeyValue), 0);
 
-      if (!DatabaseFactory.getIdentityDatabase(context)
-                          .getIdentity(recipient.getId())
-                          .isPresent())
-      {
+      if (!ApplicationDependencies.getIdentityStore().getIdentityRecord(recipient.getId()).isPresent()) {
         Log.w(TAG, "Still first use...");
         return;
       }
 
-      IdentityUtil.saveIdentity(context, recipient.requireServiceId(), identityKey);
+      IdentityUtil.saveIdentity(recipient.requireServiceId(), identityKey);
     } catch (InvalidKeyException | IOException e) {
       Log.w(TAG, e);
     }
   }
 
   private void setUnidentifiedAccessMode(Recipient recipient, String unidentifiedAccessVerifier, boolean unrestrictedUnidentifiedAccess) {
-    RecipientDatabase recipientDatabase = DatabaseFactory.getRecipientDatabase(context);
+    RecipientDatabase recipientDatabase = SignalDatabase.recipients();
     ProfileKey        profileKey        = ProfileKeyUtil.profileKeyOrNull(recipient.getProfileKey());
 
     if (unrestrictedUnidentifiedAccess && unidentifiedAccessVerifier != null) {
@@ -425,7 +438,7 @@ public class RetrieveProfileJob extends BaseJob {
 
       if (!remoteProfileName.equals(localProfileName)) {
         Log.i(TAG, "Profile name updated. Writing new value.");
-        DatabaseFactory.getRecipientDatabase(context).setProfileName(recipient.getId(), remoteProfileName);
+        SignalDatabase.recipients().setProfileName(recipient.getId(), remoteProfileName);
 
         String remoteDisplayName = remoteProfileName.toString();
         String localDisplayName  = localProfileName.toString();
@@ -437,7 +450,7 @@ public class RetrieveProfileJob extends BaseJob {
             !remoteDisplayName.equals(localDisplayName))
         {
           Log.i(TAG, "Writing a profile name change event.");
-          DatabaseFactory.getSmsDatabase(context).insertProfileNameChangeMessages(recipient, remoteDisplayName, localDisplayName);
+          SignalDatabase.sms().insertProfileNameChangeMessages(recipient, remoteDisplayName, localDisplayName);
         } else {
           Log.i(TAG, String.format(Locale.US, "Name changed, but wasn't relevant to write an event. blocked: %s, group: %s, self: %s, firstSet: %s, displayChange: %s",
                                    recipient.isBlocked(), recipient.isGroup(), recipient.isSelf(), localDisplayName.isEmpty(), !remoteDisplayName.equals(localDisplayName)));
@@ -462,7 +475,7 @@ public class RetrieveProfileJob extends BaseJob {
       String plaintextAbout = ProfileUtil.decryptString(profileKey, encryptedAbout);
       String plaintextEmoji = ProfileUtil.decryptString(profileKey, encryptedEmoji);
 
-      DatabaseFactory.getRecipientDatabase(context).setAbout(recipient.getId(), plaintextAbout, plaintextEmoji);
+      SignalDatabase.recipients().setAbout(recipient.getId(), plaintextAbout, plaintextEmoji);
     } catch (InvalidCiphertextException | IOException e) {
       Log.w(TAG, e);
     }
@@ -477,7 +490,7 @@ public class RetrieveProfileJob extends BaseJob {
   }
 
   private void clearUsername(Recipient recipient) {
-    DatabaseFactory.getRecipientDatabase(context).setUsername(recipient.getId(), null);
+    SignalDatabase.recipients().setUsername(recipient.getId(), null);
   }
 
   private void setProfileCapabilities(@NonNull Recipient recipient, @Nullable SignalServiceProfile.Capabilities capabilities) {
@@ -485,7 +498,7 @@ public class RetrieveProfileJob extends BaseJob {
       return;
     }
 
-    DatabaseFactory.getRecipientDatabase(context).setCapabilities(recipient.getId(), capabilities);
+    SignalDatabase.recipients().setCapabilities(recipient.getId(), capabilities);
   }
 
   /**

@@ -6,7 +6,7 @@ import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 
-import java.util.concurrent.TimeUnit;
+import io.reactivex.rxjava3.exceptions.OnErrorNotImplementedException;
 
 public class SignalUncaughtExceptionHandler implements Thread.UncaughtExceptionHandler {
 
@@ -20,6 +20,10 @@ public class SignalUncaughtExceptionHandler implements Thread.UncaughtExceptionH
 
   @Override
   public void uncaughtException(@NonNull Thread t, @NonNull Throwable e) {
+    if (e instanceof OnErrorNotImplementedException) {
+      e = e.getCause();
+    }
+
     Log.e(TAG, "", e, true);
     SignalStore.blockUntilAllWritesFinished();
     Log.blockUntilAllWritesFinished();

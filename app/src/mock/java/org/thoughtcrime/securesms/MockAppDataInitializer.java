@@ -5,13 +5,12 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
-import net.sqlcipher.database.SQLiteDatabase;
+import net.zetetic.database.sqlcipher.SQLiteDatabase;
 
 import org.signal.core.util.StreamUtil;
 import org.thoughtcrime.securesms.crypto.IdentityKeyUtil;
 import org.thoughtcrime.securesms.crypto.MasterSecret;
 import org.thoughtcrime.securesms.crypto.MasterSecretUtil;
-import org.thoughtcrime.securesms.database.DatabaseFactory;
 import org.thoughtcrime.securesms.database.KeyValueDatabase;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.recipients.Recipient;
@@ -100,7 +99,7 @@ final class MockAppDataInitializer {
 
     TextSecurePreferences.setPromptedPushRegistration(context, true);
     TextSecurePreferences.setLocalNumber(context, localE164);
-    TextSecurePreferences.setLocalUuid(context, Recipient.external(context, localE164).requireUuid());
+    TextSecurePreferences.setLocalAci(context, Recipient.external(context, localE164).requireAci());
     TextSecurePreferences.setPushRegistered(context, true);
   }
 }
