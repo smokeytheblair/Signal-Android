@@ -14,6 +14,7 @@ import org.thoughtcrime.securesms.components.settings.app.changenumber.ChangeNum
 import org.thoughtcrime.securesms.components.settings.app.changenumber.ChangeNumberUtil.getViewModel
 import org.thoughtcrime.securesms.registration.VerifyAccountRepository
 import org.thoughtcrime.securesms.util.LifecycleDisposable
+import org.thoughtcrime.securesms.util.navigation.safeNavigate
 
 private val TAG: String = Log.tag(ChangeNumberVerifyFragment::class.java)
 
@@ -47,29 +48,30 @@ class ChangeNumberVerifyFragment : LoggingFragment(R.layout.fragment_change_phon
   }
 
   private fun requestCode() {
-    lifecycleDisposable.add(
-      viewModel.requestVerificationCode(VerifyAccountRepository.Mode.SMS_WITHOUT_LISTENER)
-        .observeOn(AndroidSchedulers.mainThread())
-        .subscribe { processor ->
-          if (processor.hasResult()) {
-            findNavController().navigate(R.id.action_changePhoneNumberVerifyFragment_to_changeNumberEnterCodeFragment)
-          } else if (processor.localRateLimit()) {
-            Log.i(TAG, "Unable to request sms code due to local rate limit")
-            findNavController().navigate(R.id.action_changePhoneNumberVerifyFragment_to_changeNumberEnterCodeFragment)
-          } else if (processor.captchaRequired()) {
-            Log.i(TAG, "Unable to request sms code due to captcha required")
-            findNavController().navigate(R.id.action_changePhoneNumberVerifyFragment_to_captchaFragment, getCaptchaArguments())
-            requestingCaptcha = true
-          } else if (processor.rateLimit()) {
-            Log.i(TAG, "Unable to request sms code due to rate limit")
-            Toast.makeText(requireContext(), R.string.RegistrationActivity_rate_limited_to_service, Toast.LENGTH_LONG).show()
-            findNavController().navigateUp()
-          } else {
-            Log.w(TAG, "Unable to request sms code", processor.error)
-            Toast.makeText(requireContext(), R.string.RegistrationActivity_unable_to_connect_to_service, Toast.LENGTH_LONG).show()
-            findNavController().navigateUp()
-          }
+    lifecycleDisposable += viewModel
+      .ensureDecryptionsDrained()
+      .onErrorComplete()
+      .andThen(viewModel.requestVerificationCode(VerifyAccountRepository.Mode.SMS_WITHOUT_LISTENER))
+      .observeOn(AndroidSchedulers.mainThread())
+      .subscribe { processor ->
+        if (processor.hasResult()) {
+          findNavController().safeNavigate(R.id.action_changePhoneNumberVerifyFragment_to_changeNumberEnterCodeFragment)
+        } else if (processor.localRateLimit()) {
+          Log.i(TAG, "Unable to request sms code due to local rate limit")
+          findNavController().safeNavigate(R.id.action_changePhoneNumberVerifyFragment_to_changeNumberEnterCodeFragment)
+        } else if (processor.captchaRequired()) {
+          Log.i(TAG, "Unable to request sms code due to captcha required")
+          findNavController().safeNavigate(R.id.action_changePhoneNumberVerifyFragment_to_captchaFragment, getCaptchaArguments())
+          requestingCaptcha = true
+        } else if (processor.rateLimit()) {
+          Log.i(TAG, "Unable to request sms code due to rate limit")
+          Toast.makeText(requireContext(), R.string.RegistrationActivity_rate_limited_to_service, Toast.LENGTH_LONG).show()
+          findNavController().navigateUp()
+        } else {
+          Log.w(TAG, "Unable to request sms code", processor.error)
+          Toast.makeText(requireContext(), R.string.RegistrationActivity_unable_to_connect_to_service, Toast.LENGTH_LONG).show()
+          findNavController().navigateUp()
         }
-    )
+      }
   }
 }

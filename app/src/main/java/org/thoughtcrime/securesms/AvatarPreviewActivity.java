@@ -14,6 +14,7 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityOptionsCompat;
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory;
@@ -59,18 +60,22 @@ public final class AvatarPreviewActivity extends PassphraseRequiredActivity {
   }
 
   @Override
+  protected void attachBaseContext(@NonNull Context newBase) {
+    getDelegate().setLocalNightMode(AppCompatDelegate.MODE_NIGHT_YES);
+    super.attachBaseContext(newBase);
+  }
+
+  @Override
   protected void onCreate(Bundle savedInstanceState, boolean ready) {
     super.onCreate(savedInstanceState, ready);
 
     setTheme(R.style.TextSecure_MediaPreview);
     setContentView(R.layout.contact_photo_preview_activity);
 
-    if (Build.VERSION.SDK_INT >= 21) {
-      postponeEnterTransition();
-      TransitionInflater inflater = TransitionInflater.from(this);
-      getWindow().setSharedElementEnterTransition(inflater.inflateTransition(R.transition.full_screen_avatar_image_enter_transition_set));
-      getWindow().setSharedElementReturnTransition(inflater.inflateTransition(R.transition.full_screen_avatar_image_return_transition_set));
-    }
+    postponeEnterTransition();
+    TransitionInflater inflater = TransitionInflater.from(this);
+    getWindow().setSharedElementEnterTransition(inflater.inflateTransition(R.transition.full_screen_avatar_image_enter_transition_set));
+    getWindow().setSharedElementReturnTransition(inflater.inflateTransition(R.transition.full_screen_avatar_image_return_transition_set));
 
     Toolbar       toolbar = findViewById(R.id.toolbar);
     EmojiTextView title   = findViewById(R.id.title);
@@ -85,7 +90,7 @@ public final class AvatarPreviewActivity extends PassphraseRequiredActivity {
     RecipientId recipientId = RecipientId.from(getIntent().getStringExtra(RECIPIENT_ID_EXTRA));
 
     Recipient.live(recipientId).observe(this, recipient -> {
-      ContactPhoto contactPhoto  = recipient.isSelf() ? new ProfileContactPhoto(recipient, recipient.getProfileAvatar())
+      ContactPhoto contactPhoto  = recipient.isSelf() ? new ProfileContactPhoto(recipient)
                                                       : recipient.getContactPhoto();
       FallbackContactPhoto fallbackPhoto = recipient.isSelf() ? new ResourceContactPhoto(R.drawable.ic_profile_outline_40, R.drawable.ic_profile_outline_20, R.drawable.ic_person_large)
                                                               : recipient.getFallbackContactPhoto();
@@ -115,9 +120,7 @@ public final class AvatarPreviewActivity extends PassphraseRequiredActivity {
                 @Override
                 public void onResourceReady(@NonNull Bitmap resource, @Nullable Transition<? super Bitmap> transition) {
                   avatar.setImageDrawable(RoundedBitmapDrawableFactory.create(resources, resource));
-                  if (Build.VERSION.SDK_INT >= 21) {
-                    startPostponedEnterTransition();
-                  }
+                  startPostponedEnterTransition();
                 }
 
                 @Override
@@ -132,7 +135,7 @@ public final class AvatarPreviewActivity extends PassphraseRequiredActivity {
 
     findViewById(android.R.id.content).setOnClickListener(v -> fullscreenHelper.toggleUiVisibility());
 
-    fullscreenHelper.configureToolbarSpacer(findViewById(R.id.toolbar_cutout_spacer));
+    fullscreenHelper.configureToolbarLayout(findViewById(R.id.toolbar_cutout_spacer), toolbar);
 
     fullscreenHelper.showAndHideWithSystemUI(getWindow(), findViewById(R.id.toolbar_layout));
   }

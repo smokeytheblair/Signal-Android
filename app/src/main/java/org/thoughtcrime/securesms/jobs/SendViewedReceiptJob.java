@@ -5,16 +5,19 @@ import android.app.Application;
 
 import androidx.annotation.NonNull;
 
+import org.signal.core.util.ListUtil;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
-import org.thoughtcrime.securesms.database.MessageDatabase.MarkedMessageInfo;
+import org.thoughtcrime.securesms.database.MessageTable.MarkedMessageInfo;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageId;
+import org.thoughtcrime.securesms.database.model.StoryType;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.JobManager;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
+import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.net.NotPushRegisteredException;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
@@ -32,6 +35,7 @@ import org.whispersystems.signalservice.api.push.exceptions.ServerRejectedExcept
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -63,10 +67,10 @@ public class SendViewedReceiptJob extends BaseJob {
 
   private SendViewedReceiptJob(long threadId, @NonNull RecipientId recipientId, @NonNull List<Long> messageSentTimestamps, @NonNull List<MessageId> messageIds) {
     this(new Parameters.Builder()
-                           .addConstraint(NetworkConstraint.KEY)
-                           .setLifespan(TimeUnit.DAYS.toMillis(1))
-                           .setMaxAttempts(Parameters.UNLIMITED)
-                           .build(),
+             .addConstraint(NetworkConstraint.KEY)
+             .setLifespan(TimeUnit.DAYS.toMillis(1))
+             .setMaxAttempts(Parameters.UNLIMITED)
+             .build(),
          threadId,
          recipientId,
          SendReadReceiptJob.ensureSize(messageSentTimestamps, MAX_TIMESTAMPS),
@@ -96,7 +100,7 @@ public class SendViewedReceiptJob extends BaseJob {
    */
   public static void enqueue(long threadId, @NonNull RecipientId recipientId, List<MarkedMessageInfo> markedMessageInfos) {
     JobManager                    jobManager      = ApplicationDependencies.getJobManager();
-    List<List<MarkedMessageInfo>> messageIdChunks = Util.chunk(markedMessageInfos, MAX_TIMESTAMPS);
+    List<List<MarkedMessageInfo>> messageIdChunks = ListUtil.chunk(markedMessageInfos, MAX_TIMESTAMPS);
 
     if (messageIdChunks.size() > 1) {
       Log.w(TAG, "Large receipt count! Had to break into multiple chunks. Total count: " + markedMessageInfos.size());
@@ -129,12 +133,33 @@ public class SendViewedReceiptJob extends BaseJob {
 
   @Override
   public void onRun() throws IOException, UntrustedIdentityException {
+
+    boolean canSendNonStoryReceipts = TextSecurePreferences.isReadReceiptsEnabled(context);
+    boolean canSendStoryReceipts    = SignalStore.storyValues().getViewedReceiptsEnabled();
+
+    List<MessageId> foundMessageIds       = new LinkedList<>();
+    List<Long>      messageSentTimestamps = new LinkedList<>();
+    List<StoryType> storyTypes            = SignalDatabase.messages().getStoryTypes(this.messageIds);
+
+    for (int i = 0; i < storyTypes.size(); i++) {
+      StoryType storyType = storyTypes.get(i);
+      if ((storyType == StoryType.NONE && canSendNonStoryReceipts) || (storyType.isStory() && canSendStoryReceipts)) {
+        foundMessageIds.add(this.messageIds.get(i));
+        messageSentTimestamps.add(this.messageSentTimestamps.get(i));
+      }
+    }
+
     if (!Recipient.self().isRegistered()) {
       throw new NotPushRegisteredException();
     }
 
-    if (!TextSecurePreferences.isReadReceiptsEnabled(context)) {
+    if (storyTypes.isEmpty() && !TextSecurePreferences.isReadReceiptsEnabled(context)) {
       Log.w(TAG, "Read receipts not enabled!");
+      return;
+    }
+
+    if (foundMessageIds.isEmpty()) {
+      Log.w(TAG, "No messages in this batch are allowed to be sent!");
       return;
     }
 
@@ -149,6 +174,11 @@ public class SendViewedReceiptJob extends BaseJob {
     }
 
     Recipient recipient = Recipient.resolved(recipientId);
+
+    if (recipient.isSelf()) {
+      Log.i(TAG, "Not sending view receipt to self.");
+      return;
+    }
 
     if (recipient.isBlocked()) {
       Log.w(TAG, "Refusing to send receipts to blocked recipient");
@@ -173,10 +203,11 @@ public class SendViewedReceiptJob extends BaseJob {
 
     SendMessageResult result = messageSender.sendReceipt(remoteAddress,
                                                          UnidentifiedAccessUtil.getAccessFor(context, Recipient.resolved(recipientId)),
-                                                         receiptMessage);
+                                                         receiptMessage,
+                                                         recipient.needsPniSignature());
 
-    if (Util.hasItems(messageIds)) {
-      SignalDatabase.messageLog().insertIfPossible(recipientId, timestamp, result, ContentHint.IMPLICIT, messageIds);
+    if (Util.hasItems(foundMessageIds)) {
+      SignalDatabase.messageLog().insertIfPossible(recipientId, timestamp, result, ContentHint.IMPLICIT, foundMessageIds, false);
     }
   }
 

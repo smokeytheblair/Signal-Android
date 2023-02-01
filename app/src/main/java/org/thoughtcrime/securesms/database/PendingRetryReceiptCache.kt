@@ -1,13 +1,12 @@
 package org.thoughtcrime.securesms.database
 
-import android.content.Context
 import androidx.annotation.VisibleForTesting
 import org.thoughtcrime.securesms.database.model.PendingRetryReceiptModel
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.util.FeatureFlags
 
 /**
- * A write-through cache for [PendingRetryReceiptDatabase].
+ * A write-through cache for [PendingRetryReceiptTable].
  *
  * We have to read from this cache every time we process an incoming message. As a result, it's a very performance-sensitive operation.
  *
@@ -15,9 +14,8 @@ import org.thoughtcrime.securesms.util.FeatureFlags
  * future reads can happen in memory.
  */
 class PendingRetryReceiptCache @VisibleForTesting constructor(
-  private val database: PendingRetryReceiptDatabase
+  private val database: PendingRetryReceiptTable = SignalDatabase.pendingRetryReceipts
 ) {
-  constructor(context: Context) : this(SignalDatabase.pendingRetryReceipts)
 
   private val pendingRetries: MutableMap<RemoteMessageId, PendingRetryReceiptModel> = HashMap()
   private var populated: Boolean = false
@@ -57,6 +55,15 @@ class PendingRetryReceiptCache @VisibleForTesting constructor(
     synchronized(pendingRetries) {
       pendingRetries.remove(RemoteMessageId(model.author, model.sentTimestamp))
       database.delete(model)
+    }
+  }
+
+  fun clear() {
+    if (!FeatureFlags.retryReceipts()) return
+
+    synchronized(pendingRetries) {
+      pendingRetries.clear()
+      populated = false
     }
   }
 

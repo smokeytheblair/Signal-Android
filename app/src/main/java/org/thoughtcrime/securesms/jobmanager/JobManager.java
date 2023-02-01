@@ -7,18 +7,20 @@ import android.os.Build;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 import androidx.annotation.WorkerThread;
 
 import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.jobmanager.impl.DefaultExecutorFactory;
 import org.thoughtcrime.securesms.jobmanager.impl.JsonDataSerializer;
+import org.thoughtcrime.securesms.jobmanager.persistence.JobSpec;
 import org.thoughtcrime.securesms.jobmanager.persistence.JobStorage;
 import org.thoughtcrime.securesms.util.Debouncer;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.util.concurrent.FilteredExecutor;
-import org.whispersystems.libsignal.util.guava.Optional;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,12 +29,14 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 
 /**
  * Allows the scheduling of durable jobs that will be run as early as possible.
@@ -41,7 +45,7 @@ public class JobManager implements ConstraintObserver.Notifier {
 
   private static final String TAG = Log.tag(JobManager.class);
 
-  public static final int CURRENT_VERSION = 8;
+  public static final int CURRENT_VERSION = 9;
 
   private final Application   application;
   private final Configuration configuration;
@@ -57,7 +61,12 @@ public class JobManager implements ConstraintObserver.Notifier {
   public JobManager(@NonNull Application application, @NonNull Configuration configuration) {
     this.application   = application;
     this.configuration = configuration;
-    this.executor      = ThreadUtil.trace(new FilteredExecutor(configuration.getExecutorFactory().newSingleThreadExecutor("signal-JobManager"), ThreadUtil::isMainThread));
+    this.executor      = ThreadUtil.trace(new FilteredExecutor(configuration.getExecutorFactory().newSingleThreadExecutor("signal-JobManager"), () -> {
+                           if (SignalDatabase.inTransaction()) {
+                             Log.w(TAG, "Enqueuing a job while in a transaction!", new Throwable());
+                           }
+                           return ThreadUtil.isMainThread();
+                         }));
     this.jobTracker    = configuration.getJobTracker();
     this.jobController = new JobController(application,
                                            configuration.getJobStorage(),
@@ -235,6 +244,15 @@ public class JobManager implements ConstraintObserver.Notifier {
   }
 
   /**
+   * Search through the list of pending jobs and find all that match a given predicate. Note that there will always be races here, and the result you get back
+   * may not be valid anymore by the time you get it. Use with caution.
+   */
+  public @NonNull List<JobSpec> find(@NonNull Predicate<JobSpec> predicate) {
+    waitUntilInitialized();
+    return jobController.findJobs(predicate);
+  }
+
+  /**
    * Runs the specified job synchronously. Beware: All normal dependencies are respected, meaning
    * you must take great care where you call this. It could take a very long time to complete!
    *
@@ -261,14 +279,14 @@ public class JobManager implements ConstraintObserver.Notifier {
 
     try {
       if (!latch.await(timeout, TimeUnit.MILLISECONDS)) {
-        return Optional.absent();
+        return Optional.empty();
       }
     } catch (InterruptedException e) {
       Log.w(TAG, "Interrupted during runSynchronously()", e);
-      return Optional.absent();
+      return Optional.empty();
     }
 
-    return Optional.fromNullable(resultState.get());
+    return Optional.ofNullable(resultState.get());
   }
 
   /**
@@ -448,7 +466,8 @@ public class JobManager implements ConstraintObserver.Notifier {
     private final JobManager jobManager;
     private final List<List<Job>> jobs;
 
-    private Chain(@NonNull JobManager jobManager, @NonNull List<? extends Job> jobs) {
+    @VisibleForTesting
+    public Chain(@NonNull JobManager jobManager, @NonNull List<? extends Job> jobs) {
       this.jobManager = jobManager;
       this.jobs       = new LinkedList<>();
 
@@ -478,7 +497,8 @@ public class JobManager implements ConstraintObserver.Notifier {
       enqueue();
     }
 
-    private List<List<Job>> getJobListChain() {
+    @VisibleForTesting
+    public List<List<Job>> getJobListChain() {
       return jobs;
     }
   }

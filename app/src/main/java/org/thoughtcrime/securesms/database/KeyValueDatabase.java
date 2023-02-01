@@ -2,6 +2,7 @@ package org.thoughtcrime.securesms.database;
 
 import android.app.Application;
 import android.content.ContentValues;
+import android.content.Context;
 import android.database.Cursor;
 
 import androidx.annotation.NonNull;
@@ -15,7 +16,7 @@ import org.thoughtcrime.securesms.crypto.DatabaseSecret;
 import org.thoughtcrime.securesms.crypto.DatabaseSecretProvider;
 import org.thoughtcrime.securesms.keyvalue.KeyValueDataSet;
 import org.thoughtcrime.securesms.keyvalue.KeyValuePersistentStorage;
-import org.thoughtcrime.securesms.util.CursorUtil;
+import org.signal.core.util.CursorUtil;
 
 import java.util.Collection;
 import java.util.Map;
@@ -54,11 +55,17 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
         if (instance == null) {
           SqlCipherLibraryLoader.load();
           instance = new KeyValueDatabase(context, DatabaseSecretProvider.getOrCreateDatabaseSecret(context));
+          instance.setWriteAheadLoggingEnabled(true);
         }
       }
     }
     return instance;
   }
+
+  public static boolean exists(Context context) {
+    return context.getDatabasePath(DATABASE_NAME).exists();
+  }
+
 
   private KeyValueDatabase(@NonNull Application application, @NonNull DatabaseSecret databaseSecret) {
     super(application, DATABASE_NAME, databaseSecret.asString(), null, DATABASE_VERSION, 0,new SqlCipherErrorHandler(DATABASE_NAME), new SqlCipherDatabaseHook());
@@ -87,7 +94,6 @@ public class KeyValueDatabase extends SQLiteOpenHelper implements SignalDatabase
   public void onOpen(SQLiteDatabase db) {
     Log.i(TAG, "onOpen()");
 
-    db.enableWriteAheadLogging();
     db.setForeignKeyConstraintsEnabled(true);
 
     SignalExecutors.BOUNDED.execute(() -> {

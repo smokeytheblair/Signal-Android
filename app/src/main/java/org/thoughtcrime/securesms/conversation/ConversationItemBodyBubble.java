@@ -17,7 +17,6 @@ import org.thoughtcrime.securesms.util.Projection;
 import org.thoughtcrime.securesms.util.Util;
 
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -91,8 +90,8 @@ public class ConversationItemBodyBubble extends LinearLayout {
   }
 
   @Override
-  protected void onDraw(Canvas canvas) {
-    super.onDraw(canvas);
+  public void onDrawForeground(Canvas canvas) {
+    super.onDrawForeground(canvas);
 
     if (Util.isEmpty(outliners)) return;
 

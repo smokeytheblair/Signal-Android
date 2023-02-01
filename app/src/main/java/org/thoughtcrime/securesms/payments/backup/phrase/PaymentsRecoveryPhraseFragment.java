@@ -15,18 +15,20 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
-import androidx.lifecycle.ViewModelProviders;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.Navigation;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.annimon.stream.Stream;
 
+import org.signal.core.util.PendingIntentFlags;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.payments.Mnemonic;
 import org.thoughtcrime.securesms.util.ServiceUtil;
 import org.thoughtcrime.securesms.util.Util;
+import org.thoughtcrime.securesms.util.navigation.SafeNavigation;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -81,7 +83,7 @@ public class PaymentsRecoveryPhraseFragment extends Fragment {
       if (args.getFinishOnConfirm()) {
         requireActivity().finish();
       } else {
-        toolbar.setNavigationOnClickListener(t -> Navigation.findNavController(view).popBackStack(R.id.paymentsHome, false));
+        Navigation.findNavController(view).popBackStack(R.id.paymentsHome, false);
       }
     });
 
@@ -94,7 +96,7 @@ public class PaymentsRecoveryPhraseFragment extends Fragment {
 
     AlarmManager  alarmManager       = ServiceUtil.getAlarmManager(requireContext());
     Intent        alarmIntent        = new Intent(requireContext(), ClearClipboardAlarmReceiver.class);
-    PendingIntent pendingAlarmIntent = PendingIntent.getBroadcast(requireContext(), 0, alarmIntent, 0);
+    PendingIntent pendingAlarmIntent = PendingIntent.getBroadcast(requireContext(), 0, alarmIntent, PendingIntentFlags.mutable());
 
     alarmManager.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30), pendingAlarmIntent);
   }
@@ -109,7 +111,7 @@ public class PaymentsRecoveryPhraseFragment extends Fragment {
     edit.setVisibility(View.VISIBLE);
     copy.setVisibility(View.GONE);
 
-    PaymentsRecoveryPhraseViewModel viewModel = ViewModelProviders.of(this).get(PaymentsRecoveryPhraseViewModel.class);
+    PaymentsRecoveryPhraseViewModel viewModel = new ViewModelProvider(this).get(PaymentsRecoveryPhraseViewModel.class);
 
     next.setOnClickListener(v -> viewModel.onSubmit(words));
     edit.setOnClickListener(v -> Navigation.findNavController(v).popBackStack());
@@ -125,7 +127,7 @@ public class PaymentsRecoveryPhraseFragment extends Fragment {
                                @NonNull PaymentsRecoveryPhraseFragmentArgs args)
   {
     message.setText(getString(R.string.PaymentsRecoveryPhraseFragment__write_down_the_following_d_words, words.size()));
-    next.setOnClickListener(v -> Navigation.findNavController(v).navigate(PaymentsRecoveryPhraseFragmentDirections.actionPaymentsRecoveryPhraseToPaymentsRecoveryPhraseConfirm(args.getFinishOnConfirm())));
+    next.setOnClickListener(v -> SafeNavigation.safeNavigate(Navigation.findNavController(v), PaymentsRecoveryPhraseFragmentDirections.actionPaymentsRecoveryPhraseToPaymentsRecoveryPhraseConfirm(args.getFinishOnConfirm())));
     edit.setVisibility(View.GONE);
     copy.setVisibility(View.VISIBLE);
     copy.setOnClickListener(v -> confirmCopy(words));

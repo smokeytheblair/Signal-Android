@@ -14,9 +14,10 @@ import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.badges.glide.BadgeSpriteTransformation
 import org.thoughtcrime.securesms.components.settings.PreferenceModel
 import org.thoughtcrime.securesms.mms.GlideApp
-import org.thoughtcrime.securesms.util.MappingAdapter
-import org.thoughtcrime.securesms.util.MappingViewHolder
 import org.thoughtcrime.securesms.util.ThemeUtil
+import org.thoughtcrime.securesms.util.adapter.mapping.LayoutFactory
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingViewHolder
 import java.security.MessageDigest
 
 typealias OnBadgeClicked = (Badge, Boolean, Boolean) -> Unit
@@ -34,10 +35,13 @@ data class Badge(
   val imageDensity: String,
   val expirationTimestamp: Long,
   val visible: Boolean,
+  val duration: Long
 ) : Parcelable, Key {
 
   fun isExpired(): Boolean = expirationTimestamp < System.currentTimeMillis() && expirationTimestamp > 0
   fun isBoost(): Boolean = id == BOOST_BADGE_ID
+  fun isGift(): Boolean = id == GIFT_BADGE_ID
+  fun isSubscription(): Boolean = !isBoost() && !isGift()
 
   override fun updateDiskCacheKey(messageDigest: MessageDigest) {
     messageDigest.update(id.toByteArray(Key.CHARSET))
@@ -161,12 +165,13 @@ data class Badge(
 
   companion object {
     const val BOOST_BADGE_ID = "BOOST"
+    const val GIFT_BADGE_ID = "GIFT"
 
     private val SELECTION_CHANGED = Any()
 
     fun register(mappingAdapter: MappingAdapter, onBadgeClicked: OnBadgeClicked) {
-      mappingAdapter.registerFactory(Model::class.java, MappingAdapter.LayoutFactory({ ViewHolder(it, onBadgeClicked) }, R.layout.badge_preference_view))
-      mappingAdapter.registerFactory(EmptyModel::class.java, MappingAdapter.LayoutFactory({ EmptyViewHolder(it) }, R.layout.badge_preference_view))
+      mappingAdapter.registerFactory(Model::class.java, LayoutFactory({ ViewHolder(it, onBadgeClicked) }, R.layout.badge_preference_view))
+      mappingAdapter.registerFactory(EmptyModel::class.java, LayoutFactory({ EmptyViewHolder(it) }, R.layout.badge_preference_view))
     }
   }
 }

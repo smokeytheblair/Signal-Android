@@ -16,8 +16,9 @@ import org.thoughtcrime.securesms.components.settings.app.changenumber.ChangeNum
 import org.thoughtcrime.securesms.components.settings.app.changenumber.ChangeNumberViewModel.ContinueStatus
 import org.thoughtcrime.securesms.registration.fragments.CountryPickerFragment
 import org.thoughtcrime.securesms.registration.fragments.CountryPickerFragmentArgs
-import org.thoughtcrime.securesms.registration.util.RegistrationNumberInputController
+import org.thoughtcrime.securesms.registration.util.ChangeNumberInputController
 import org.thoughtcrime.securesms.util.Dialogs
+import org.thoughtcrime.securesms.util.navigation.safeNavigate
 
 private const val OLD_NUMBER_COUNTRY_SELECT = "old_number_country"
 private const val NEW_NUMBER_COUNTRY_SELECT = "new_number_country"
@@ -53,13 +54,13 @@ class ChangeNumberEnterPhoneNumberFragment : LoggingFragment(R.layout.fragment_c
     oldNumberCountryCode = view.findViewById(R.id.change_number_enter_phone_number_old_number_country_code)
     oldNumber = view.findViewById(R.id.change_number_enter_phone_number_old_number_number)
 
-    val oldController = RegistrationNumberInputController(
+    val oldController = ChangeNumberInputController(
       requireContext(),
       oldNumberCountryCode,
       oldNumber,
       oldNumberCountrySpinner,
       false,
-      object : RegistrationNumberInputController.Callbacks {
+      object : ChangeNumberInputController.Callbacks {
         override fun onNumberFocused() {
           scrollView.postDelayed({ scrollView.smoothScrollTo(0, oldNumber.bottom) }, 250)
         }
@@ -73,7 +74,7 @@ class ChangeNumberEnterPhoneNumberFragment : LoggingFragment(R.layout.fragment_c
         override fun onPickCountry(view: View) {
           val arguments: CountryPickerFragmentArgs = CountryPickerFragmentArgs.Builder().setResultKey(OLD_NUMBER_COUNTRY_SELECT).build()
 
-          findNavController().navigate(R.id.action_enterPhoneNumberChangeFragment_to_countryPickerFragment, arguments.toBundle())
+          findNavController().safeNavigate(R.id.action_enterPhoneNumberChangeFragment_to_countryPickerFragment, arguments.toBundle())
         }
 
         override fun setNationalNumber(number: String) {
@@ -90,13 +91,13 @@ class ChangeNumberEnterPhoneNumberFragment : LoggingFragment(R.layout.fragment_c
     newNumberCountryCode = view.findViewById(R.id.change_number_enter_phone_number_new_number_country_code)
     newNumber = view.findViewById(R.id.change_number_enter_phone_number_new_number_number)
 
-    val newController = RegistrationNumberInputController(
+    val newController = ChangeNumberInputController(
       requireContext(),
       newNumberCountryCode,
       newNumber,
       newNumberCountrySpinner,
       true,
-      object : RegistrationNumberInputController.Callbacks {
+      object : ChangeNumberInputController.Callbacks {
         override fun onNumberFocused() {
           scrollView.postDelayed({ scrollView.smoothScrollTo(0, newNumber.bottom) }, 250)
         }
@@ -110,7 +111,7 @@ class ChangeNumberEnterPhoneNumberFragment : LoggingFragment(R.layout.fragment_c
         override fun onPickCountry(view: View) {
           val arguments: CountryPickerFragmentArgs = CountryPickerFragmentArgs.Builder().setResultKey(NEW_NUMBER_COUNTRY_SELECT).build()
 
-          findNavController().navigate(R.id.action_enterPhoneNumberChangeFragment_to_countryPickerFragment, arguments.toBundle())
+          findNavController().safeNavigate(R.id.action_enterPhoneNumberChangeFragment_to_countryPickerFragment, arguments.toBundle())
         }
 
         override fun setNationalNumber(number: String) {
@@ -157,7 +158,7 @@ class ChangeNumberEnterPhoneNumberFragment : LoggingFragment(R.layout.fragment_c
     }
 
     when (viewModel.canContinue()) {
-      ContinueStatus.CAN_CONTINUE -> findNavController().navigate(R.id.action_enterPhoneNumberChangeFragment_to_changePhoneNumberConfirmFragment)
+      ContinueStatus.CAN_CONTINUE -> findNavController().safeNavigate(R.id.action_enterPhoneNumberChangeFragment_to_changePhoneNumberConfirmFragment)
       ContinueStatus.INVALID_NUMBER -> {
         Dialogs.showAlertDialog(
           context, getString(R.string.RegistrationActivity_invalid_number), String.format(getString(R.string.RegistrationActivity_the_number_you_specified_s_is_invalid), viewModel.number.e164Number)

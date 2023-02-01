@@ -86,11 +86,7 @@ public final class Projection {
     if (corners == null) {
       path.addRect(rect, Path.Direction.CW);
     } else {
-      if (Build.VERSION.SDK_INT >= 21) {
-        path.addRoundRect(rect, corners.toRadii(), Path.Direction.CW);
-      } else {
-        path.op(path, Path.Op.UNION);
-      }
+      path.addRoundRect(rect, corners.toRadii(), Path.Direction.CW);
     }
   }
 
@@ -112,6 +108,32 @@ public final class Projection {
 
   public @NonNull Projection translateY(float yTranslation) {
     return set(x, y + yTranslation, width, height, corners);
+  }
+
+  public @NonNull Projection scale(float scale) {
+    Corners newCorners = this.corners == null ? null : new Corners(this.corners.topLeft * scale,
+                                                                   this.corners.topRight * scale,
+                                                                   this.corners.bottomRight * scale,
+                                                                   this.corners.bottomLeft * scale);
+    return set(x, y, (int) (width * scale), (int) (height * scale), newCorners);
+  }
+
+  public @NonNull Projection insetTop(int boundary) {
+    Corners newCorners = this.corners == null ? null : new Corners(0,
+                                                                   0,
+                                                                   this.corners.bottomRight,
+                                                                   this.corners.bottomLeft);
+
+    return set(x, y + boundary, width, height - boundary, newCorners);
+  }
+
+  public @NonNull Projection insetBottom(int boundary) {
+    Corners newCorners = this.corners == null ? null : new Corners(this.corners.topLeft,
+                                                                   this.corners.topRight,
+                                                                   0,
+                                                                   0);
+
+    return set(x, y, width, height - boundary, newCorners);
   }
 
   public static @NonNull Projection relativeToParent(@NonNull ViewGroup parent, @NonNull View view, @Nullable Corners corners) {

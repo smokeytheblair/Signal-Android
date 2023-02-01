@@ -4,8 +4,9 @@ import androidx.annotation.NonNull;
 import androidx.core.util.Preconditions;
 
 import org.signal.core.util.logging.Log;
+import org.signal.libsignal.protocol.InvalidMessageException;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.database.StickerDatabase;
+import org.thoughtcrime.securesms.database.StickerTable;
 import org.thoughtcrime.securesms.database.model.IncomingSticker;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -13,8 +14,7 @@ import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.JobManager;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.stickers.BlessedPacks;
-import org.thoughtcrime.securesms.util.Hex;
-import org.whispersystems.libsignal.InvalidMessageException;
+import org.signal.core.util.Hex;
 import org.whispersystems.signalservice.api.SignalServiceMessageReceiver;
 import org.whispersystems.signalservice.api.messages.SignalServiceStickerManifest;
 import org.whispersystems.signalservice.api.messages.SignalServiceStickerManifest.StickerInfo;
@@ -113,9 +113,9 @@ public class StickerPackDownloadJob extends BaseJob {
     }
 
     SignalServiceMessageReceiver receiver        = ApplicationDependencies.getSignalServiceMessageReceiver();
-    JobManager                   jobManager      = ApplicationDependencies.getJobManager();
-    StickerDatabase              stickerDatabase = SignalDatabase.stickers();
-    byte[]                       packIdBytes     = Hex.fromStringCondensed(packId);
+    JobManager   jobManager      = ApplicationDependencies.getJobManager();
+    StickerTable stickerDatabase = SignalDatabase.stickers();
+    byte[]       packIdBytes     = Hex.fromStringCondensed(packId);
     byte[]                       packKeyBytes    = Hex.fromStringCondensed(packKey);
     SignalServiceStickerManifest manifest        = receiver.retrieveStickerManifest(packIdBytes, packKeyBytes);
 
@@ -128,11 +128,11 @@ public class StickerPackDownloadJob extends BaseJob {
       stickerDatabase.markPackAsInstalled(packId, notify);
     }
 
-    StickerInfo      cover = manifest.getCover().or(manifest.getStickers().get(0));
+    StickerInfo      cover = manifest.getCover().orElse(manifest.getStickers().get(0));
     JobManager.Chain chain = jobManager.startChain(new StickerDownloadJob(new IncomingSticker(packId,
                                                                                               packKey,
-                                                                                              manifest.getTitle().or(""),
-                                                                                              manifest.getAuthor().or(""),
+                                                                                              manifest.getTitle().orElse(""),
+                                                                                              manifest.getAuthor().orElse(""),
                                                                                               cover.getId(),
                                                                                               "",
                                                                                               cover.getContentType(),
@@ -148,8 +148,8 @@ public class StickerPackDownloadJob extends BaseJob {
       for (StickerInfo stickerInfo : manifest.getStickers()) {
         jobs.add(new StickerDownloadJob(new IncomingSticker(packId,
                                                             packKey,
-                                                            manifest.getTitle().or(""),
-                                                            manifest.getAuthor().or(""),
+                                                            manifest.getTitle().orElse(""),
+                                                            manifest.getAuthor().orElse(""),
                                                             stickerInfo.getId(),
                                                             stickerInfo.getEmoji(),
                                                             stickerInfo.getContentType(),

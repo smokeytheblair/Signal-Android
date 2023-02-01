@@ -8,12 +8,14 @@ import androidx.annotation.NonNull;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.conversation.colors.ChatColorsMapper;
 import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
-import org.thoughtcrime.securesms.database.GroupDatabase;
+import org.thoughtcrime.securesms.database.GroupTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
+import org.thoughtcrime.securesms.database.model.GroupRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
+import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.net.NotPushRegisteredException;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
 import org.thoughtcrime.securesms.providers.BlobProvider;
@@ -21,7 +23,6 @@ import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.RecipientUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
-import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
 import org.whispersystems.signalservice.api.crypto.UntrustedIdentityException;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
@@ -39,6 +40,7 @@ import java.io.InputStream;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -82,6 +84,11 @@ public class MultiDeviceGroupUpdateJob extends BaseJob {
       return;
     }
 
+    if (SignalStore.account().isLinkedDevice()) {
+      Log.i(TAG, "Not primary device, aborting...");
+      return;
+    }
+
     ParcelFileDescriptor[] pipe        = ParcelFileDescriptor.createPipe();
     InputStream            inputStream = new ParcelFileDescriptor.AutoCloseInputStream(pipe[0]);
     Uri                    uri         = BlobProvider.getInstance()
@@ -91,11 +98,11 @@ public class MultiDeviceGroupUpdateJob extends BaseJob {
                                                                                         () -> Log.i(TAG, "Write successful."),
                                                                                         e  -> Log.w(TAG, "Error during write.", e));
 
-    try (GroupDatabase.Reader reader = SignalDatabase.groups().getGroups()) {
+    try (GroupTable.Reader reader = SignalDatabase.groups().getGroups()) {
       DeviceGroupsOutputStream out     = new DeviceGroupsOutputStream(new ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]));
       boolean                  hasData = false;
 
-      GroupDatabase.GroupRecord record;
+      GroupRecord record;
 
       while ((record = reader.getNext()) != null) {
         if (record.isV1Group()) {
@@ -108,19 +115,19 @@ public class MultiDeviceGroupUpdateJob extends BaseJob {
 
           RecipientId               recipientId     = SignalDatabase.recipients().getOrInsertFromPossiblyMigratedGroupId(record.getId());
           Recipient                 recipient       = Recipient.resolved(recipientId);
-          Optional<Integer>         expirationTimer = recipient.getExpiresInSeconds() > 0 ? Optional.of(recipient.getExpiresInSeconds()) : Optional.absent();
+          Optional<Integer>         expirationTimer = recipient.getExpiresInSeconds() > 0 ? Optional.of(recipient.getExpiresInSeconds()) : Optional.empty();
           Map<RecipientId, Integer> inboxPositions  = SignalDatabase.threads().getInboxPositions();
           Set<RecipientId>          archived        = SignalDatabase.threads().getArchivedRecipients();
 
           out.write(new DeviceGroup(record.getId().getDecodedId(),
-                                    Optional.fromNullable(record.getTitle()),
+                                    Optional.ofNullable(record.getTitle()),
                                     members,
                                     getAvatar(record.getRecipientId()),
                                     record.isActive(),
                                     expirationTimer,
                                     Optional.of(ChatColorsMapper.getMaterialColor(recipient.getChatColors()).serialize()),
                                     recipient.isBlocked(),
-                                    Optional.fromNullable(inboxPositions.get(recipientId)),
+                                    Optional.ofNullable(inboxPositions.get(recipientId)),
                                     archived.contains(recipientId)));
 
           hasData = true;
@@ -180,7 +187,7 @@ public class MultiDeviceGroupUpdateJob extends BaseJob {
 
 
   private Optional<SignalServiceAttachmentStream> getAvatar(@NonNull RecipientId recipientId) throws IOException {
-    if (!AvatarHelper.hasAvatar(context, recipientId)) return Optional.absent();
+    if (!AvatarHelper.hasAvatar(context, recipientId)) return Optional.empty();
 
     return Optional.of(SignalServiceAttachment.newStreamBuilder()
                                               .withStream(AvatarHelper.getAvatar(context, recipientId))

@@ -10,11 +10,11 @@ import org.thoughtcrime.securesms.TextSecureExpiredException;
 import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.attachments.DatabaseAttachment;
 import org.thoughtcrime.securesms.contactshare.Contact;
-import org.thoughtcrime.securesms.database.AttachmentDatabase;
+import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
-import org.thoughtcrime.securesms.mms.OutgoingMediaMessage;
+import org.thoughtcrime.securesms.mms.OutgoingMessage;
 import org.thoughtcrime.securesms.util.Util;
 
 import java.util.LinkedList;
@@ -45,18 +45,18 @@ public abstract class SendJob extends BaseJob {
 
   protected abstract void onSend() throws Exception;
 
-  protected void markAttachmentsUploaded(long messageId, @NonNull OutgoingMediaMessage message) {
+  protected static void markAttachmentsUploaded(long messageId, @NonNull OutgoingMessage message) {
     List<Attachment> attachments = new LinkedList<>();
 
     attachments.addAll(message.getAttachments());
-    attachments.addAll(Stream.of(message.getLinkPreviews()).map(lp -> lp.getThumbnail().orNull()).withoutNulls().toList());
+    attachments.addAll(Stream.of(message.getLinkPreviews()).map(lp -> lp.getThumbnail().orElse(null)).withoutNulls().toList());
     attachments.addAll(Stream.of(message.getSharedContacts()).map(Contact::getAvatarAttachment).withoutNulls().toList());
 
     if (message.getOutgoingQuote() != null) {
       attachments.addAll(message.getOutgoingQuote().getAttachments());
     }
 
-    AttachmentDatabase database = SignalDatabase.attachments();
+    AttachmentTable database = SignalDatabase.attachments();
 
     for (Attachment attachment : attachments) {
       database.markAttachmentUploaded(messageId, attachment);

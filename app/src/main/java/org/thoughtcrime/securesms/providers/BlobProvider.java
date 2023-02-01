@@ -22,7 +22,7 @@ import org.thoughtcrime.securesms.crypto.AttachmentSecret;
 import org.thoughtcrime.securesms.crypto.AttachmentSecretProvider;
 import org.thoughtcrime.securesms.crypto.ModernDecryptingPartInputStream;
 import org.thoughtcrime.securesms.crypto.ModernEncryptingPartOutputStream;
-import org.thoughtcrime.securesms.database.DraftDatabase;
+import org.thoughtcrime.securesms.database.DraftTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.util.IOFunction;
 import org.thoughtcrime.securesms.util.Util;
@@ -244,8 +244,8 @@ public class BlobProvider {
       return;
     }
 
-    DraftDatabase        draftDatabase   = SignalDatabase.drafts();
-    DraftDatabase.Drafts voiceNoteDrafts = draftDatabase.getAllVoiceNoteDrafts();
+    DraftTable        draftDatabase   = SignalDatabase.drafts();
+    DraftTable.Drafts voiceNoteDrafts = draftDatabase.getAllVoiceNoteDrafts();
 
     @SuppressWarnings("ConstantConditions")
     List<String> draftFileNames = voiceNoteDrafts.stream()
@@ -413,6 +413,19 @@ public class BlobProvider {
     return context.getDir(directory, Context.MODE_PRIVATE);
   }
 
+  /**
+   * Returns a {@link File} within the appropriate directory to be cleaned up as part of
+   * normal operations. Unlike other blobs, this is just a file reference and no
+   * automatic encryption occurs when reading or writing and must be done by the caller.
+   *
+   * @return file located in the appropriate directory to be delete on app session restarts
+   */
+  public File forNonAutoEncryptingSingleSessionOnDisk(@NonNull Context context) {
+    String directory = getDirectory(StorageType.SINGLE_SESSION_DISK);
+    String id        = UUID.randomUUID().toString();
+    return new File(getOrCreateDirectory(context, directory), buildFileName(id));
+  }
+
   public class BlobBuilder {
 
     private InputStream data;
@@ -469,7 +482,6 @@ public class BlobProvider {
      * Create a blob that will exist for multiple app sessions. It is the caller's responsibility to
      * eventually call {@link BlobProvider#delete(Context, Uri)} when the blob is no longer in use.
      */
-    @Deprecated
     @WorkerThread
     public Uri createForMultipleSessionsOnDisk(@NonNull Context context) throws IOException {
       return writeBlobSpecToDisk(context, buildBlobSpec(StorageType.MULTI_SESSION_DISK));

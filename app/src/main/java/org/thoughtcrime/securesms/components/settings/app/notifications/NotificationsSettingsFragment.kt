@@ -6,8 +6,10 @@ import android.content.Intent
 import android.graphics.ColorFilter
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.View
@@ -17,9 +19,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import androidx.preference.PreferenceManager
+import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
-import org.thoughtcrime.securesms.components.settings.DSLSettingsAdapter
 import org.thoughtcrime.securesms.components.settings.DSLSettingsFragment
 import org.thoughtcrime.securesms.components.settings.DSLSettingsText
 import org.thoughtcrime.securesms.components.settings.PreferenceModel
@@ -29,12 +31,15 @@ import org.thoughtcrime.securesms.components.settings.RadioListPreferenceViewHol
 import org.thoughtcrime.securesms.components.settings.configure
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.notifications.NotificationChannels
-import org.thoughtcrime.securesms.util.MappingAdapter
 import org.thoughtcrime.securesms.util.RingtoneUtil
 import org.thoughtcrime.securesms.util.ViewUtil
+import org.thoughtcrime.securesms.util.adapter.mapping.LayoutFactory
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
+import org.thoughtcrime.securesms.util.navigation.safeNavigate
 
 private const val MESSAGE_SOUND_SELECT: Int = 1
 private const val CALL_RINGTONE_SELECT: Int = 2
+private val TAG = Log.tag(NotificationsSettingsFragment::class.java)
 
 class NotificationsSettingsFragment : DSLSettingsFragment(R.string.preferences__notifications) {
 
@@ -65,10 +70,10 @@ class NotificationsSettingsFragment : DSLSettingsFragment(R.string.preferences__
     }
   }
 
-  override fun bindAdapter(adapter: DSLSettingsAdapter) {
+  override fun bindAdapter(adapter: MappingAdapter) {
     adapter.registerFactory(
       LedColorPreference::class.java,
-      MappingAdapter.LayoutFactory(::LedColorPreferenceViewHolder, R.layout.dsl_preference_item)
+      LayoutFactory(::LedColorPreferenceViewHolder, R.layout.dsl_preference_item)
     )
 
     val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -93,49 +98,61 @@ class NotificationsSettingsFragment : DSLSettingsFragment(R.string.preferences__
         }
       )
 
-      clickPref(
-        title = DSLSettingsText.from(R.string.preferences__sound),
-        summary = DSLSettingsText.from(getRingtoneSummary(state.messageNotificationsState.sound)),
-        isEnabled = state.messageNotificationsState.notificationsEnabled,
-        onClick = {
-          launchMessageSoundSelectionIntent()
-        }
-      )
-
-      switchPref(
-        title = DSLSettingsText.from(R.string.preferences__vibrate),
-        isChecked = state.messageNotificationsState.vibrateEnabled,
-        isEnabled = state.messageNotificationsState.notificationsEnabled,
-        onClick = {
-          viewModel.setMessageNotificationVibration(!state.messageNotificationsState.vibrateEnabled)
-        }
-      )
-
-      customPref(
-        LedColorPreference(
-          colorValues = ledColorValues,
-          radioListPreference = RadioListPreference(
-            title = DSLSettingsText.from(R.string.preferences__led_color),
-            listItems = ledColorLabels,
-            selected = ledColorValues.indexOf(state.messageNotificationsState.ledColor),
-            isEnabled = state.messageNotificationsState.notificationsEnabled,
-            onSelected = {
-              viewModel.setMessageNotificationLedColor(ledColorValues[it])
-            }
-          )
-        )
-      )
-
-      if (!NotificationChannels.supported()) {
-        radioListPref(
-          title = DSLSettingsText.from(R.string.preferences__pref_led_blink_title),
-          listItems = ledBlinkLabels,
-          selected = ledBlinkValues.indexOf(state.messageNotificationsState.ledBlink),
+      if (Build.VERSION.SDK_INT >= 30) {
+        clickPref(
+          title = DSLSettingsText.from(R.string.preferences__customize),
+          summary = DSLSettingsText.from(R.string.preferences__change_sound_and_vibration),
           isEnabled = state.messageNotificationsState.notificationsEnabled,
-          onSelected = {
-            viewModel.setMessageNotificationLedBlink(ledBlinkValues[it])
+          onClick = {
+            NotificationChannels.getInstance().openChannelSettings(requireActivity(), NotificationChannels.getInstance().messagesChannel, null)
           }
         )
+      } else {
+
+        clickPref(
+          title = DSLSettingsText.from(R.string.preferences__sound),
+          summary = DSLSettingsText.from(getRingtoneSummary(state.messageNotificationsState.sound)),
+          isEnabled = state.messageNotificationsState.notificationsEnabled,
+          onClick = {
+            launchMessageSoundSelectionIntent()
+          }
+        )
+
+        switchPref(
+          title = DSLSettingsText.from(R.string.preferences__vibrate),
+          isChecked = state.messageNotificationsState.vibrateEnabled,
+          isEnabled = state.messageNotificationsState.notificationsEnabled,
+          onClick = {
+            viewModel.setMessageNotificationVibration(!state.messageNotificationsState.vibrateEnabled)
+          }
+        )
+
+        customPref(
+          LedColorPreference(
+            colorValues = ledColorValues,
+            radioListPreference = RadioListPreference(
+              title = DSLSettingsText.from(R.string.preferences__led_color),
+              listItems = ledColorLabels,
+              selected = ledColorValues.indexOf(state.messageNotificationsState.ledColor),
+              isEnabled = state.messageNotificationsState.notificationsEnabled,
+              onSelected = {
+                viewModel.setMessageNotificationLedColor(ledColorValues[it])
+              }
+            )
+          )
+        )
+
+        if (!NotificationChannels.supported()) {
+          radioListPref(
+            title = DSLSettingsText.from(R.string.preferences__pref_led_blink_title),
+            listItems = ledBlinkLabels,
+            selected = ledBlinkValues.indexOf(state.messageNotificationsState.ledBlink),
+            isEnabled = state.messageNotificationsState.notificationsEnabled,
+            onSelected = {
+              viewModel.setMessageNotificationLedBlink(ledBlinkValues[it])
+            }
+          )
+        }
       }
 
       switchPref(
@@ -167,24 +184,26 @@ class NotificationsSettingsFragment : DSLSettingsFragment(R.string.preferences__
         }
       )
 
-      if (NotificationChannels.supported()) {
-        clickPref(
-          title = DSLSettingsText.from(R.string.preferences_notifications__priority),
-          isEnabled = state.messageNotificationsState.notificationsEnabled,
-          onClick = {
-            launchNotificationPriorityIntent()
-          }
-        )
-      } else {
-        radioListPref(
-          title = DSLSettingsText.from(R.string.preferences_notifications__priority),
-          listItems = notificationPriorityLabels,
-          selected = notificationPriorityValues.indexOf(state.messageNotificationsState.priority.toString()),
-          isEnabled = state.messageNotificationsState.notificationsEnabled,
-          onSelected = {
-            viewModel.setMessageNotificationPriority(notificationPriorityValues[it].toInt())
-          }
-        )
+      if (Build.VERSION.SDK_INT < 30) {
+        if (NotificationChannels.supported()) {
+          clickPref(
+            title = DSLSettingsText.from(R.string.preferences_notifications__priority),
+            isEnabled = state.messageNotificationsState.notificationsEnabled,
+            onClick = {
+              launchNotificationPriorityIntent()
+            }
+          )
+        } else {
+          radioListPref(
+            title = DSLSettingsText.from(R.string.preferences_notifications__priority),
+            listItems = notificationPriorityLabels,
+            selected = notificationPriorityValues.indexOf(state.messageNotificationsState.priority.toString()),
+            isEnabled = state.messageNotificationsState.notificationsEnabled,
+            onSelected = {
+              viewModel.setMessageNotificationPriority(notificationPriorityValues[it].toInt())
+            }
+          )
+        }
       }
 
       dividerPref()
@@ -225,7 +244,7 @@ class NotificationsSettingsFragment : DSLSettingsFragment(R.string.preferences__
         title = DSLSettingsText.from(R.string.NotificationsSettingsFragment__profiles),
         summary = DSLSettingsText.from(R.string.NotificationsSettingsFragment__create_a_profile_to_receive_notifications_only_from_people_and_groups_you_choose),
         onClick = {
-          findNavController().navigate(R.id.action_notificationsSettingsFragment_to_notificationProfilesFragment)
+          findNavController().safeNavigate(R.id.action_notificationsSettingsFragment_to_notificationProfilesFragment)
         }
       )
 
@@ -247,9 +266,14 @@ class NotificationsSettingsFragment : DSLSettingsFragment(R.string.preferences__
     return if (TextUtils.isEmpty(uri.toString())) {
       getString(R.string.preferences__silent)
     } else {
-      val tone = RingtoneUtil.getRingtone(requireContext(), uri)
+      val tone: Ringtone? = RingtoneUtil.getRingtone(requireContext(), uri)
       if (tone != null) {
-        tone.getTitle(requireContext()) ?: getString(R.string.NotificationsSettingsFragment__unknown_ringtone)
+        try {
+          tone.getTitle(requireContext()) ?: getString(R.string.NotificationsSettingsFragment__unknown_ringtone)
+        } catch (e: SecurityException) {
+          Log.w(TAG, "Unable to get title for ringtone", e)
+          return getString(R.string.NotificationsSettingsFragment__unknown_ringtone)
+        }
       } else {
         getString(R.string.preferences__default)
       }
@@ -277,7 +301,7 @@ class NotificationsSettingsFragment : DSLSettingsFragment(R.string.preferences__
     val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
     intent.putExtra(
       Settings.EXTRA_CHANNEL_ID,
-      NotificationChannels.getMessagesChannel(requireContext())
+      NotificationChannels.getInstance().messagesChannel
     )
     intent.putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().packageName)
     startActivity(intent)

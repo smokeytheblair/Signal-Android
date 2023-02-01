@@ -12,7 +12,10 @@ import com.annimon.stream.Stream;
 import org.signal.core.util.logging.Log;
 import org.signal.libsignal.metadata.certificate.CertificateValidator;
 import org.signal.libsignal.metadata.certificate.InvalidCertificateException;
-import org.signal.zkgroup.profiles.ProfileKey;
+import org.signal.libsignal.protocol.InvalidKeyException;
+import org.signal.libsignal.protocol.ecc.Curve;
+import org.signal.libsignal.protocol.ecc.ECPublicKey;
+import org.signal.libsignal.zkgroup.profiles.ProfileKey;
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.keyvalue.CertificateType;
 import org.thoughtcrime.securesms.keyvalue.PhoneNumberPrivacyValues;
@@ -22,10 +25,6 @@ import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.util.Base64;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.Util;
-import org.whispersystems.libsignal.InvalidKeyException;
-import org.whispersystems.libsignal.ecc.Curve;
-import org.whispersystems.libsignal.ecc.ECPublicKey;
-import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.crypto.UnidentifiedAccess;
 import org.whispersystems.signalservice.api.crypto.UnidentifiedAccessPair;
 
@@ -36,6 +35,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class UnidentifiedAccessUtil {
 
@@ -68,8 +68,8 @@ public class UnidentifiedAccessUtil {
   }
 
   @WorkerThread
-  public static Map<RecipientId, Optional<UnidentifiedAccessPair>> getAccessMapFor(@NonNull Context context, @NonNull List<Recipient> recipients) {
-    List<Optional<UnidentifiedAccessPair>> accessList = getAccessFor(context, recipients, true);
+  public static Map<RecipientId, Optional<UnidentifiedAccessPair>> getAccessMapFor(@NonNull Context context, @NonNull List<Recipient> recipients, boolean isForStory) {
+    List<Optional<UnidentifiedAccessPair>> accessList = getAccessFor(context, recipients, true, isForStory);
 
     Iterator<Recipient>                        recipientIterator = recipients.iterator();
     Iterator<Optional<UnidentifiedAccessPair>> accessIterator    = accessList.iterator();
@@ -82,9 +82,14 @@ public class UnidentifiedAccessUtil {
 
     return accessMap;
   }
-
+  
   @WorkerThread
   public static List<Optional<UnidentifiedAccessPair>> getAccessFor(@NonNull Context context, @NonNull List<Recipient> recipients, boolean log) {
+    return getAccessFor(context, recipients, false, log);
+  }
+
+  @WorkerThread
+  public static List<Optional<UnidentifiedAccessPair>> getAccessFor(@NonNull Context context, @NonNull List<Recipient> recipients, boolean isForStory, boolean log) {
     byte[] ourUnidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(ProfileKeyUtil.getSelfProfileKey());
 
     if (TextSecurePreferences.isUniversalUnidentifiedAccess(context)) {
@@ -96,7 +101,7 @@ public class UnidentifiedAccessUtil {
     Map<CertificateType, Integer> typeCounts = new HashMap<>();
 
     for (Recipient recipient : recipients) {
-      byte[]          theirUnidentifiedAccessKey       = getTargetUnidentifiedAccessKey(recipient);
+      byte[]          theirUnidentifiedAccessKey       = getTargetUnidentifiedAccessKey(recipient, isForStory);
       CertificateType certificateType                  = getUnidentifiedAccessCertificateType(recipient);
       byte[]          ourUnidentifiedAccessCertificate = SignalStore.certificateValues().getUnidentifiedAccessCertificate(certificateType);
 
@@ -112,10 +117,10 @@ public class UnidentifiedAccessUtil {
                                                                                    ourUnidentifiedAccessCertificate))));
         } catch (InvalidCertificateException e) {
           Log.w(TAG, e);
-          access.add(Optional.absent());
+          access.add(Optional.empty());
         }
       } else {
-        access.add(Optional.absent());
+        access.add(Optional.empty());
       }
     }
 
@@ -145,10 +150,10 @@ public class UnidentifiedAccessUtil {
                                                                              ourUnidentifiedAccessCertificate)));
       }
 
-      return Optional.absent();
+      return Optional.empty();
     } catch (InvalidCertificateException e) {
       Log.w(TAG, e);
-      return Optional.absent();
+      return Optional.empty();
     }
   }
 
@@ -168,28 +173,40 @@ public class UnidentifiedAccessUtil {
                       .getUnidentifiedAccessCertificate(getUnidentifiedAccessCertificateType(recipient));
   }
 
-  private static @Nullable byte[] getTargetUnidentifiedAccessKey(@NonNull Recipient recipient) {
+  private static @Nullable byte[] getTargetUnidentifiedAccessKey(@NonNull Recipient recipient, boolean isForStory) {
     ProfileKey theirProfileKey = ProfileKeyUtil.profileKeyOrNull(recipient.resolve().getProfileKey());
+
+    byte[] accessKey;
 
     switch (recipient.resolve().getUnidentifiedAccessMode()) {
       case UNKNOWN:
         if (theirProfileKey == null) {
-          return UNRESTRICTED_KEY;
+          accessKey = UNRESTRICTED_KEY;
         } else {
-          return UnidentifiedAccess.deriveAccessKeyFrom(theirProfileKey);
+          accessKey = UnidentifiedAccess.deriveAccessKeyFrom(theirProfileKey);
         }
+        break;
       case DISABLED:
-        return null;
+        accessKey = null;
+        break;
       case ENABLED:
         if (theirProfileKey == null) {
-          return null;
+          accessKey = null;
         } else {
-          return UnidentifiedAccess.deriveAccessKeyFrom(theirProfileKey);
+          accessKey = UnidentifiedAccess.deriveAccessKeyFrom(theirProfileKey);
         }
+        break;
       case UNRESTRICTED:
-        return UNRESTRICTED_KEY;
+        accessKey = UNRESTRICTED_KEY;
+        break;
       default:
         throw new AssertionError("Unknown mode: " + recipient.getUnidentifiedAccessMode().getMode());
     }
+
+    if (accessKey == null && isForStory) {
+      accessKey = UNRESTRICTED_KEY;
+    }
+
+    return accessKey;
   }
 }

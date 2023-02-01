@@ -20,9 +20,11 @@ import android.content.Context;
 import android.text.SpannableString;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
 
-import org.thoughtcrime.securesms.database.MmsSmsColumns;
-import org.thoughtcrime.securesms.database.SmsDatabase;
+import org.thoughtcrime.securesms.database.MessageTable;
+import org.thoughtcrime.securesms.database.MessageTable.Status;
+import org.thoughtcrime.securesms.database.MessageTypes;
 import org.thoughtcrime.securesms.recipients.Recipient;
 
 /**
@@ -69,23 +71,28 @@ public abstract class DisplayRecord {
 
   public boolean isFailed() {
     return
-        MmsSmsColumns.Types.isFailedMessageType(type)            ||
-        MmsSmsColumns.Types.isPendingSecureSmsFallbackType(type) ||
-        deliveryStatus >= SmsDatabase.Status.STATUS_FAILED;
+        MessageTypes.isFailedMessageType(type) ||
+        MessageTypes.isPendingSecureSmsFallbackType(type) ||
+        deliveryStatus >= MessageTable.Status.STATUS_FAILED;
   }
 
   public boolean isPending() {
-    return MmsSmsColumns.Types.isPendingMessageType(type) &&
-           !MmsSmsColumns.Types.isIdentityVerified(type)  &&
-           !MmsSmsColumns.Types.isIdentityDefault(type);
+    return MessageTypes.isPendingMessageType(type) &&
+           !MessageTypes.isIdentityVerified(type) &&
+           !MessageTypes.isIdentityDefault(type);
+  }
+
+  @VisibleForTesting
+  public long getType() {
+    return type;
   }
 
   public boolean isSent() {
-    return MmsSmsColumns.Types.isSentType(type);
+    return MessageTypes.isSentType(type);
   }
 
   public boolean isOutgoing() {
-    return MmsSmsColumns.Types.isOutgoingMessageType(type);
+    return MessageTypes.isOutgoingMessageType(type);
   }
 
   public abstract SpannableString getDisplayBody(@NonNull Context context);
@@ -107,23 +114,23 @@ public abstract class DisplayRecord {
   }
 
   public boolean isKeyExchange() {
-    return SmsDatabase.Types.isKeyExchangeType(type);
+    return MessageTypes.isKeyExchangeType(type);
   }
 
   public boolean isEndSession() {
-    return SmsDatabase.Types.isEndSessionType(type);
+    return MessageTypes.isEndSessionType(type);
   }
 
   public boolean isGroupUpdate() {
-    return SmsDatabase.Types.isGroupUpdate(type);
+    return MessageTypes.isGroupUpdate(type);
   }
 
   public boolean isGroupV2() {
-    return SmsDatabase.Types.isGroupV2(type);
+    return MessageTypes.isGroupV2(type);
   }
 
   public boolean isGroupQuit() {
-    return SmsDatabase.Types.isGroupQuit(type);
+    return MessageTypes.isGroupQuit(type);
   }
 
   public boolean isGroupAction() {
@@ -131,55 +138,59 @@ public abstract class DisplayRecord {
   }
 
   public boolean isExpirationTimerUpdate() {
-    return SmsDatabase.Types.isExpirationTimerUpdate(type);
+    return MessageTypes.isExpirationTimerUpdate(type);
   }
 
   public boolean isCallLog() {
-    return SmsDatabase.Types.isCallLog(type);
+    return MessageTypes.isCallLog(type);
   }
 
   public boolean isJoined() {
-    return SmsDatabase.Types.isJoinedType(type);
+    return MessageTypes.isJoinedType(type);
   }
 
   public boolean isIncomingAudioCall() {
-    return SmsDatabase.Types.isIncomingAudioCall(type);
+    return MessageTypes.isIncomingAudioCall(type);
   }
 
   public boolean isIncomingVideoCall() {
-    return SmsDatabase.Types.isIncomingVideoCall(type);
+    return MessageTypes.isIncomingVideoCall(type);
   }
 
   public boolean isOutgoingAudioCall() {
-    return SmsDatabase.Types.isOutgoingAudioCall(type);
+    return MessageTypes.isOutgoingAudioCall(type);
   }
 
   public boolean isOutgoingVideoCall() {
-    return SmsDatabase.Types.isOutgoingVideoCall(type);
+    return MessageTypes.isOutgoingVideoCall(type);
   }
 
   public final boolean isMissedAudioCall() {
-    return SmsDatabase.Types.isMissedAudioCall(type);
+    return MessageTypes.isMissedAudioCall(type);
   }
 
   public final boolean isMissedVideoCall() {
-    return SmsDatabase.Types.isMissedVideoCall(type);
+    return MessageTypes.isMissedVideoCall(type);
   }
 
   public final boolean isGroupCall() {
-    return SmsDatabase.Types.isGroupCall(type);
+    return MessageTypes.isGroupCall(type);
   }
 
   public boolean isVerificationStatusChange() {
-    return SmsDatabase.Types.isIdentityDefault(type) || SmsDatabase.Types.isIdentityVerified(type);
+    return MessageTypes.isIdentityDefault(type) || MessageTypes.isIdentityVerified(type);
   }
 
   public boolean isProfileChange() {
-    return SmsDatabase.Types.isProfileChange(type);
+    return MessageTypes.isProfileChange(type);
   }
 
   public boolean isChangeNumber() {
-    return SmsDatabase.Types.isChangeNumber(type);
+    return MessageTypes.isChangeNumber(type);
+  }
+
+  public boolean isBoostRequest() {
+    return MessageTypes.isBoostRequest(type);
   }
 
   public int getDeliveryStatus() {
@@ -206,8 +217,8 @@ public abstract class DisplayRecord {
   }
 
   public boolean isDelivered() {
-    return (deliveryStatus >= SmsDatabase.Status.STATUS_COMPLETE &&
-            deliveryStatus < SmsDatabase.Status.STATUS_PENDING) || deliveryReceiptCount > 0;
+    return (deliveryStatus >= Status.STATUS_COMPLETE &&
+            deliveryStatus < Status.STATUS_PENDING) || deliveryReceiptCount > 0;
   }
 
   public boolean isRemoteViewed() {
@@ -219,6 +230,18 @@ public abstract class DisplayRecord {
   }
 
   public boolean isPendingInsecureSmsFallback() {
-    return SmsDatabase.Types.isPendingInsecureSmsFallbackType(type);
+    return MessageTypes.isPendingInsecureSmsFallbackType(type);
+  }
+
+  public boolean isPaymentNotification() {
+    return MessageTypes.isPaymentsNotification(type);
+  }
+
+  public boolean isPaymentsRequestToActivate() {
+    return MessageTypes.isPaymentsRequestToActivate(type);
+  }
+
+  public boolean isPaymentsActivated() {
+    return MessageTypes.isPaymentsActivated(type);
   }
 }

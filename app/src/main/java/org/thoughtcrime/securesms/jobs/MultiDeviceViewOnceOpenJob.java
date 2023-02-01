@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
-import org.thoughtcrime.securesms.database.MessageDatabase.SyncMessageId;
+import org.thoughtcrime.securesms.database.MessageTable.SyncMessageId;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
@@ -89,7 +89,7 @@ public class MultiDeviceViewOnceOpenJob extends BaseJob {
       return;
     }
 
-    ViewOnceOpenMessage openMessage = new ViewOnceOpenMessage(RecipientUtil.toSignalServiceAddress(context, recipient), messageId.timestamp);
+    ViewOnceOpenMessage openMessage = new ViewOnceOpenMessage(RecipientUtil.getOrFetchServiceId(context, recipient), messageId.timestamp);
 
     messageSender.sendSyncMessage(SignalServiceSyncMessage.forViewOnceOpen(openMessage), UnidentifiedAccessUtil.getAccessForSync(context));
   }

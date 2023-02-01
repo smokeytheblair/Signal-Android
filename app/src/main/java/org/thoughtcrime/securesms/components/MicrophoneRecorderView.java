@@ -19,7 +19,6 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.view.ViewCompat;
 
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.permissions.Permissions;
@@ -59,12 +58,14 @@ public final class MicrophoneRecorderView extends FrameLayout implements View.On
     recordButton.setOnTouchListener(this);
   }
 
-  public void cancelAction() {
+  public void cancelAction(boolean byUser) {
     if (state != State.NOT_RUNNING) {
       state = State.NOT_RUNNING;
       hideUi();
 
-      if (listener != null) listener.onRecordCanceled();
+      if (listener != null) {
+        listener.onRecordCanceled(byUser);
+      }
     }
   }
 
@@ -101,7 +102,7 @@ public final class MicrophoneRecorderView extends FrameLayout implements View.On
       case MotionEvent.ACTION_DOWN:
         if (!Permissions.hasAll(getContext(), Manifest.permission.RECORD_AUDIO)) {
           if (listener != null) listener.onRecordPermissionRequired();
-        } else {
+        } else if (state == State.NOT_RUNNING) {
           state = State.RUNNING_HELD;
           floatingRecordButton.display(event.getX(), event.getY());
           lockDropTarget.display();
@@ -139,7 +140,7 @@ public final class MicrophoneRecorderView extends FrameLayout implements View.On
   public interface Listener {
     void onRecordPressed();
     void onRecordReleased();
-    void onRecordCanceled();
+    void onRecordCanceled(boolean byUser);
     void onRecordLocked();
     void onRecordMoved(float offsetX, float absoluteX);
     void onRecordPermissionRequired();

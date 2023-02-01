@@ -10,6 +10,8 @@ import android.os.Bundle;
 import android.os.Vibrator;
 import android.text.TextUtils;
 import android.transition.TransitionInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -17,26 +19,25 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.content.ContextCompat;
 
 import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.crypto.IdentityKeyUtil;
+import org.signal.libsignal.protocol.IdentityKeyPair;
+import org.signal.libsignal.protocol.InvalidKeyException;
+import org.signal.libsignal.protocol.ecc.Curve;
+import org.signal.libsignal.protocol.ecc.ECPublicKey;
+import org.signal.libsignal.zkgroup.profiles.ProfileKey;
+import org.signal.qr.kitkat.ScanListener;
 import org.thoughtcrime.securesms.crypto.ProfileKeyUtil;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.permissions.Permissions;
-import org.thoughtcrime.securesms.qr.ScanListener;
 import org.thoughtcrime.securesms.util.Base64;
 import org.thoughtcrime.securesms.util.DynamicLanguage;
 import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme;
 import org.thoughtcrime.securesms.util.DynamicTheme;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.task.ProgressDialogAsyncTask;
-import org.whispersystems.libsignal.IdentityKeyPair;
-import org.whispersystems.libsignal.InvalidKeyException;
-import org.whispersystems.libsignal.ecc.Curve;
-import org.whispersystems.libsignal.ecc.ECPublicKey;
-import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.SignalServiceAccountManager;
 import org.whispersystems.signalservice.api.push.exceptions.NotFoundException;
 import org.whispersystems.signalservice.internal.push.DeviceLimitExceededException;
@@ -55,6 +56,7 @@ public class DeviceActivity extends PassphraseRequiredActivity
   private DeviceAddFragment  deviceAddFragment;
   private DeviceListFragment deviceListFragment;
   private DeviceLinkFragment deviceLinkFragment;
+  private MenuItem           cameraSwitchItem = null;
 
   @Override
   public void onPreCreate() {
@@ -104,6 +106,18 @@ public class DeviceActivity extends PassphraseRequiredActivity
   }
 
   @Override
+  public boolean onCreateOptionsMenu(Menu menu) {
+    getMenuInflater().inflate(R.menu.device_add, menu);
+    cameraSwitchItem = menu.findItem(R.id.device_add_camera_switch);
+    cameraSwitchItem.setVisible(false);
+    return super.onCreateOptionsMenu(menu);
+  }
+
+  public MenuItem getCameraSwitchItem() {
+    return cameraSwitchItem;
+  }
+
+  @Override
   public void onClick(View v) {
     Permissions.with(this)
                .request(Manifest.permission.CAMERA)
@@ -120,33 +134,24 @@ public class DeviceActivity extends PassphraseRequiredActivity
   }
 
   @Override
-  public void onQrDataFound(final String data) {
+  public void onQrDataFound(@NonNull final String data) {
     ThreadUtil.runOnMain(() -> {
       ((Vibrator)getSystemService(Context.VIBRATOR_SERVICE)).vibrate(50);
       Uri uri = Uri.parse(data);
       deviceLinkFragment.setLinkClickedListener(uri, DeviceActivity.this);
 
-      if (Build.VERSION.SDK_INT >= 21) {
-        deviceAddFragment.setSharedElementReturnTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(R.transition.fragment_shared));
-        deviceAddFragment.setExitTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(android.R.transition.fade));
+      deviceAddFragment.setSharedElementReturnTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(R.transition.fragment_shared));
+      deviceAddFragment.setExitTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(android.R.transition.fade));
 
-        deviceLinkFragment.setSharedElementEnterTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(R.transition.fragment_shared));
-        deviceLinkFragment.setEnterTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(android.R.transition.fade));
+      deviceLinkFragment.setSharedElementEnterTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(R.transition.fragment_shared));
+      deviceLinkFragment.setEnterTransition(TransitionInflater.from(DeviceActivity.this).inflateTransition(android.R.transition.fade));
 
-        getSupportFragmentManager().beginTransaction()
-                                   .addToBackStack(null)
-                                   .addSharedElement(deviceAddFragment.getDevicesImage(), "devices")
-                                   .replace(R.id.fragment_container, deviceLinkFragment)
-                                   .commit();
+      getSupportFragmentManager().beginTransaction()
+                                 .addToBackStack(null)
+                                 .addSharedElement(deviceAddFragment.getDevicesImage(), "devices")
+                                 .replace(R.id.fragment_container, deviceLinkFragment)
+                                 .commit();
 
-      } else {
-        getSupportFragmentManager().beginTransaction()
-                                   .setCustomAnimations(R.anim.slide_from_bottom, R.anim.slide_to_bottom,
-                                                        R.anim.slide_from_bottom, R.anim.slide_to_bottom)
-                                   .replace(R.id.fragment_container, deviceLinkFragment)
-                                   .addToBackStack(null)
-                                   .commit();
-      }
     });
   }
 
@@ -186,12 +191,13 @@ public class DeviceActivity extends PassphraseRequiredActivity
             return BAD_CODE;
           }
 
-          ECPublicKey      publicKey         = Curve.decodePoint(Base64.decode(publicKeyEncoded), 0);
-          IdentityKeyPair  identityKeyPair   = IdentityKeyUtil.getIdentityKeyPair(context);
-          Optional<byte[]> profileKey        = Optional.of(ProfileKeyUtil.getProfileKey(getContext()));
+          ECPublicKey     publicKey          = Curve.decodePoint(Base64.decode(publicKeyEncoded), 0);
+          IdentityKeyPair aciIdentityKeyPair = SignalStore.account().getAciIdentityKey();
+          IdentityKeyPair pniIdentityKeyPair = SignalStore.account().getPniIdentityKey();
+          ProfileKey      profileKey         = ProfileKeyUtil.getSelfProfileKey();
 
           TextSecurePreferences.setMultiDevice(DeviceActivity.this, true);
-          accountManager.addDevice(ephemeralId, publicKey, identityKeyPair, profileKey, verificationCode);
+          accountManager.addDevice(ephemeralId, publicKey, aciIdentityKeyPair, pniIdentityKeyPair, profileKey, verificationCode);
 
           return SUCCESS;
         } catch (NotFoundException e) {

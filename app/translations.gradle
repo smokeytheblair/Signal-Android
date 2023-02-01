@@ -1,6 +1,7 @@
 import groovy.io.FileType
 import groovy.transform.stc.ClosureParams
 import groovy.transform.stc.SimpleType
+import org.signal.StaticIpResolver
 
 ext {
     autoResConfig = this.&autoResConfig
@@ -28,12 +29,6 @@ def autoResConfig() {
             .sort()
 }
 
-task pullTranslations(type: Exec) {
-    group 'Translate'
-    description 'Pull translations, requires transifex client and api key.'
-    commandLine 'tx', 'pull', '-a', '--minimum-perc=80', '--force', '--parallel'
-}
-
 task replaceEllipsis {
     group 'Translate'
     description 'Process strings for ellipsis characters.'
@@ -47,7 +42,6 @@ task replaceEllipsis {
             }
         }
     }
-    mustRunAfter pullTranslations
 }
 
 task cleanApostropheErrors {
@@ -63,7 +57,6 @@ task cleanApostropheErrors {
             }
         }
     }
-    mustRunAfter replaceEllipsis
 }
 
 task excludeNonTranslatables {
@@ -119,18 +112,33 @@ task excludeNonTranslatables {
             }
         }
     }
-    mustRunAfter cleanApostropheErrors
 }
 
 task postTranslateQa {
     group 'Translate'
     description 'Runs QA to check validity of updated strings, and ensure presence of any new languages in internal lists.'
     dependsOn ':qa'
-    mustRunAfter excludeNonTranslatables
 }
 
-task translate {
+task postTranslateIpFetch {
     group 'Translate'
-    description 'Pull translations and post-process for ellipsis, apostrophes and non-translatables.'
-    dependsOn pullTranslations, replaceEllipsis, cleanApostropheErrors, excludeNonTranslatables, postTranslateQa
+    description 'Fetches static IPs for core hosts and writes them to static-ips.gradle'
+    doLast {
+        new File(projectDir, "static-ips.gradle").text = """
+            ext.service_ips='${StaticIpResolver.resolveToBuildConfig("chat.signal.org")}'
+            ext.storage_ips='${StaticIpResolver.resolveToBuildConfig("storage.signal.org")}'
+            ext.cdn_ips='${StaticIpResolver.resolveToBuildConfig("cdn.signal.org")}'
+            ext.cdn2_ips='${StaticIpResolver.resolveToBuildConfig("cdn2.signal.org")}'
+            ext.cds_ips='${StaticIpResolver.resolveToBuildConfig("api.directory.signal.org")}'
+            ext.kbs_ips='${StaticIpResolver.resolveToBuildConfig("api.backup.signal.org")}'
+            ext.sfu_ips='${StaticIpResolver.resolveToBuildConfig("sfu.voip.signal.org")}'
+            ext.content_proxy_ips='${StaticIpResolver.resolveToBuildConfig("contentproxy.signal.org")}'
+        """.stripIndent().trim()
+    }
+}
+
+task translateQa {
+    group 'Translate'
+    description 'Post-process for ellipsis, apostrophes and non-translatables.'
+    dependsOn replaceEllipsis, cleanApostropheErrors, excludeNonTranslatables, postTranslateIpFetch, postTranslateQa
 }

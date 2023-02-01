@@ -28,8 +28,9 @@ import org.thoughtcrime.securesms.groups.ParcelableGroupId
 import org.thoughtcrime.securesms.mediasend.AvatarSelectionActivity
 import org.thoughtcrime.securesms.mediasend.Media
 import org.thoughtcrime.securesms.permissions.Permissions
-import org.thoughtcrime.securesms.util.MappingAdapter
 import org.thoughtcrime.securesms.util.ViewUtil
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
+import org.thoughtcrime.securesms.util.navigation.safeNavigate
 import org.thoughtcrime.securesms.util.visible
 
 /**
@@ -80,14 +81,7 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
       }
 
       clearButton.visible = state.canClear
-
-      val wasEnabled = saveButton.isEnabled
-      saveButton.isEnabled = state.canSave
-      if (wasEnabled != state.canSave) {
-        val alpha = if (state.canSave) 1f else 0.5f
-        saveButton.animate().cancel()
-        saveButton.animate().alpha(alpha)
-      }
+      saveButton.isClickable = state.canSave
 
       val items = state.selectableAvatars.map { AvatarPickerItem.Model(it, it == state.currentAvatar) }
       val selectedPosition = items.indexOfFirst { it.isSelected }
@@ -103,6 +97,11 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
     photoButton.setOnIconClickedListener { openGallery() }
     textButton.setOnIconClickedListener { openTextEditor(null) }
     saveButton.setOnClickListener { v ->
+      if (!saveButton.isEnabled) {
+        return@setOnClickListener
+      }
+
+      saveButton.isEnabled = false
       viewModel.save(
         {
           setFragmentResult(
@@ -124,7 +123,7 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
         }
       )
     }
-    clearButton.setOnClickListener { viewModel.clear() }
+    clearButton.setOnClickListener { viewModel.clearAvatar() }
 
     setFragmentResultListener(TextAvatarCreationFragment.REQUEST_KEY_TEXT) { _, bundle ->
       val text = AvatarBundler.extractText(bundle)
@@ -198,18 +197,18 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
 
   private fun openPhotoEditor(photo: Avatar.Photo) {
     Navigation.findNavController(requireView())
-      .navigate(AvatarPickerFragmentDirections.actionAvatarPickerFragmentToAvatarPhotoEditorFragment(AvatarBundler.bundlePhoto(photo)))
+      .safeNavigate(AvatarPickerFragmentDirections.actionAvatarPickerFragmentToAvatarPhotoEditorFragment(AvatarBundler.bundlePhoto(photo)))
   }
 
   private fun openVectorEditor(vector: Avatar.Vector) {
     Navigation.findNavController(requireView())
-      .navigate(AvatarPickerFragmentDirections.actionAvatarPickerFragmentToVectorAvatarCreationFragment(AvatarBundler.bundleVector(vector)))
+      .safeNavigate(AvatarPickerFragmentDirections.actionAvatarPickerFragmentToVectorAvatarCreationFragment(AvatarBundler.bundleVector(vector)))
   }
 
   private fun openTextEditor(text: Avatar.Text?) {
     val bundle = if (text != null) AvatarBundler.bundleText(text) else null
     Navigation.findNavController(requireView())
-      .navigate(AvatarPickerFragmentDirections.actionAvatarPickerFragmentToTextAvatarCreationFragment(bundle))
+      .safeNavigate(AvatarPickerFragmentDirections.actionAvatarPickerFragmentToTextAvatarCreationFragment(bundle))
   }
 
   @Suppress("DEPRECATION")
@@ -242,5 +241,9 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
           .show()
       }
       .execute()
+  }
+
+  override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    Permissions.onRequestPermissionsResult(this, requestCode, permissions, grantResults)
   }
 }

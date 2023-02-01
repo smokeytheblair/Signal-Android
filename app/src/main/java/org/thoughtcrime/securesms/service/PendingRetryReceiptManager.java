@@ -11,11 +11,11 @@ import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.MessageDatabase;
+import org.thoughtcrime.securesms.database.MessageTable;
+import org.thoughtcrime.securesms.database.PendingRetryReceiptCache;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.PendingRetryReceiptModel;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
-import org.thoughtcrime.securesms.database.PendingRetryReceiptCache;
 import org.thoughtcrime.securesms.util.FeatureFlags;
 
 
@@ -27,13 +27,13 @@ public final class PendingRetryReceiptManager extends TimedEventManager<PendingR
   private static final String TAG = Log.tag(PendingRetryReceiptManager.class);
 
   private final PendingRetryReceiptCache pendingCache;
-  private final MessageDatabase          messageDatabase;
+  private final MessageTable             messageDatabase;
 
   public PendingRetryReceiptManager(@NonNull Application application) {
     super(application, "PendingRetryReceiptManager");
 
     this.pendingCache    = ApplicationDependencies.getPendingRetryReceiptCache();
-    this.messageDatabase = SignalDatabase.sms();
+    this.messageDatabase = SignalDatabase.messages();
 
     scheduleIfNecessary();
   }

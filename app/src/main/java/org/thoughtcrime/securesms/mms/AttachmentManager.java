@@ -18,7 +18,6 @@ package org.thoughtcrime.securesms.mms;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
@@ -33,15 +32,18 @@ import android.util.Pair;
 import android.view.View;
 import android.widget.Toast;
 
+import androidx.annotation.ColorInt;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+import androidx.fragment.app.Fragment;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.signal.core.util.ThreadUtil;
+import org.signal.core.util.concurrent.SimpleTask;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.MediaPreviewActivity;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.TransportOption;
 import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.components.AudioView;
 import org.thoughtcrime.securesms.components.DocumentView;
@@ -49,32 +51,45 @@ import org.thoughtcrime.securesms.components.RemovableEditableMediaView;
 import org.thoughtcrime.securesms.components.ThumbnailView;
 import org.thoughtcrime.securesms.components.location.SignalMapView;
 import org.thoughtcrime.securesms.components.location.SignalPlace;
+import org.thoughtcrime.securesms.conversation.MessageSendType;
+import org.thoughtcrime.securesms.database.AttachmentTable;
+import org.thoughtcrime.securesms.database.MediaTable;
+import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.giph.ui.GiphyActivity;
 import org.thoughtcrime.securesms.maps.PlacePickerActivity;
+import org.thoughtcrime.securesms.mediapreview.MediaIntentFactory;
+import org.thoughtcrime.securesms.mediapreview.MediaPreviewV2Fragment;
 import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionActivity;
+import org.thoughtcrime.securesms.payments.CanNotSendPaymentDialog;
+import org.thoughtcrime.securesms.payments.PaymentsAddressException;
 import org.thoughtcrime.securesms.payments.create.CreatePaymentFragmentArgs;
 import org.thoughtcrime.securesms.payments.preferences.PaymentsActivity;
+import org.thoughtcrime.securesms.payments.preferences.RecipientHasNotEnabledPaymentsDialog;
 import org.thoughtcrime.securesms.payments.preferences.model.PayeeParcelable;
 import org.thoughtcrime.securesms.permissions.Permissions;
 import org.thoughtcrime.securesms.providers.BlobProvider;
 import org.thoughtcrime.securesms.providers.DeprecatedPersistentBlobProvider;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
+import org.thoughtcrime.securesms.sms.MessageSender;
 import org.thoughtcrime.securesms.util.BitmapUtil;
+import org.thoughtcrime.securesms.util.FeatureFlags;
 import org.thoughtcrime.securesms.util.MediaUtil;
+import org.thoughtcrime.securesms.util.ProfileUtil;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.concurrent.AssertedSuccessListener;
 import org.thoughtcrime.securesms.util.concurrent.ListenableFuture;
 import org.thoughtcrime.securesms.util.concurrent.ListenableFuture.Listener;
 import org.thoughtcrime.securesms.util.concurrent.SettableFuture;
 import org.thoughtcrime.securesms.util.views.Stub;
-import org.whispersystems.libsignal.util.guava.Optional;
+import org.whispersystems.signalservice.api.util.ExpiringProfileCredentialUtil;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 
@@ -93,13 +108,13 @@ public class AttachmentManager {
   private SignalMapView              mapView;
 
   private @NonNull  List<Uri>       garbage = new LinkedList<>();
-  private @NonNull  Optional<Slide> slide   = Optional.absent();
+  private @NonNull  Optional<Slide> slide   = Optional.empty();
   private @Nullable Uri             captureUri;
 
-  public AttachmentManager(@NonNull Activity activity, @NonNull AttachmentListener listener) {
-    this.context            = activity;
+  public AttachmentManager(@NonNull Context context, @NonNull View rootView, @NonNull AttachmentListener listener) {
+    this.context            = context;
     this.attachmentListener = listener;
-    this.attachmentViewStub = ViewUtil.findStubById(activity, R.id.attachment_editor_stub);
+    this.attachmentViewStub = ViewUtil.findStubById(rootView, R.id.attachment_editor_stub);
   }
 
   private void inflateStub() {
@@ -142,7 +157,7 @@ public class AttachmentManager {
       }
 
       markGarbage(getSlideUri());
-      slide = Optional.absent();
+      slide = Optional.empty();
     }
   }
 
@@ -151,7 +166,7 @@ public class AttachmentManager {
     cleanup(getSlideUri());
 
     captureUri = null;
-    slide      = Optional.absent();
+    slide      = Optional.empty();
 
     Iterator<Uri> iterator = garbage.listIterator();
 
@@ -314,7 +329,7 @@ public class AttachmentManager {
             }
 
             Log.d(TAG, "remote slide with size " + fileSize + " took " + (System.currentTimeMillis() - start) + "ms");
-            return mediaType.createSlide(context, uri, fileName, mimeType, null, fileSize, width, height, false);
+            return mediaType.createSlide(context, uri, fileName, mimeType, null, fileSize, width, height, false, null);
           }
         } finally {
           if (cursor != null) cursor.close();
@@ -324,17 +339,19 @@ public class AttachmentManager {
       }
 
       private @NonNull Slide getManuallyCalculatedSlideInfo(Uri uri, int width, int height) throws IOException {
-        long     start     = System.currentTimeMillis();
-        Long     mediaSize = null;
-        String   fileName  = null;
-        String   mimeType  = null;
-        boolean  gif       = false;
+        long                                   start               = System.currentTimeMillis();
+        Long                                   mediaSize           = null;
+        String                                 fileName            = null;
+        String                                 mimeType            = null;
+        boolean                             gif                 = false;
+        AttachmentTable.TransformProperties transformProperties = null;
 
         if (PartAuthority.isLocalUri(uri)) {
-          mediaSize = PartAuthority.getAttachmentSize(context, uri);
-          fileName  = PartAuthority.getAttachmentFileName(context, uri);
-          mimeType  = PartAuthority.getAttachmentContentType(context, uri);
-          gif       = PartAuthority.getAttachmentIsVideoGif(context, uri);
+          mediaSize           = PartAuthority.getAttachmentSize(context, uri);
+          fileName            = PartAuthority.getAttachmentFileName(context, uri);
+          mimeType            = PartAuthority.getAttachmentContentType(context, uri);
+          gif                 = PartAuthority.getAttachmentIsVideoGif(context, uri);
+          transformProperties = PartAuthority.getAttachmentTransformProperties(uri);
         }
 
         if (mediaSize == null) {
@@ -352,7 +369,7 @@ public class AttachmentManager {
         }
 
         Log.d(TAG, "local slide with size " + mediaSize + " took " + (System.currentTimeMillis() - start) + "ms");
-        return mediaType.createSlide(context, uri, fileName, mimeType, null, mediaSize, width, height, gif);
+        return mediaType.createSlide(context, uri, fileName, mimeType, null, mediaSize, width, height, gif, transformProperties);
       }
     }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
 
@@ -369,51 +386,88 @@ public class AttachmentManager {
     return deck;
   }
 
-  public static void selectDocument(Activity activity, int requestCode) {
-    selectMediaType(activity, "*/*", null, requestCode);
+  public static void selectDocument(Fragment fragment, int requestCode) {
+    selectMediaType(fragment, "*/*", null, requestCode);
   }
 
-  public static void selectGallery(Activity activity, int requestCode, @NonNull Recipient recipient, @NonNull CharSequence body, @NonNull TransportOption transport, boolean hasQuote) {
-    Permissions.with(activity)
+  public static void selectGallery(Fragment fragment, int requestCode, @NonNull Recipient recipient, @NonNull CharSequence body, @NonNull MessageSendType messageSendType, boolean hasQuote) {
+    Permissions.with(fragment)
                .request(Manifest.permission.READ_EXTERNAL_STORAGE)
                .ifNecessary()
-               .withPermanentDenialDialog(activity.getString(R.string.AttachmentManager_signal_requires_the_external_storage_permission_in_order_to_attach_photos_videos_or_audio))
-               .onAllGranted(() -> activity.startActivityForResult(MediaSelectionActivity.gallery(activity, transport, Collections.emptyList(), recipient.getId(), body, hasQuote), requestCode))
+               .withPermanentDenialDialog(fragment.getString(R.string.AttachmentManager_signal_requires_the_external_storage_permission_in_order_to_attach_photos_videos_or_audio))
+               .onAllGranted(() -> fragment.startActivityForResult(MediaSelectionActivity.gallery(fragment.requireContext(), messageSendType, Collections.emptyList(), recipient.getId(), body, hasQuote), requestCode))
                .execute();
   }
 
-  public static void selectContactInfo(Activity activity, int requestCode) {
-    Permissions.with(activity)
+  public static void selectContactInfo(Fragment fragment, int requestCode) {
+    Permissions.with(fragment)
                .request(Manifest.permission.READ_CONTACTS)
                .ifNecessary()
-               .withPermanentDenialDialog(activity.getString(R.string.AttachmentManager_signal_requires_contacts_permission_in_order_to_attach_contact_information))
+               .withPermanentDenialDialog(fragment.getString(R.string.AttachmentManager_signal_requires_contacts_permission_in_order_to_attach_contact_information))
                .onAllGranted(() -> {
                  Intent intent = new Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI);
-                 activity.startActivityForResult(intent, requestCode);
+                 fragment.startActivityForResult(intent, requestCode);
                })
                .execute();
   }
 
-  public static void selectLocation(Activity activity, int requestCode) {
-    Permissions.with(activity)
+  public static void selectLocation(Fragment fragment, int requestCode, @ColorInt int chatColor) {
+    Permissions.with(fragment)
                .request(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
                .ifNecessary()
-               .withPermanentDenialDialog(activity.getString(R.string.AttachmentManager_signal_requires_location_information_in_order_to_attach_a_location))
-               .onAllGranted(() -> PlacePickerActivity.startActivityForResultAtCurrentLocation(activity, requestCode))
+               .withPermanentDenialDialog(fragment.getString(R.string.AttachmentManager_signal_requires_location_information_in_order_to_attach_a_location))
+               .onAllGranted(() -> PlacePickerActivity.startActivityForResultAtCurrentLocation(fragment, requestCode, chatColor))
                .execute();
   }
 
-  public static void selectGif(Activity activity, int requestCode, boolean isForMms) {
-    Intent intent = new Intent(activity, GiphyActivity.class);
+  public static void selectGif(Fragment fragment, int requestCode, RecipientId id, MessageSendType sendType, boolean isForMms, CharSequence textTrimmed) {
+    Intent intent = new Intent(fragment.requireContext(), GiphyActivity.class);
     intent.putExtra(GiphyActivity.EXTRA_IS_MMS, isForMms);
-    activity.startActivityForResult(intent, requestCode);
+    intent.putExtra(GiphyActivity.EXTRA_RECIPIENT_ID, id);
+    intent.putExtra(GiphyActivity.EXTRA_TRANSPORT, sendType);
+    intent.putExtra(GiphyActivity.EXTRA_TEXT, textTrimmed);
+    fragment.startActivityForResult(intent, requestCode);
   }
 
-  public static void selectPayment(@NonNull Activity activity, @NonNull RecipientId recipientId) {
-    Intent intent = new Intent(activity, PaymentsActivity.class);
-    intent.putExtra(PaymentsActivity.EXTRA_PAYMENTS_STARTING_ACTION, R.id.action_directly_to_createPayment);
-    intent.putExtra(PaymentsActivity.EXTRA_STARTING_ARGUMENTS, new CreatePaymentFragmentArgs.Builder(new PayeeParcelable(recipientId)).build().toBundle());
-    activity.startActivity(intent);
+  public static void selectPayment(@NonNull Fragment fragment, @NonNull Recipient recipient) {
+    if (!ExpiringProfileCredentialUtil.isValid(recipient.getExpiringProfileKeyCredential())) {
+      CanNotSendPaymentDialog.show(fragment.requireContext());
+      return;
+    }
+
+    SimpleTask.run(fragment.getViewLifecycleOwner().getLifecycle(),
+                   () -> {
+                     try {
+                       return ProfileUtil.getAddressForRecipient(recipient);
+                     } catch (IOException | PaymentsAddressException e) {
+                       Log.w(TAG, "Could not get address for recipient: ", e);
+                       return null;
+                     }
+                   },
+                   (address) -> {
+                     if (address != null) {
+                       Intent intent = new Intent(fragment.requireContext(), PaymentsActivity.class);
+                       intent.putExtra(PaymentsActivity.EXTRA_PAYMENTS_STARTING_ACTION, R.id.action_directly_to_createPayment);
+                       intent.putExtra(PaymentsActivity.EXTRA_STARTING_ARGUMENTS, new CreatePaymentFragmentArgs.Builder(new PayeeParcelable(recipient.getId())).setFinishOnConfirm(true).build().toBundle());
+                       fragment.startActivity(intent);
+                     } else if (FeatureFlags.paymentsRequestActivateFlow() && recipient.getPaymentActivationCapability().isSupported()) {
+                       showRequestToActivatePayments(fragment.requireContext(), recipient);
+                     } else {
+                       RecipientHasNotEnabledPaymentsDialog.show(fragment.requireContext());
+                     }
+                   });
+  }
+
+  public static void showRequestToActivatePayments(@NonNull Context context, @NonNull Recipient recipient) {
+    new MaterialAlertDialogBuilder(context)
+        .setTitle(context.getString(R.string.AttachmentManager__not_activated_payments, recipient.getShortDisplayName(context)))
+        .setMessage(context.getString(R.string.AttachmentManager__request_to_activate_payments))
+        .setPositiveButton(context.getString(R.string.AttachmentManager__send_request), (dialog, which) -> {
+          OutgoingMessage outgoingMessage = OutgoingMessage.requestToActivatePaymentsMessage(recipient, System.currentTimeMillis(), 0);
+          MessageSender.send(context, outgoingMessage, SignalDatabase.threads().getOrCreateThreadIdFor(recipient), MessageSender.SendType.SIGNAL, null, null);
+        })
+        .setNegativeButton(context.getString(R.string.AttachmentManager__cancel), null)
+        .show();
   }
 
   private @Nullable Uri getSlideUri() {
@@ -424,7 +478,7 @@ public class AttachmentManager {
     return captureUri;
   }
 
-  private static void selectMediaType(Activity activity, @NonNull String type, @Nullable String[] extraMimeType, int requestCode) {
+  private static void selectMediaType(Fragment fragment, @NonNull String type, @Nullable String[] extraMimeType, int requestCode) {
     final Intent intent = new Intent();
     intent.setType(type);
 
@@ -434,7 +488,7 @@ public class AttachmentManager {
 
     intent.setAction(Intent.ACTION_OPEN_DOCUMENT);
     try {
-      activity.startActivityForResult(intent, requestCode);
+      fragment.startActivityForResult(intent, requestCode);
       return;
     } catch (ActivityNotFoundException anfe) {
       Log.w(TAG, "couldn't complete ACTION_OPEN_DOCUMENT, no activity found. falling back.");
@@ -443,10 +497,10 @@ public class AttachmentManager {
     intent.setAction(Intent.ACTION_GET_CONTENT);
 
     try {
-      activity.startActivityForResult(intent, requestCode);
+      fragment.startActivityForResult(intent, requestCode);
     } catch (ActivityNotFoundException anfe) {
       Log.w(TAG, "couldn't complete ACTION_GET_CONTENT intent, no activity found. falling back.");
-      Toast.makeText(activity, R.string.AttachmentManager_cant_open_media_selection, Toast.LENGTH_LONG).show();
+      Toast.makeText(fragment.requireContext(), R.string.AttachmentManager_cant_open_media_selection, Toast.LENGTH_LONG).show();
     }
   }
 
@@ -460,14 +514,21 @@ public class AttachmentManager {
   }
 
   private void previewImageDraft(final @NonNull Slide slide) {
-    if (MediaPreviewActivity.isContentTypeSupported(slide.getContentType()) && slide.getUri() != null) {
-      Intent intent = new Intent(context, MediaPreviewActivity.class);
-      intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-      intent.putExtra(MediaPreviewActivity.SIZE_EXTRA, slide.asAttachment().getSize());
-      intent.putExtra(MediaPreviewActivity.CAPTION_EXTRA, slide.getCaption().orNull());
-      intent.setDataAndType(slide.getUri(), slide.getContentType());
-
-      context.startActivity(intent);
+    if (MediaPreviewV2Fragment.isContentTypeSupported(slide.getContentType()) && slide.getUri() != null) {
+      MediaIntentFactory.MediaPreviewArgs args = new MediaIntentFactory.MediaPreviewArgs(
+          MediaIntentFactory.NOT_IN_A_THREAD,
+          MediaIntentFactory.UNKNOWN_TIMESTAMP,
+          slide.getUri(),
+          slide.getContentType(),
+          slide.asAttachment().getSize(),
+          slide.getCaption().orElse(null),
+          false,
+          false,
+          false,
+          false,
+          MediaTable.Sorting.Newest,
+          slide.isVideoGif());
+      context.startActivity(MediaIntentFactory.create(context, args));
     }
   }
 
@@ -481,6 +542,12 @@ public class AttachmentManager {
   private class RemoveButtonListener implements View.OnClickListener {
     @Override
     public void onClick(View v) {
+      slide.ifPresent(oldSlide -> {
+        if (oldSlide instanceof LocationSlide) {
+          attachmentListener.onLocationRemoved();
+        }
+      });
+
       cleanup();
       clear(GlideApp.with(context.getApplicationContext()), true);
     }
@@ -488,6 +555,7 @@ public class AttachmentManager {
 
   public interface AttachmentListener {
     void onAttachmentChanged();
+    void onLocationRemoved();
   }
 
 }

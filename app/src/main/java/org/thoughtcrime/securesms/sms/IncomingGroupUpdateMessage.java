@@ -1,17 +1,17 @@
 package org.thoughtcrime.securesms.sms;
 
+import com.google.protobuf.ByteString;
+
 import org.thoughtcrime.securesms.database.model.databaseprotos.DecryptedGroupV2Context;
 import org.thoughtcrime.securesms.mms.MessageGroupContext;
+
+import java.util.Optional;
 
 import static org.whispersystems.signalservice.internal.push.SignalServiceProtos.GroupContext;
 
 public final class IncomingGroupUpdateMessage extends IncomingTextMessage {
 
   private final MessageGroupContext groupContext;
-
-  public IncomingGroupUpdateMessage(IncomingTextMessage base, GroupContext groupContext, String body) {
-    this(base, new MessageGroupContext(groupContext));
-  }
 
   public IncomingGroupUpdateMessage(IncomingTextMessage base, DecryptedGroupV2Context groupV2Context) {
     this(base, new MessageGroupContext(groupV2Context));
@@ -42,5 +42,17 @@ public final class IncomingGroupUpdateMessage extends IncomingTextMessage {
   @Override
   public boolean isJustAGroupLeave() {
     return GroupV2UpdateMessageUtil.isJustAGroupLeave(groupContext);
+  }
+
+  public boolean isCancelJoinRequest() {
+    return GroupV2UpdateMessageUtil.isJoinRequestCancel(groupContext);
+  }
+
+  public int getChangeRevision() {
+    return GroupV2UpdateMessageUtil.getChangeRevision(groupContext);
+  }
+
+  public Optional<ByteString> getChangeEditor() {
+    return GroupV2UpdateMessageUtil.getChangeEditor(groupContext);
   }
 }

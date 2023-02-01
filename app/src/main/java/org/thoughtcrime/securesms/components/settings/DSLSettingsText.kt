@@ -1,6 +1,7 @@
 package org.thoughtcrime.securesms.components.settings
 
 import android.content.Context
+import android.text.SpannableStringBuilder
 import androidx.annotation.ColorInt
 import androidx.annotation.StringRes
 import androidx.annotation.StyleRes
@@ -64,8 +65,9 @@ sealed class DSLSettingsText {
     }
   }
 
-  object Title2BoldModifier : TextAppearanceModifier(R.style.TextAppearance_Signal_Title2_Bold)
-  object Body1BoldModifier : TextAppearanceModifier(R.style.TextAppearance_Signal_Body1_Bold)
+  object TitleLargeModifier : TextAppearanceModifier(R.style.Signal_Text_TitleLarge)
+  object TitleMediumModifier : TextAppearanceModifier(R.style.Signal_Text_TitleMedium)
+  object BodyLargeModifier : TextAppearanceModifier(R.style.Signal_Text_BodyLarge)
 
   open class TextAppearanceModifier(@StyleRes private val textAppearance: Int) : Modifier {
     override fun modify(context: Context, charSequence: CharSequence): CharSequence {
@@ -79,6 +81,19 @@ sealed class DSLSettingsText {
   object BoldModifier : Modifier {
     override fun modify(context: Context, charSequence: CharSequence): CharSequence {
       return SpanUtil.bold(charSequence)
+    }
+  }
+
+  class LearnMoreModifier(
+    @ColorInt private val learnMoreColor: Int,
+    val onClick: () -> Unit
+  ) : Modifier {
+    override fun modify(context: Context, charSequence: CharSequence): CharSequence {
+      return SpannableStringBuilder(charSequence).append(" ").append(
+        SpanUtil.learnMore(context, learnMoreColor) {
+          onClick()
+        }
+      )
     }
   }
 }

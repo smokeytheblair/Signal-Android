@@ -18,7 +18,7 @@ import androidx.appcompat.widget.Toolbar;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.payments.preferences.PaymentsHomeAdapter;
 import org.thoughtcrime.securesms.payments.preferences.model.InfoCard;
-import org.thoughtcrime.securesms.util.MappingViewHolder;
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingViewHolder;
 
 public class InfoCardViewHolder extends MappingViewHolder<InfoCard> {
 
@@ -55,7 +55,7 @@ public class InfoCardViewHolder extends MappingViewHolder<InfoCard> {
             .setPositiveButton(R.string.payment_info_card_hide, (dialog, which) -> {
               model.dismiss();
               dialog.dismiss();
-              callbacks.onInfoCardDismissed();
+              callbacks.onInfoCardDismissed(model.getType());
             })
             .setNegativeButton(android.R.string.cancel, (dialog, which) -> dialog.dismiss())
             .show();

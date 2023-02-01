@@ -17,6 +17,7 @@ import org.thoughtcrime.securesms.phonenumbers.PhoneNumberFormatter
 import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme
 import org.thoughtcrime.securesms.util.DynamicTheme
 import org.thoughtcrime.securesms.util.LifecycleDisposable
+import org.whispersystems.signalservice.api.push.PNI
 import java.util.Objects
 
 private val TAG: String = Log.tag(ChangeNumberLockActivity::class.java)
@@ -37,7 +38,7 @@ class ChangeNumberLockActivity : PassphraseRequiredActivity() {
 
     setContentView(R.layout.activity_change_number_lock)
 
-    changeNumberRepository = ChangeNumberRepository(applicationContext)
+    changeNumberRepository = ChangeNumberRepository()
     checkWhoAmI()
   }
 
@@ -49,25 +50,28 @@ class ChangeNumberLockActivity : PassphraseRequiredActivity() {
   override fun onBackPressed() = Unit
 
   private fun checkWhoAmI() {
-    disposables.add(
-      changeNumberRepository.whoAmI()
-        .flatMap { whoAmI ->
-          if (Objects.equals(whoAmI.number, SignalStore.account().e164)) {
-            Log.i(TAG, "Local and remote numbers match, nothing needs to be done.")
-            Single.just(false)
-          } else {
-            Log.i(TAG, "Local (${SignalStore.account().e164}) and remote (${whoAmI.number}) numbers do not match, updating local.")
-            changeNumberRepository.changeLocalNumber(whoAmI.number)
-              .map { true }
-          }
+    disposables += changeNumberRepository
+      .whoAmI()
+      .flatMap { whoAmI ->
+        if (Objects.equals(whoAmI.number, SignalStore.account().e164)) {
+          Log.i(TAG, "Local and remote numbers match, nothing needs to be done.")
+          Single.just(false)
+        } else {
+          Log.i(TAG, "Local (${SignalStore.account().e164}) and remote (${whoAmI.number}) numbers do not match, updating local.")
+          Single
+            .just(true)
+            .flatMap { changeNumberRepository.changeLocalNumber(whoAmI.number, PNI.parseOrThrow(whoAmI.pni)) }
+            .compose(ChangeNumberRepository::acquireReleaseChangeNumberLock)
+            .map { true }
         }
-        .observeOn(AndroidSchedulers.mainThread())
-        .subscribeBy(onSuccess = { onChangeStatusConfirmed() }, onError = this::onFailedToGetChangeNumberStatus)
-    )
+      }
+      .observeOn(AndroidSchedulers.mainThread())
+      .subscribeBy(onSuccess = { onChangeStatusConfirmed() }, onError = this::onFailedToGetChangeNumberStatus)
   }
 
   private fun onChangeStatusConfirmed() {
     SignalStore.misc().unlockChangeNumber()
+    SignalStore.misc().clearPendingChangeNumberMetadata()
 
     MaterialAlertDialogBuilder(this)
       .setTitle(R.string.ChangeNumberLockActivity__change_status_confirmed)

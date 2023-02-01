@@ -2,10 +2,7 @@ plugins {
     id 'com.android.application'
     id 'kotlin-android'
     id 'kotlin-kapt'
-    id 'witness'
 }
-
-apply from: 'witness-verifications.gradle'
 
 android {
     compileSdk COMPILE_SDK
@@ -14,6 +11,7 @@ android {
         applicationId "org.signal.imageeditor.app"
         versionCode 1
         versionName "1.0"
+        multiDexEnabled true
 
         minSdk MINIMUM_SDK
         targetSdk TARGET_SDK
@@ -34,14 +32,11 @@ android {
     }
 }
 
-dependencyVerification {
-    configuration = '(debug|release)RuntimeClasspath'
-}
-
 dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat
     implementation libs.material.material
+    implementation project(':core-util')
     implementation project(':image-editor')
 
     implementation libs.glide.glide

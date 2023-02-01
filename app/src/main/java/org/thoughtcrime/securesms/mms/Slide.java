@@ -29,13 +29,13 @@ import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.attachments.UriAttachment;
 import org.thoughtcrime.securesms.audio.AudioHash;
 import org.thoughtcrime.securesms.blurhash.BlurHash;
-import org.thoughtcrime.securesms.database.AttachmentDatabase;
+import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.stickers.StickerLocator;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.Util;
-import org.whispersystems.libsignal.util.guava.Optional;
 
 import java.security.SecureRandom;
+import java.util.Optional;
 
 public abstract class Slide {
 
@@ -66,17 +66,17 @@ public abstract class Slide {
 
   @NonNull
   public Optional<String> getBody() {
-    return Optional.absent();
+    return Optional.empty();
   }
 
   @NonNull
   public Optional<String> getCaption() {
-    return Optional.fromNullable(attachment.getCaption());
+    return Optional.ofNullable(attachment.getCaption());
   }
 
   @NonNull
   public Optional<String> getFileName() {
-    return Optional.fromNullable(attachment.getFileName());
+    return Optional.ofNullable(attachment.getFileName());
   }
 
   @Nullable
@@ -133,8 +133,8 @@ public abstract class Slide {
   }
 
   public boolean isPendingDownload() {
-    return getTransferState() == AttachmentDatabase.TRANSFER_PROGRESS_FAILED ||
-           getTransferState() == AttachmentDatabase.TRANSFER_PROGRESS_PENDING;
+    return getTransferState() == AttachmentTable.TRANSFER_PROGRESS_FAILED ||
+           getTransferState() == AttachmentTable.TRANSFER_PROGRESS_PENDING;
   }
 
   public int getTransferState() {
@@ -193,13 +193,13 @@ public abstract class Slide {
                                                                    boolean        borderless,
                                                                    boolean        gif,
                                                                    boolean        quote,
-                                                         @Nullable AttachmentDatabase.TransformProperties transformProperties)
+                                                         @Nullable AttachmentTable.TransformProperties transformProperties)
   {
-    String                 resolvedType    = Optional.fromNullable(MediaUtil.getMimeType(context, uri)).or(defaultMime);
+    String                 resolvedType    = Optional.ofNullable(MediaUtil.getMimeType(context, uri)).orElse(defaultMime);
     String                 fastPreflightId = String.valueOf(new SecureRandom().nextLong());
     return new UriAttachment(uri,
                              resolvedType,
-                             AttachmentDatabase.TRANSFER_PROGRESS_STARTED,
+                             AttachmentTable.TRANSFER_PROGRESS_STARTED,
                              size,
                              width,
                              height,
@@ -226,7 +226,7 @@ public abstract class Slide {
       }
     }
 
-    return Optional.fromNullable(MediaUtil.getExtension(context, getUri()));
+    return Optional.ofNullable(MediaUtil.getExtension(context, getUri()));
   }
 
   private static @NonNull String getFileType(Optional<String> fileName) {

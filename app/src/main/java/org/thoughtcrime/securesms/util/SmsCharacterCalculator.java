@@ -16,6 +16,7 @@
  */
 package org.thoughtcrime.securesms.util;
 
+import android.os.Parcel;
 import android.telephony.SmsMessage;
 
 import org.signal.core.util.logging.Log;
@@ -42,7 +43,7 @@ public class SmsCharacterCalculator extends CharacterCalculator {
       charactersSpent     = messageBody.length();
       charactersRemaining = 1000;
     } catch (RuntimeException e) {
-      if (e.getCause() instanceof SecurityException) {
+      if (e instanceof SecurityException || e.getCause() instanceof SecurityException) {
         Log.e(TAG, "Security Exception", e);
         messagesSpent       = 1;
         charactersSpent     = messageBody.length();
@@ -62,4 +63,25 @@ public class SmsCharacterCalculator extends CharacterCalculator {
     
     return new CharacterState(messagesSpent, charactersRemaining, maxMessageSize, maxMessageSize);
   }
+
+  @Override
+  public int describeContents() {
+    return 0;
+  }
+
+  @Override
+  public void writeToParcel(Parcel dest, int flags) {
+  }
+
+  public static final Creator<SmsCharacterCalculator> CREATOR = new Creator<SmsCharacterCalculator>() {
+    @Override
+    public SmsCharacterCalculator createFromParcel(Parcel in) {
+      return new SmsCharacterCalculator();
+    }
+
+    @Override
+    public SmsCharacterCalculator[] newArray(int size) {
+      return new SmsCharacterCalculator[size];
+    }
+  };
 }

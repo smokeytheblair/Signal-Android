@@ -1,22 +1,17 @@
 package org.thoughtcrime.securesms.conversation;
 
-import android.content.Intent;
 import android.os.Bundle;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuInflater;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 
-import androidx.core.app.ActivityOptionsCompat;
+import androidx.appcompat.widget.Toolbar;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.util.concurrent.ListenableFuture;
-
-import java.util.concurrent.ExecutionException;
 
 public class ConversationPopupActivity extends ConversationActivity {
 
@@ -47,15 +42,14 @@ public class ConversationPopupActivity extends ConversationActivity {
     else                getWindow().setLayout((int) (width * .7), (int) (height * .75));
 
     super.onCreate(bundle, ready);
-
-    titleView.setOnClickListener(null);
   }
 
   @Override
   protected void onResume() {
     super.onResume();
-    composeText.requestFocus();
-    quickAttachmentToggle.disable();
+    getTitleView().setOnClickListener(null);
+    getComposeText().requestFocus();
+    getQuickAttachmentToggle().disable();
   }
 
   @Override
@@ -74,48 +68,20 @@ public class ConversationPopupActivity extends ConversationActivity {
   }
 
   @Override
-  public boolean onOptionsItemSelected(MenuItem item) {
-    switch (item.getItemId()) {
-      case R.id.menu_expand:
-        saveDraft().addListener(new ListenableFuture.Listener<Long>() {
-          @Override
-          public void onSuccess(Long result) {
-            ActivityOptionsCompat transition = ActivityOptionsCompat.makeScaleUpAnimation(getWindow().getDecorView(), 0, 0, getWindow().getAttributes().width, getWindow().getAttributes().height);
-            Intent                intent     = ConversationIntents.createBuilder(ConversationPopupActivity.this, getRecipient().getId(), result)
-                                                                  .build();
-
-            startActivity(intent, transition.toBundle());
-
-            finish();
-          }
-
-          @Override
-          public void onFailure(ExecutionException e) {
-            Log.w(TAG, e);
-          }
-        });
-        return true;
-    }
-
-    return false;
+  public void onInitializeToolbar(Toolbar toolbar) {
   }
 
   @Override
-  protected void initializeActionBar() {
-    super.initializeActionBar();
-    getSupportActionBar().setDisplayHomeAsUpEnabled(false);
-  }
-
-  @Override
-  protected void sendComplete(long threadId) {
-    super.sendComplete(threadId);
+  public void onSendComplete(long threadId) {
     finish();
   }
 
   @Override
-  protected void updateReminders() {
-    if (reminderView.resolved()) {
-      reminderView.get().setVisibility(View.GONE);
+  public boolean onUpdateReminders() {
+    if (getReminderView().resolved()) {
+      getReminderView().get().setVisibility(View.GONE);
     }
+
+    return false;
   }
 }

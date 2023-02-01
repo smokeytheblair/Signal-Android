@@ -1,7 +1,6 @@
 package org.thoughtcrime.securesms.components.menu
 
 import android.content.Context
-import android.os.Build
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
@@ -42,10 +41,7 @@ class SignalBottomActionBar(context: Context, attributeSet: AttributeSet) : Line
   init {
     orientation = HORIZONTAL
     setBackgroundResource(R.drawable.signal_bottom_action_bar_background)
-
-    if (Build.VERSION.SDK_INT >= 21) {
-      elevation = 20f
-    }
+    elevation = 20f
   }
 
   fun setItems(items: List<ActionItem>) {
@@ -66,6 +62,8 @@ class SignalBottomActionBar(context: Context, attributeSet: AttributeSet) : Line
     if (width == 0) {
       return
     }
+
+    val wasLayoutRequested = isLayoutRequested
 
     val widthDp: Float = ViewUtil.pxToDp(width.toFloat())
     val minButtonWidthDp = 80
@@ -102,6 +100,12 @@ class SignalBottomActionBar(context: Context, attributeSet: AttributeSet) : Line
           }
         )
       )
+    }
+
+    if (wasLayoutRequested) {
+      post {
+        requestLayout()
+      }
     }
   }
 

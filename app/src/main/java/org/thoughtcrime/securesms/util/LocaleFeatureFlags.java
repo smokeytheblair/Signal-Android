@@ -31,13 +31,6 @@ public final class LocaleFeatureFlags {
   private static final int    NOT_FOUND        = -1;
 
   /**
-   * In research megaphone group for given country code
-   */
-  public static boolean isInResearchMegaphone() {
-    return false;
-  }
-
-  /**
    * In donate megaphone group for given country code
    */
   public static boolean isInDonateMegaphone() {
@@ -46,19 +39,34 @@ public final class LocaleFeatureFlags {
 
   public static @NonNull Optional<PushMediaConstraints.MediaConfig> getMediaQualityLevel() {
     Map<String, Integer> countryValues = parseCountryValues(FeatureFlags.getMediaQualityLevels(), NOT_FOUND);
-    int                  level         = getCountryValue(countryValues, Recipient.self().getE164().or(""), NOT_FOUND);
+    int                  level         = getCountryValue(countryValues, Recipient.self().getE164().orElse(""), NOT_FOUND);
 
     return Optional.ofNullable(PushMediaConstraints.MediaConfig.forLevel(level));
   }
 
-  /**
-   * Whether or not you should suggest SMS during onboarding.
-   */
-  public static boolean shouldSuggestSms() {
-    Set<String> blacklist   = new HashSet<>(Arrays.asList(FeatureFlags.suggestSmsBlacklist().split(",")));
-    String      countryCode = String.valueOf(PhoneNumberFormatter.getLocalCountryCode());
+  public static boolean shouldShowReleaseNote(@NonNull String releaseNoteUuid, @NonNull String countries) {
+    return isEnabled(releaseNoteUuid, countries);
+  }
 
-    return !blacklist.contains(countryCode);
+  /**
+   * @return Whether Google Pay is disabled in this region
+   */
+  public static boolean isGooglePayDisabled() {
+    return isEnabled(FeatureFlags.GOOGLE_PAY_DISABLED_REGIONS, FeatureFlags.googlePayDisabledRegions());
+  }
+
+  /**
+   * @return Whether credit cards are disabled in this region
+   */
+  public static boolean isCreditCardDisabled() {
+    return isEnabled(FeatureFlags.CREDIT_CARD_DISABLED_REGIONS, FeatureFlags.creditCardDisabledRegions());
+  }
+
+  /**
+   * @return Whether PayPal is disabled in this region
+   */
+  public static boolean isPayPalDisabled() {
+    return isEnabled(FeatureFlags.PAYPAL_DISABLED_REGIONS, FeatureFlags.paypalDisabledRegions());
   }
 
   /**
@@ -72,12 +80,12 @@ public final class LocaleFeatureFlags {
     Map<String, Integer> countryCodeValues = parseCountryValues(serialized, 0);
     Recipient            self              = Recipient.self();
 
-    if (countryCodeValues.isEmpty() || !self.getE164().isPresent() || !self.getAci().isPresent()) {
+    if (countryCodeValues.isEmpty() || !self.getE164().isPresent() || !self.getServiceId().isPresent()) {
       return false;
     }
 
-    long countEnabled      = getCountryValue(countryCodeValues, self.getE164().or(""), 0);
-    long currentUserBucket = BucketingUtil.bucket(flag, self.requireAci().uuid(), 1_000_000);
+    long countEnabled      = getCountryValue(countryCodeValues, self.getE164().orElse(""), 0);
+    long currentUserBucket = BucketingUtil.bucket(flag, self.requireServiceId().uuid(), 1_000_000);
 
     return countEnabled > currentUserBucket;
   }

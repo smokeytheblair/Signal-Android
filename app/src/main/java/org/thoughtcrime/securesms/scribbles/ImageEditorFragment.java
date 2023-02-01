@@ -1,6 +1,7 @@
 package org.thoughtcrime.securesms.scribbles;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -17,10 +18,12 @@ import android.view.ViewGroup;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.ColorInt;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.load.DataSource;
@@ -29,11 +32,10 @@ import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.target.Target;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import org.signal.core.util.FontUtil;
 import org.signal.core.util.concurrent.SignalExecutors;
+import org.signal.core.util.concurrent.SimpleTask;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.animation.ResizeAnimation;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.signal.imageeditor.core.Bounds;
 import org.signal.imageeditor.core.ColorableRenderer;
 import org.signal.imageeditor.core.ImageEditorView;
@@ -44,6 +46,11 @@ import org.signal.imageeditor.core.model.EditorModel;
 import org.signal.imageeditor.core.renderers.BezierDrawingRenderer;
 import org.signal.imageeditor.core.renderers.FaceBlurRenderer;
 import org.signal.imageeditor.core.renderers.MultiLineTextRenderer;
+import org.signal.libsignal.protocol.util.Pair;
+import org.thoughtcrime.securesms.R;
+import org.thoughtcrime.securesms.animation.ResizeAnimation;
+import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.fonts.FontTypefaceProvider;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.mediasend.MediaSendPageFragment;
 import org.thoughtcrime.securesms.mediasend.v2.MediaAnimations;
@@ -59,9 +66,7 @@ import org.thoughtcrime.securesms.util.StorageUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.ThrottledDebouncer;
 import org.thoughtcrime.securesms.util.ViewUtil;
-import org.thoughtcrime.securesms.util.concurrent.SimpleTask;
 import org.thoughtcrime.securesms.util.views.SimpleProgressDialog;
-import org.whispersystems.libsignal.util.Pair;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Collections;
@@ -76,6 +81,8 @@ public final class ImageEditorFragment extends Fragment implements ImageEditorHu
 {
 
   private static final String TAG = Log.tag(ImageEditorFragment.class);
+
+  public static final boolean CAN_RENDER_EMOJI = FontUtil.canRenderEmojiAtFontSize(1024);
 
   private static final float PORTRAIT_ASPECT_RATIO  = 9 / 16f;
 
@@ -212,11 +219,26 @@ public final class ImageEditorFragment extends Fragment implements ImageEditorHu
   @Override
   public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
     super.onViewCreated(view, savedInstanceState);
+    controller.restoreState();
 
     Mode mode = Mode.getByCode(requireArguments().getString(KEY_MODE));
 
+    if (mode == Mode.AVATAR_CAPTURE || mode == Mode.AVATAR_EDIT) {
+      view.setPadding(
+          0,
+          ViewUtil.getStatusBarHeight(view),
+          0,
+          ViewUtil.getNavigationBarHeight(view)
+      );
+    }
+
     imageEditorHud  = view.findViewById(R.id.scribble_hud);
     imageEditorView = view.findViewById(R.id.image_editor_view);
+
+    imageEditorView.setTypefaceProvider(new FontTypefaceProvider());
+    if (!CAN_RENDER_EMOJI) {
+      imageEditorView.addTextInputFilter(new RemoveEmojiTextFilter());
+    }
 
     int width = getResources().getDisplayMetrics().widthPixels;
     int height = (int) ((16 / 9f) * width);
@@ -238,16 +260,17 @@ public final class ImageEditorFragment extends Fragment implements ImageEditorHu
       restoredModel = null;
     }
 
+    @ColorInt int blackoutColor = ContextCompat.getColor(requireContext(), R.color.signal_colorBackground);
     if (editorModel == null) {
       switch (mode) {
         case AVATAR_EDIT:
-          editorModel = EditorModel.createForAvatarEdit();
+          editorModel = EditorModel.createForAvatarEdit(blackoutColor);
           break;
         case AVATAR_CAPTURE:
-          editorModel = EditorModel.createForAvatarCapture();
+          editorModel = EditorModel.createForAvatarCapture(blackoutColor);
           break;
         default:
-          editorModel = EditorModel.create();
+          editorModel = EditorModel.create(blackoutColor);
           break;
       }
 
@@ -552,7 +575,7 @@ public final class ImageEditorFragment extends Fragment implements ImageEditorHu
           FaceDetector detector = new AndroidFaceDetector();
 
           Point  size   = model.getOutputSizeMaxWidth(1000);
-          Bitmap render = model.render(ApplicationDependencies.getApplication(), size);
+          Bitmap render = model.render(ApplicationDependencies.getApplication(), size, new FontTypefaceProvider());
           try {
             return new FaceDetectionResult(detector.detect(render), new Point(render.getWidth(), render.getHeight()), inverseCropPosition);
           } finally {
@@ -574,8 +597,10 @@ public final class ImageEditorFragment extends Fragment implements ImageEditorHu
 
   @Override
   public void onClearAll() {
-    imageEditorView.getModel().clearUndoStack();
-    updateHudDialRotation();
+    if (imageEditorView != null) {
+      imageEditorView.getModel().clearUndoStack();
+      updateHudDialRotation();
+    }
   }
 
   @Override
@@ -765,8 +790,13 @@ public final class ImageEditorFragment extends Fragment implements ImageEditorHu
 
   @WorkerThread
   public @NonNull Uri renderToSingleUseBlob() {
+    return renderToSingleUseBlob(requireContext(), imageEditorView.getModel());
+  }
+
+  @WorkerThread
+  public static @NonNull Uri renderToSingleUseBlob(@NonNull Context context, @NonNull EditorModel editorModel) {
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    Bitmap                image        = imageEditorView.getModel().render(requireContext());
+    Bitmap                image        = editorModel.render(context, new FontTypefaceProvider());
 
     image.compress(Bitmap.CompressFormat.JPEG, 80, outputStream);
     image.recycle();
@@ -1036,6 +1066,8 @@ public final class ImageEditorFragment extends Fragment implements ImageEditorHu
     void onMainImageLoaded();
 
     void onMainImageFailedToLoad();
+
+    void restoreState();
   }
 
   private static class FaceDetectionResult {

@@ -1,9 +1,5 @@
 package org.thoughtcrime.securesms.registration.fragments;
 
-import static org.thoughtcrime.securesms.registration.fragments.RegistrationViewDelegate.setDebugLogSubmitMultiTapView;
-import static org.thoughtcrime.securesms.util.CircularProgressButtonUtil.cancelSpinning;
-import static org.thoughtcrime.securesms.util.CircularProgressButtonUtil.setSpinning;
-
 import android.content.res.Resources;
 import android.os.Bundle;
 import android.text.InputType;
@@ -18,7 +14,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
-import com.dd.CircularProgressButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.signal.core.util.logging.Log;
@@ -30,11 +25,14 @@ import org.thoughtcrime.securesms.registration.viewmodel.BaseRegistrationViewMod
 import org.thoughtcrime.securesms.util.LifecycleDisposable;
 import org.thoughtcrime.securesms.util.ServiceUtil;
 import org.thoughtcrime.securesms.util.ViewUtil;
+import org.thoughtcrime.securesms.util.views.CircularProgressMaterialButton;
 
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
 import io.reactivex.rxjava3.disposables.Disposable;
+
+import static org.thoughtcrime.securesms.registration.fragments.RegistrationViewDelegate.setDebugLogSubmitMultiTapView;
 
 /**
  * Base fragment used by registration and change number flow to deal with a registration locked account.
@@ -48,12 +46,12 @@ public abstract class BaseRegistrationLockFragment extends LoggingFragment {
    */
   private static final int MINIMUM_PIN_LENGTH = 4;
 
-  private   EditText               pinEntry;
-  private   View                   forgotPin;
-  protected CircularProgressButton pinButton;
-  private   TextView               errorLabel;
-  private   TextView               keyboardToggle;
-  private   long                   timeRemaining;
+  private   EditText                       pinEntry;
+  private   View                           forgotPin;
+  protected CircularProgressMaterialButton pinButton;
+  private   TextView                       errorLabel;
+  private   TextView                       keyboardToggle;
+  private   long                           timeRemaining;
 
   private BaseRegistrationViewModel viewModel;
 
@@ -171,7 +169,7 @@ public abstract class BaseRegistrationLockFragment extends LoggingFragment {
       return;
     }
 
-    setSpinning(pinButton);
+    pinButton.setSpinning();
 
     Disposable verify = viewModel.verifyCodeAndRegisterAccountWithRegistrationLock(pin)
                                  .observeOn(AndroidSchedulers.mainThread())
@@ -179,7 +177,7 @@ public abstract class BaseRegistrationLockFragment extends LoggingFragment {
                                    if (processor.hasResult()) {
                                      handleSuccessfulPinEntry(pin);
                                    } else if (processor.wrongPin()) {
-                                     onIncorrectKbsRegistrationLockPin(processor.getToken());
+                                     onIncorrectKbsRegistrationLockPin(processor.getTokenData());
                                    } else if (processor.isKbsLocked() || processor.registrationLock()) {
                                      onKbsAccountLocked();
                                    } else if (processor.rateLimit()) {
@@ -194,7 +192,7 @@ public abstract class BaseRegistrationLockFragment extends LoggingFragment {
   }
 
   public void onIncorrectKbsRegistrationLockPin(@NonNull TokenData tokenData) {
-    cancelSpinning(pinButton);
+    pinButton.cancelSpinning();
     pinEntry.getText().clear();
     enableAndFocusPinEntry();
 
@@ -227,7 +225,7 @@ public abstract class BaseRegistrationLockFragment extends LoggingFragment {
   }
 
   public void onRateLimited() {
-    cancelSpinning(pinButton);
+    pinButton.cancelSpinning();
     enableAndFocusPinEntry();
 
     new MaterialAlertDialogBuilder(requireContext())
@@ -242,7 +240,7 @@ public abstract class BaseRegistrationLockFragment extends LoggingFragment {
   }
 
   public void onError() {
-    cancelSpinning(pinButton);
+    pinButton.cancelSpinning();
     enableAndFocusPinEntry();
 
     Toast.makeText(requireContext(), R.string.RegistrationActivity_error_connecting_to_service, Toast.LENGTH_LONG).show();

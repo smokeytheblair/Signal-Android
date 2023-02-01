@@ -1,9 +1,5 @@
 package org.thoughtcrime.securesms.registration.fragments;
 
-import static org.thoughtcrime.securesms.registration.fragments.RegistrationViewDelegate.setDebugLogSubmitMultiTapView;
-import static org.thoughtcrime.securesms.util.CircularProgressButtonUtil.cancelSpinning;
-import static org.thoughtcrime.securesms.util.CircularProgressButtonUtil.setSpinning;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -21,12 +17,11 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.StringRes;
 import androidx.fragment.app.FragmentActivity;
-import androidx.lifecycle.ViewModelProviders;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.ActivityNavigator;
 import androidx.navigation.Navigation;
 import androidx.navigation.fragment.NavHostFragment;
 
-import com.dd.CircularProgressButton;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.Phonenumber;
 
@@ -43,7 +38,12 @@ import org.thoughtcrime.securesms.util.BackupUtil;
 import org.thoughtcrime.securesms.util.CommunicationActions;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 import org.thoughtcrime.securesms.util.Util;
-import org.whispersystems.libsignal.util.guava.Optional;
+import org.thoughtcrime.securesms.util.navigation.SafeNavigation;
+import org.thoughtcrime.securesms.util.views.CircularProgressMaterialButton;
+
+import java.util.Optional;
+
+import static org.thoughtcrime.securesms.registration.fragments.RegistrationViewDelegate.setDebugLogSubmitMultiTapView;
 
 public final class WelcomeFragment extends LoggingFragment {
 
@@ -72,8 +72,8 @@ public final class WelcomeFragment extends LoggingFragment {
   private static final            int[] HEADERS          = { R.drawable.ic_contacts_white_48dp, R.drawable.ic_folder_white_48dp };
   private static final            int[] HEADERS_API_29   = { R.drawable.ic_contacts_white_48dp };
 
-  private CircularProgressButton continueButton;
-  private RegistrationViewModel  viewModel;
+  private CircularProgressMaterialButton continueButton;
+  private RegistrationViewModel          viewModel;
 
   @Override
   public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -84,7 +84,7 @@ public final class WelcomeFragment extends LoggingFragment {
   public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
     super.onViewCreated(view, savedInstanceState);
 
-    viewModel = ViewModelProviders.of(requireActivity()).get(RegistrationViewModel.class);
+    viewModel = new ViewModelProvider(requireActivity()).get(RegistrationViewModel.class);
 
     if (viewModel.isReregister()) {
       if (viewModel.hasRestoreFlowBeenShown()) {
@@ -101,8 +101,8 @@ public final class WelcomeFragment extends LoggingFragment {
 
       Log.i(TAG, "Skipping restore because this is a reregistration.");
       viewModel.setWelcomeSkippedOnRestore();
-      Navigation.findNavController(view)
-                .navigate(WelcomeFragmentDirections.actionSkipRestore());
+      SafeNavigation.safeNavigate(NavHostFragment.findNavController(this),
+                                  WelcomeFragmentDirections.actionSkipRestore());
     } else {
 
       setDebugLogSubmitMultiTapView(view.findViewById(R.id.image));
@@ -133,7 +133,7 @@ public final class WelcomeFragment extends LoggingFragment {
     super.onResume();
     if (EventBus.getDefault().getStickyEvent(TransferStatus.class) != null) {
       Log.i(TAG, "Found existing transferStatus, redirect to transfer flow");
-      NavHostFragment.findNavController(this).navigate(R.id.action_welcomeFragment_to_deviceTransferSetup);
+      SafeNavigation.safeNavigate(NavHostFragment.findNavController(this), R.id.action_welcomeFragment_to_deviceTransferSetup);
     } else {
       DeviceToDeviceTransferService.stop(requireContext());
     }
@@ -162,7 +162,7 @@ public final class WelcomeFragment extends LoggingFragment {
   }
 
   private void gatherInformationAndContinue(@NonNull View view) {
-    setSpinning(continueButton);
+    continueButton.setSpinning();
 
     RestoreBackupFragment.searchForBackup(backup -> {
       Context context = getContext();
@@ -175,15 +175,15 @@ public final class WelcomeFragment extends LoggingFragment {
 
       initializeNumber();
 
-      cancelSpinning(continueButton);
+      continueButton.cancelSpinning();
 
       if (backup == null) {
         Log.i(TAG, "Skipping backup. No backup found, or no permission to look.");
-        Navigation.findNavController(view)
-                  .navigate(WelcomeFragmentDirections.actionSkipRestore());
+        SafeNavigation.safeNavigate(NavHostFragment.findNavController(this),
+                                    WelcomeFragmentDirections.actionSkipRestore());
       } else {
-        Navigation.findNavController(view)
-                  .navigate(WelcomeFragmentDirections.actionRestore());
+        SafeNavigation.safeNavigate(NavHostFragment.findNavController(this),
+                                    WelcomeFragmentDirections.actionRestore());
       }
     });
   }
@@ -193,13 +193,13 @@ public final class WelcomeFragment extends LoggingFragment {
 
     initializeNumber();
 
-    Navigation.findNavController(view)
-              .navigate(WelcomeFragmentDirections.actionTransferOrRestore());
+    SafeNavigation.safeNavigate(NavHostFragment.findNavController(this),
+                                WelcomeFragmentDirections.actionTransferOrRestore());
   }
 
   @SuppressLint("MissingPermission")
   private void initializeNumber() {
-    Optional<Phonenumber.PhoneNumber> localNumber = Optional.absent();
+    Optional<Phonenumber.PhoneNumber> localNumber = Optional.empty();
 
     if (Permissions.hasAll(requireContext(), Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS)) {
       localNumber = Util.getDeviceNumber(requireContext());

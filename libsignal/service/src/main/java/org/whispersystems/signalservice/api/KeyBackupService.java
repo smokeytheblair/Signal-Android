@@ -1,7 +1,7 @@
 package org.whispersystems.signalservice.api;
 
-import org.whispersystems.libsignal.InvalidKeyException;
-import org.whispersystems.libsignal.logging.Log;
+import org.signal.libsignal.protocol.InvalidKeyException;
+import org.signal.libsignal.protocol.logging.Log;
 import org.whispersystems.signalservice.api.crypto.InvalidCiphertextException;
 import org.whispersystems.signalservice.api.kbs.HashedPin;
 import org.whispersystems.signalservice.api.kbs.KbsData;
@@ -18,7 +18,6 @@ import org.whispersystems.signalservice.internal.keybackup.protos.BackupResponse
 import org.whispersystems.signalservice.internal.keybackup.protos.RestoreResponse;
 import org.whispersystems.signalservice.internal.push.PushServiceSocket;
 import org.whispersystems.signalservice.internal.push.RemoteAttestationUtil;
-import org.whispersystems.signalservice.internal.util.Hex;
 import org.whispersystems.signalservice.internal.util.Util;
 
 import java.io.IOException;
@@ -27,7 +26,7 @@ import java.security.SecureRandom;
 import java.security.SignatureException;
 import java.util.Locale;
 
-public final class KeyBackupService {
+public class KeyBackupService {
 
   private static final String TAG = KeyBackupService.class.getSimpleName();
 
@@ -183,7 +182,7 @@ public final class KeyBackupService {
             Log.i(TAG, "Restore TOKEN_MISMATCH");
             // if the number of tries has not fallen, the pin is correct we're just using an out of date token
             boolean canRetry = remainingTries == status.getTries();
-            Log.i(TAG, String.format(Locale.US, "Token MISMATCH %d %d", remainingTries, status.getTries()));
+            Log.i(TAG, String.format(Locale.US, "Token MISMATCH remainingTries: %d, status.getTries(): %d", remainingTries, status.getTries()));
             throw new TokenException(nextToken, canRetry);
           case MISSING:
             Log.i(TAG, "Restore OK! No data though");

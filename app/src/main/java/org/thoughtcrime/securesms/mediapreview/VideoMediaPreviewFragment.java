@@ -1,34 +1,37 @@
 package org.thoughtcrime.securesms.mediapreview;
 
+import android.app.Activity;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import com.google.android.exoplayer2.ui.PlayerControlView;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
+import org.thoughtcrime.securesms.components.voice.VoiceNoteMediaControllerOwner;
 import org.thoughtcrime.securesms.mms.VideoSlide;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.video.VideoPlayer;
+
+import java.util.concurrent.TimeUnit;
 
 public final class VideoMediaPreviewFragment extends MediaPreviewFragment {
 
   private static final String TAG = Log.tag(VideoMediaPreviewFragment.class);
 
+  private static final Long MINIMUM_DURATION_FOR_SKIP_MS = TimeUnit.MILLISECONDS.convert(30, TimeUnit.SECONDS);
+
   private VideoPlayer videoView;
   private boolean     isVideoGif;
 
   @Override
-  public void onCreate(@Nullable Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-  }
-
-  @Override
-  public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                           Bundle savedInstanceState) {
+  public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
     View    itemView    = inflater.inflate(R.layout.media_preview_video_fragment, container, false);
     Bundle  arguments   = requireArguments();
     Uri     uri         = arguments.getParcelable(DATA_URI);
@@ -45,16 +48,80 @@ public final class VideoMediaPreviewFragment extends MediaPreviewFragment {
     videoView = itemView.findViewById(R.id.video_player);
 
     videoView.setWindow(requireActivity().getWindow());
-    videoView.setVideoSource(new VideoSlide(getContext(), uri, size, false), autoPlay);
+    videoView.setVideoSource(new VideoSlide(getContext(), uri, size, false), autoPlay, TAG);
+    videoView.setPlayerPositionDiscontinuityCallback((v, r) -> {
+      if (events.getVideoControlsDelegate() != null) {
+        events.getVideoControlsDelegate().onPlayerPositionDiscontinuity(r);
+      }
+    });
+    videoView.setPlayerCallback(new VideoPlayer.PlayerCallback() {
+      @Override
+      public void onReady() {
+        updateSkipButtonState();
+        events.onMediaReady();
+      }
+
+      @Override
+      public void onPlaying() {
+        Activity activity = getActivity();
+        if (!isVideoGif && activity instanceof VoiceNoteMediaControllerOwner) {
+          ((VoiceNoteMediaControllerOwner) activity).getVoiceNoteMediaController().pausePlayback();
+        }
+        events.onPlaying();
+      }
+
+      @Override
+      public void onStopped() {
+        events.onStopped(getTag());
+      }
+
+      @Override
+      public void onError() {
+        events.unableToPlayMedia();
+      }
+    });
 
     if (isVideoGif) {
-      videoView.hideControls();
       videoView.loopForever();
     }
 
     videoView.setOnClickListener(v -> events.singleTapOnMedia());
-
     return itemView;
+  }
+
+  private void updateSkipButtonState() {
+    final PlayerControlView playbackControls = videoView.getControlView();
+    if (playbackControls != null) {
+      boolean shouldShowSkipButtons = videoView.getDuration() > MINIMUM_DURATION_FOR_SKIP_MS;
+      playbackControls.setShowFastForwardButton(shouldShowSkipButtons);
+      playbackControls.setShowRewindButton(shouldShowSkipButtons);
+    }
+  }
+
+  @Override
+  public void onDestroyView() {
+    super.onDestroyView();
+    cleanUp();
+  }
+
+  @Override
+  public void onResume() {
+    super.onResume();
+
+    if (videoView != null && isVideoGif) {
+      videoView.play();
+    }
+
+    if (events.getVideoControlsDelegate() != null) {
+      events.getVideoControlsDelegate().attachPlayer(getUri(), videoView, isVideoGif);
+    }
+  }
+
+  @Override
+  public void autoPlayIfNeeded() {
+    if (videoView != null && videoView.getPlaybackPosition() < videoView.getDuration()) {
+      videoView.play();
+    }
   }
 
   @Override
@@ -65,22 +132,23 @@ public final class VideoMediaPreviewFragment extends MediaPreviewFragment {
   }
 
   @Override
-  public void onResume() {
-    super.onResume();
-    if (videoView != null && isVideoGif) {
-      videoView.play();
-    }
-  }
-
-  @Override
   public void pause() {
     if (videoView != null) {
       videoView.pause();
     }
+
+    if (events.getVideoControlsDelegate() != null) {
+      events.getVideoControlsDelegate().detachPlayer();
+    }
   }
 
   @Override
-  public View getPlaybackControls() {
-    return videoView != null && !isVideoGif ? videoView.getControlView() : null;
+  public void setBottomButtonControls(@NonNull MediaPreviewPlayerControlView playerControlView) {
+    videoView.setControlView(playerControlView);
+    updateSkipButtonState();
+  }
+
+  private @NonNull Uri getUri() {
+    return requireArguments().getParcelable(DATA_URI);
   }
 }

@@ -6,10 +6,10 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.lifecycle.LifecycleOwner;
 
 import org.thoughtcrime.securesms.BindableConversationListItem;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.conversationlist.model.Conversation;
 import org.thoughtcrime.securesms.conversationlist.model.ConversationSet;
 import org.thoughtcrime.securesms.database.model.ThreadRecord;
 import org.thoughtcrime.securesms.mms.GlideRequests;
@@ -40,7 +40,8 @@ public class ConversationListItemAction extends FrameLayout implements BindableC
   }
 
   @Override
-  public void bind(@NonNull ThreadRecord thread,
+  public void bind(@NonNull LifecycleOwner lifecycleOwner,
+                   @NonNull ThreadRecord thread,
                    @NonNull GlideRequests glideRequests,
                    @NonNull Locale locale,
                    @NonNull Set<Long> typingThreads,

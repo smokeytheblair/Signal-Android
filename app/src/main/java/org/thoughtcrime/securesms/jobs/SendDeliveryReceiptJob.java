@@ -102,6 +102,11 @@ public class SendDeliveryReceiptJob extends BaseJob {
     SignalServiceMessageSender  messageSender  = ApplicationDependencies.getSignalServiceMessageSender();
     Recipient                   recipient      = Recipient.resolved(recipientId);
 
+    if (recipient.isSelf()) {
+      Log.i(TAG, "Not sending to self, abort");
+      return;
+    }
+
     if (recipient.isUnregistered()) {
       Log.w(TAG, recipient.getId() + " is unregistered!");
       return;
@@ -114,10 +119,11 @@ public class SendDeliveryReceiptJob extends BaseJob {
 
     SendMessageResult result = messageSender.sendReceipt(remoteAddress,
                                                          UnidentifiedAccessUtil.getAccessFor(context, recipient),
-                                                         receiptMessage);
+                                                         receiptMessage,
+                                                         recipient.needsPniSignature());
 
     if (messageId != null) {
-      SignalDatabase.messageLog().insertIfPossible(recipientId, timestamp, result, ContentHint.IMPLICIT, messageId);
+      SignalDatabase.messageLog().insertIfPossible(recipientId, timestamp, result, ContentHint.IMPLICIT, messageId, false);
     }
   }
 

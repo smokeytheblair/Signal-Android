@@ -10,8 +10,6 @@ import com.airbnb.lottie.LottieAnimationView;
 
 import org.thoughtcrime.securesms.PassphraseRequiredActivity;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
-import org.thoughtcrime.securesms.megaphone.Megaphones;
 import org.thoughtcrime.securesms.profiles.ProfileName;
 import org.thoughtcrime.securesms.profiles.edit.EditProfileActivity;
 import org.thoughtcrime.securesms.recipients.Recipient;
@@ -54,7 +52,6 @@ public class MessageRequestMegaphoneActivity extends PassphraseRequiredActivity 
     if (requestCode == EDIT_PROFILE_REQUEST_CODE &&
         resultCode == RESULT_OK                  &&
         Recipient.self().getProfileName() != ProfileName.EMPTY) {
-      ApplicationDependencies.getMegaphoneRepository().markFinished(Megaphones.Event.MESSAGE_REQUESTS);
       setResult(RESULT_OK);
       finish();
     }

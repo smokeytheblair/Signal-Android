@@ -20,6 +20,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.Resources;
+import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -37,8 +38,11 @@ import androidx.annotation.IdRes;
 import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.Px;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.ContextThemeWrapper;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 import androidx.lifecycle.Lifecycle;
 
@@ -51,18 +55,17 @@ public final class ViewUtil {
   private ViewUtil() {
   }
 
-  public static void focusAndMoveCursorToEndAndOpenKeyboard(@NonNull EditText input) {
-    input.requestFocus();
+  public static void setMinimumHeight(@NonNull View view, @Px int minimumHeight) {
+    if (view.getMinimumHeight() != minimumHeight) {
+      view.setMinimumHeight(minimumHeight);
+    }
+  }
 
+  public static void focusAndMoveCursorToEndAndOpenKeyboard(@NonNull EditText input) {
     int numberLength = input.getText().length();
     input.setSelection(numberLength, numberLength);
 
-    InputMethodManager imm = (InputMethodManager) input.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-    imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
-
-    if (!imm.isAcceptingText()) {
-      imm.toggleSoftInput(InputMethodManager.SHOW_IMPLICIT, InputMethodManager.HIDE_IMPLICIT_ONLY);
-    }
+    focusAndShowKeyboard(input);
   }
 
   public static void focusAndShowKeyboard(@NonNull View view) {
@@ -97,6 +100,10 @@ public final class ViewUtil {
   }
 
   public static <T extends View> Stub<T> findStubById(@NonNull Activity parent, @IdRes int resId) {
+    return new Stub<>(parent.findViewById(resId));
+  }
+
+  public static <T extends View> Stub<T> findStubById(@NonNull View parent, @IdRes int resId) {
     return new Stub<>(parent.findViewById(resId));
   }
 
@@ -329,12 +336,31 @@ public final class ViewUtil {
   }
 
   public static int getStatusBarHeight(@NonNull View view) {
-    int result = 0;
-    int resourceId = view.getResources().getIdentifier("status_bar_height", "dimen", "android");
-    if (resourceId > 0) {
-      result = view.getResources().getDimensionPixelSize(resourceId);
+    final WindowInsetsCompat rootWindowInsets = ViewCompat.getRootWindowInsets(view);
+    if (Build.VERSION.SDK_INT > 29 && rootWindowInsets != null) {
+      return rootWindowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+    } else {
+      int result     = 0;
+      int resourceId = view.getResources().getIdentifier("status_bar_height", "dimen", "android");
+      if (resourceId > 0) {
+        result = view.getResources().getDimensionPixelSize(resourceId);
+      }
+      return result;
     }
-    return result;
+  }
+
+  public static int getNavigationBarHeight(@NonNull View view) {
+    final WindowInsetsCompat rootWindowInsets = ViewCompat.getRootWindowInsets(view);
+    if (Build.VERSION.SDK_INT > 29 && rootWindowInsets != null) {
+      return rootWindowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+    } else {
+      int result     = 0;
+      int resourceId = view.getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+      if (resourceId > 0) {
+        result = view.getResources().getDimensionPixelSize(resourceId);
+      }
+      return result;
+    }
   }
 
   public static void hideKeyboard(@NonNull Context context, @NonNull View view) {

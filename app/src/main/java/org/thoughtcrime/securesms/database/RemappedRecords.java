@@ -1,16 +1,15 @@
 package org.thoughtcrime.securesms.database;
 
-import android.content.Context;
-
 import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.recipients.RecipientId;
-import org.whispersystems.libsignal.util.guava.Optional;
+import org.whispersystems.signalservice.api.util.Preconditions;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -21,7 +20,7 @@ import java.util.Set;
  *
  * There should be very few of these, so we keep them in a fast, lazily-loaded memory cache.
  *
- * One important thing to note is that this class will often be accesses inside of database
+ * One important thing to note is that this class will often be accessed inside of database
  * transactions. As a result, it cannot attempt to acquire a database lock while holding a
  * separate lock. Instead, we use the database lock itself as a locking mechanism.
  */
@@ -42,12 +41,12 @@ class RemappedRecords {
 
   @NonNull Optional<RecipientId> getRecipient(@NonNull RecipientId oldId) {
     ensureRecipientMapIsPopulated();
-    return Optional.fromNullable(recipientMap.get(oldId));
+    return Optional.ofNullable(recipientMap.get(oldId));
   }
 
   @NonNull Optional<Long> getThread(long oldId) {
     ensureThreadMapIsPopulated();
-    return Optional.fromNullable(threadMap.get(oldId));
+    return Optional.ofNullable(threadMap.get(oldId));
   }
 
   boolean areAnyRemapped(@NonNull Collection<RecipientId> recipientIds) {
@@ -88,6 +87,7 @@ class RemappedRecords {
    */
   void addRecipient(@NonNull RecipientId oldId, @NonNull RecipientId newId) {
     Log.w(TAG, "[Recipient] Remapping " + oldId + " to " + newId);
+    Preconditions.checkArgument(!oldId.equals(newId), "Cannot remap an ID to the same thing!");
     ensureInTransaction();
     ensureRecipientMapIsPopulated();
     recipientMap.put(oldId, newId);
@@ -99,10 +99,18 @@ class RemappedRecords {
    */
   void addThread(long oldId, long newId) {
     Log.w(TAG, "[Thread] Remapping " + oldId + " to " + newId);
+    Preconditions.checkArgument(oldId != newId, "Cannot remap an ID to the same thing!");
     ensureInTransaction();
     ensureThreadMapIsPopulated();
     threadMap.put(oldId, newId);
     SignalDatabase.remappedRecords().addThreadMapping(oldId, newId);
+  }
+
+  /**
+   * Clears out the memory cache. The next read will pull values from disk.
+   */
+  void resetCache() {
+    recipientMap = null;
   }
 
   private void ensureRecipientMapIsPopulated() {

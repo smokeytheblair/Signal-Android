@@ -1,9 +1,13 @@
 package org.thoughtcrime.securesms.components.settings.app.privacy.advanced
 
-import android.app.ProgressDialog
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.Drawable
+import android.net.ConnectivityManager
 import android.text.SpannableStringBuilder
 import android.widget.TextView
 import android.widget.Toast
@@ -13,8 +17,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.thoughtcrime.securesms.R
+import org.thoughtcrime.securesms.components.SignalProgressDialog
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
-import org.thoughtcrime.securesms.components.settings.DSLSettingsAdapter
 import org.thoughtcrime.securesms.components.settings.DSLSettingsFragment
 import org.thoughtcrime.securesms.components.settings.DSLSettingsText
 import org.thoughtcrime.securesms.components.settings.configure
@@ -24,10 +28,13 @@ import org.thoughtcrime.securesms.registration.RegistrationNavigationActivity
 import org.thoughtcrime.securesms.util.CommunicationActions
 import org.thoughtcrime.securesms.util.SpanUtil
 import org.thoughtcrime.securesms.util.ViewUtil
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
 
 class AdvancedPrivacySettingsFragment : DSLSettingsFragment(R.string.preferences__advanced) {
 
-  lateinit var viewModel: AdvancedPrivacySettingsViewModel
+  private lateinit var viewModel: AdvancedPrivacySettingsViewModel
+
+  private var networkReceiver: NetworkReceiver? = null
 
   private val sealedSenderSummary: CharSequence by lazy {
     SpanUtil.learnMore(
@@ -41,7 +48,7 @@ class AdvancedPrivacySettingsFragment : DSLSettingsFragment(R.string.preferences
     }
   }
 
-  var progressDialog: ProgressDialog? = null
+  var progressDialog: SignalProgressDialog? = null
 
   val statusIcon: CharSequence by lazy {
     val unidentifiedDeliveryIcon = requireNotNull(
@@ -60,9 +67,15 @@ class AdvancedPrivacySettingsFragment : DSLSettingsFragment(R.string.preferences
   override fun onResume() {
     super.onResume()
     viewModel.refresh()
+    registerNetworkReceiver()
   }
 
-  override fun bindAdapter(adapter: DSLSettingsAdapter) {
+  override fun onPause() {
+    super.onPause()
+    unregisterNetworkReceiver()
+  }
+
+  override fun bindAdapter(adapter: MappingAdapter) {
     val repository = AdvancedPrivacySettingsRepository(requireContext())
     val preferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
     val factory = AdvancedPrivacySettingsViewModel.Factory(preferences, repository)
@@ -72,7 +85,7 @@ class AdvancedPrivacySettingsFragment : DSLSettingsFragment(R.string.preferences
     viewModel.state.observe(viewLifecycleOwner) {
       if (it.showProgressSpinner) {
         if (progressDialog?.isShowing == false) {
-          progressDialog = ProgressDialog.show(requireContext(), null, null, true)
+          progressDialog = SignalProgressDialog.show(requireContext(), null, null, true)
         }
       } else {
         progressDialog?.hide()
@@ -138,6 +151,28 @@ class AdvancedPrivacySettingsFragment : DSLSettingsFragment(R.string.preferences
 
       dividerPref()
 
+      sectionHeaderPref(R.string.preferences_communication__category_censorship_circumvention)
+
+      val censorshipSummaryResId: Int = when (state.censorshipCircumventionState) {
+        CensorshipCircumventionState.AVAILABLE -> R.string.preferences_communication__censorship_circumvention_if_enabled_signal_will_attempt_to_circumvent_censorship
+        CensorshipCircumventionState.AVAILABLE_MANUALLY_DISABLED -> R.string.preferences_communication__censorship_circumvention_you_have_manually_disabled
+        CensorshipCircumventionState.AVAILABLE_AUTOMATICALLY_ENABLED -> R.string.preferences_communication__censorship_circumvention_has_been_activated_based_on_your_accounts_phone_number
+        CensorshipCircumventionState.UNAVAILABLE_CONNECTED -> R.string.preferences_communication__censorship_circumvention_is_not_necessary_you_are_already_connected
+        CensorshipCircumventionState.UNAVAILABLE_NO_INTERNET -> R.string.preferences_communication__censorship_circumvention_can_only_be_activated_when_connected_to_the_internet
+      }
+
+      switchPref(
+        title = DSLSettingsText.from(R.string.preferences_communication__censorship_circumvention),
+        summary = DSLSettingsText.from(censorshipSummaryResId),
+        isChecked = state.censorshipCircumventionEnabled,
+        isEnabled = state.censorshipCircumventionState.available,
+        onClick = {
+          viewModel.setCensorshipCircumventionEnabled(!state.censorshipCircumventionEnabled)
+        }
+      )
+
+      dividerPref()
+
       sectionHeaderPref(R.string.preferences_communication__category_sealed_sender)
 
       switchPref(
@@ -171,6 +206,29 @@ class AdvancedPrivacySettingsFragment : DSLSettingsFragment(R.string.preferences
       PhoneNumberFormatter.prettyPrint(SignalStore.account().e164!!)
     } else {
       getString(R.string.preferences__free_private_messages_and_calls)
+    }
+  }
+
+  @Suppress("DEPRECATION")
+  private fun registerNetworkReceiver() {
+    val context: Context? = context
+    if (context != null && networkReceiver == null) {
+      networkReceiver = NetworkReceiver()
+      context.registerReceiver(networkReceiver, IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION))
+    }
+  }
+
+  private fun unregisterNetworkReceiver() {
+    val context: Context? = context
+    if (context != null && networkReceiver != null) {
+      context.unregisterReceiver(networkReceiver)
+      networkReceiver = null
+    }
+  }
+
+  private inner class NetworkReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+      viewModel.refresh()
     }
   }
 }

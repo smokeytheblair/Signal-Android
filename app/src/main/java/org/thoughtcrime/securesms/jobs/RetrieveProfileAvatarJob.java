@@ -6,9 +6,9 @@ import android.text.TextUtils;
 import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
-import org.signal.zkgroup.profiles.ProfileKey;
+import org.signal.libsignal.zkgroup.profiles.ProfileKey;
 import org.thoughtcrime.securesms.crypto.ProfileKeyUtil;
-import org.thoughtcrime.securesms.database.RecipientDatabase;
+import org.thoughtcrime.securesms.database.RecipientTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -18,7 +18,6 @@ import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
-import org.thoughtcrime.securesms.util.Util;
 import org.whispersystems.signalservice.api.SignalServiceMessageReceiver;
 import org.whispersystems.signalservice.api.push.exceptions.NonSuccessfulResponseCodeException;
 import org.whispersystems.signalservice.api.push.exceptions.PushNetworkException;
@@ -73,33 +72,35 @@ public class RetrieveProfileAvatarJob extends BaseJob {
 
   @Override
   public void onRun() throws IOException {
-    RecipientDatabase database   = SignalDatabase.recipients();
-    ProfileKey        profileKey = ProfileKeyUtil.profileKeyOrNull(recipient.resolve().getProfileKey());
+    RecipientTable database   = SignalDatabase.recipients();
+    ProfileKey     profileKey = ProfileKeyUtil.profileKeyOrNull(recipient.resolve().getProfileKey());
 
     if (profileKey == null) {
       Log.w(TAG, "Recipient profile key is gone!");
       return;
     }
 
-    if (Util.equals(profileAvatar, recipient.resolve().getProfileAvatar())) {
+    if (profileAvatar != null && profileAvatar.equals(recipient.resolve().getProfileAvatar())) {
       Log.w(TAG, "Already retrieved profile avatar: " + profileAvatar);
       return;
     }
 
     if (TextUtils.isEmpty(profileAvatar)) {
-      Log.w(TAG, "Removing profile avatar (no url) for: " + recipient.getId().serialize());
-      AvatarHelper.delete(context, recipient.getId());
-      database.setProfileAvatar(recipient.getId(), profileAvatar);
+      if (AvatarHelper.hasAvatar(context, recipient.getId())) {
+        Log.w(TAG, "Removing profile avatar (no url) for: " + recipient.getId().serialize());
+        AvatarHelper.delete(context, recipient.getId());
+        database.setProfileAvatar(recipient.getId(), profileAvatar);
+      }
+
       return;
     }
 
     File downloadDestination = File.createTempFile("avatar", "jpg", context.getCacheDir());
 
     try {
-      SignalServiceMessageReceiver receiver     = ApplicationDependencies.getSignalServiceMessageReceiver();
-      InputStream                  avatarStream = receiver.retrieveProfileAvatar(profileAvatar, downloadDestination, profileKey, AvatarHelper.AVATAR_DOWNLOAD_FAILSAFE_MAX_SIZE);
+      SignalServiceMessageReceiver receiver = ApplicationDependencies.getSignalServiceMessageReceiver();
 
-      try {
+      try (InputStream avatarStream = receiver.retrieveProfileAvatar(profileAvatar, downloadDestination, profileKey, AvatarHelper.AVATAR_DOWNLOAD_FAILSAFE_MAX_SIZE)) {
         AvatarHelper.setAvatar(context, recipient.getId(), avatarStream);
 
         if (recipient.isSelf()) {

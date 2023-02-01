@@ -16,11 +16,9 @@
  */
 package org.thoughtcrime.securesms.components;
 
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.graphics.Rect;
 import android.os.Build;
-import android.os.Build.VERSION_CODES;
 import android.preference.PreferenceManager;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
@@ -63,8 +61,7 @@ public class KeyboardAwareLinearLayout extends LinearLayoutCompat {
   private int viewInset;
 
   private boolean keyboardOpen = false;
-  private int     rotation     = -1;
-  private boolean isFullscreen = false;
+  private int     rotation     = 0;
   private boolean isBubble     = false;
 
   public KeyboardAwareLinearLayout(Context context) {
@@ -108,7 +105,7 @@ public class KeyboardAwareLinearLayout extends LinearLayoutCompat {
   }
 
   private void updateKeyboardState() {
-    if (viewInset == 0 && Build.VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) viewInset = getViewInset();
+    if (viewInset == 0) viewInset = getViewInset();
 
     getWindowVisibleDisplayFrame(rect);
 
@@ -134,9 +131,11 @@ public class KeyboardAwareLinearLayout extends LinearLayoutCompat {
   @Override
   protected void onAttachedToWindow() {
     super.onAttachedToWindow();
+    rotation = getDeviceRotation();
     if (Build.VERSION.SDK_INT >= 23 && getRootWindowInsets() != null) {
       int          bottomInset;
       WindowInsets windowInsets = getRootWindowInsets();
+
       if (Build.VERSION.SDK_INT >= 30) {
         bottomInset = windowInsets.getInsets(WindowInsets.Type.navigationBars()).bottom;
       } else {
@@ -150,7 +149,6 @@ public class KeyboardAwareLinearLayout extends LinearLayoutCompat {
     }
   }
 
-  @TargetApi(VERSION_CODES.LOLLIPOP)
   private int getViewInset() {
     try {
       Field attachInfoField = View.class.getDeclaredField("mAttachInfo");
@@ -296,10 +294,6 @@ public class KeyboardAwareLinearLayout extends LinearLayoutCompat {
 
   public void removeOnKeyboardShownListener(OnKeyboardShownListener listener) {
     shownListeners.remove(listener);
-  }
-
-  public void setFullscreen(boolean isFullscreen) {
-    this.isFullscreen = isFullscreen;
   }
 
   private void notifyHiddenListeners() {

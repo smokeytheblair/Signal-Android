@@ -8,6 +8,7 @@ import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.animation.Animation;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -20,6 +21,9 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.constraintlayout.widget.Guideline;
 import androidx.core.util.Consumer;
+import androidx.core.view.ViewKt;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.transition.AutoTransition;
 import androidx.transition.Transition;
@@ -33,10 +37,13 @@ import com.bumptech.glide.load.resource.bitmap.CenterCrop;
 import com.google.android.material.button.MaterialButton;
 import com.google.common.collect.Sets;
 
+import org.signal.core.util.DimensionUnit;
+import org.signal.core.util.SetUtil;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.animation.ResizeAnimation;
 import org.thoughtcrime.securesms.components.AccessibleToggleButton;
 import org.thoughtcrime.securesms.components.AvatarImageView;
+import org.thoughtcrime.securesms.contacts.avatars.ContactPhoto;
 import org.thoughtcrime.securesms.contacts.avatars.ProfileContactPhoto;
 import org.thoughtcrime.securesms.events.CallParticipant;
 import org.thoughtcrime.securesms.events.WebRtcViewModel;
@@ -46,7 +53,6 @@ import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.ringrtc.CameraState;
 import org.thoughtcrime.securesms.util.BlurTransformation;
-import org.thoughtcrime.securesms.util.SetUtil;
 import org.thoughtcrime.securesms.util.ThrottledDebouncer;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.views.Stub;
@@ -96,8 +102,8 @@ public class WebRtcCallView extends ConstraintLayout {
   private PictureInPictureGestureHelper pictureInPictureGestureHelper;
   private ImageView                     hangup;
   private TextView                      hangupLabel;
-  private View                          answerWithAudio;
-  private View                          answerWithAudioLabel;
+  private View                          answerWithoutVideo;
+  private View                          answerWithoutVideoLabel;
   private View                          topGradient;
   private View                          footerGradient;
   private View                          startCallControls;
@@ -119,6 +125,8 @@ public class WebRtcCallView extends ConstraintLayout {
   private ConstraintSet                 largeHeaderConstraints;
   private ConstraintSet                 smallHeaderConstraints;
   private Guideline                     statusBarGuideline;
+  private Guideline                     navigationBarGuideline;
+  private int                           navBarBottomInset;
   private View                          fullScreenShade;
 
   private WebRtcCallParticipantsPagerAdapter    pagerAdapter;
@@ -138,6 +146,9 @@ public class WebRtcCallView extends ConstraintLayout {
   private final Runnable           fadeOutRunnable    = () -> {
     if (isAttachedToWindow() && controls.isFadeOutEnabled()) fadeOutControls();
   };
+
+  private CallParticipantsViewState lastState;
+  private ContactPhoto              previousLocalAvatar;
 
   public WebRtcCallView(@NonNull Context context) {
     this(context, null);
@@ -178,8 +189,8 @@ public class WebRtcCallView extends ConstraintLayout {
     ringToggleLabel               = findViewById(R.id.call_screen_audio_ring_toggle_label);
     hangup                        = findViewById(R.id.call_screen_end_call);
     hangupLabel                   = findViewById(R.id.call_screen_end_call_label);
-    answerWithAudio               = findViewById(R.id.call_screen_answer_with_audio);
-    answerWithAudioLabel          = findViewById(R.id.call_screen_answer_with_audio_label);
+    answerWithoutVideo            = findViewById(R.id.call_screen_answer_without_video);
+    answerWithoutVideoLabel       = findViewById(R.id.call_screen_answer_without_video_label);
     topGradient                   = findViewById(R.id.call_screen_header_gradient);
     footerGradient                = findViewById(R.id.call_screen_footer_gradient);
     startCallControls             = findViewById(R.id.call_screen_start_call_controls);
@@ -197,6 +208,7 @@ public class WebRtcCallView extends ConstraintLayout {
     foldParticipantCount          = findViewById(R.id.fold_show_participants_menu_counter);
     largeHeaderAvatar             = findViewById(R.id.call_screen_header_avatar);
     statusBarGuideline            = findViewById(R.id.call_screen_status_bar_guideline);
+    navigationBarGuideline        = findViewById(R.id.call_screen_navigation_bar_guideline);
     fullScreenShade               = findViewById(R.id.call_screen_full_shade);
 
     View      decline                = findViewById(R.id.call_screen_decline_call);
@@ -210,6 +222,10 @@ public class WebRtcCallView extends ConstraintLayout {
 
     callParticipantsPager.setAdapter(pagerAdapter);
     callParticipantsRecycler.setAdapter(recyclerAdapter);
+
+    DefaultItemAnimator animator = new DefaultItemAnimator();
+    animator.setSupportsChangeAnimations(false);
+    callParticipantsRecycler.setItemAnimator(animator);
 
     callParticipantsPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
       @Override
@@ -226,6 +242,7 @@ public class WebRtcCallView extends ConstraintLayout {
     incomingCallViews.add(decline);
     incomingCallViews.add(declineLabel);
     incomingCallViews.add(footerGradient);
+    incomingCallViews.add(incomingRingStatus);
 
     adjustableMarginsSet.add(micToggle);
     adjustableMarginsSet.add(cameraDirectionToggle);
@@ -254,7 +271,7 @@ public class WebRtcCallView extends ConstraintLayout {
     decline.setOnClickListener(v -> runIfNonNull(controlsListener, ControlsListener::onDenyCallPressed));
 
     answer.setOnClickListener(v -> runIfNonNull(controlsListener, ControlsListener::onAcceptCallPressed));
-    answerWithAudio.setOnClickListener(v -> runIfNonNull(controlsListener, ControlsListener::onAcceptCallWithVoiceOnlyPressed));
+    answerWithoutVideo.setOnClickListener(v -> runIfNonNull(controlsListener, ControlsListener::onAcceptCallWithVoiceOnlyPressed));
 
     pictureInPictureGestureHelper   = PictureInPictureGestureHelper.applyTo(smallLocalRenderFrame);
     pictureInPictureExpansionHelper = new PictureInPictureExpansionHelper();
@@ -264,6 +281,11 @@ public class WebRtcCallView extends ConstraintLayout {
         controlsListener.onLocalPictureInPictureClicked();
       }
     });
+
+    View smallLocalAudioIndicator = smallLocalRender.findViewById(R.id.call_participant_audio_indicator);
+    int  audioIndicatorMargin     = (int) DimensionUnit.DP.toPixels(8f);
+    ViewUtil.setLeftMargin(smallLocalAudioIndicator, audioIndicatorMargin);
+    ViewUtil.setBottomMargin(smallLocalAudioIndicator, audioIndicatorMargin);
 
     startCall.setOnClickListener(v -> {
       if (controlsListener != null) {
@@ -285,13 +307,13 @@ public class WebRtcCallView extends ConstraintLayout {
 
     rotatableControls.add(hangup);
     rotatableControls.add(answer);
-    rotatableControls.add(answerWithAudio);
+    rotatableControls.add(answerWithoutVideo);
     rotatableControls.add(audioToggle);
     rotatableControls.add(micToggle);
     rotatableControls.add(videoToggle);
     rotatableControls.add(cameraDirectionToggle);
     rotatableControls.add(decline);
-    rotatableControls.add(smallLocalRender.findViewById(R.id.call_participant_mic_muted));
+    rotatableControls.add(smallLocalAudioIndicator);
     rotatableControls.add(ringToggle);
 
     largeHeaderConstraints = new ConstraintSet();
@@ -312,12 +334,25 @@ public class WebRtcCallView extends ConstraintLayout {
 
   @Override
   protected boolean fitSystemWindows(Rect insets) {
-    Guideline navigationBarGuideline = findViewById(R.id.call_screen_navigation_bar_guideline);
-
-    statusBarGuideline.setGuidelineBegin(insets.top);
+    if (insets.top != 0) {
+      statusBarGuideline.setGuidelineBegin(insets.top);
+    }
     navigationBarGuideline.setGuidelineEnd(insets.bottom);
 
     return true;
+  }
+
+  @Override
+  public WindowInsets onApplyWindowInsets(WindowInsets insets) {
+    if (android.os.Build.VERSION.SDK_INT >= 20) {
+      navBarBottomInset = WindowInsetsCompat.toWindowInsetsCompat(insets).getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+
+      if (lastState != null) {
+        updateCallParticipants(lastState);
+      }
+    }
+
+    return super.onApplyWindowInsets(insets);
   }
 
   @Override
@@ -358,13 +393,15 @@ public class WebRtcCallView extends ConstraintLayout {
   }
 
   public void updateCallParticipants(@NonNull CallParticipantsViewState callParticipantsViewState) {
+    lastState = callParticipantsViewState;
+
     CallParticipantsState            state              = callParticipantsViewState.getCallParticipantsState();
     boolean                          isPortrait         = callParticipantsViewState.isPortrait();
     boolean                          isLandscapeEnabled = callParticipantsViewState.isLandscapeEnabled();
     List<WebRtcCallParticipantsPage> pages              = new ArrayList<>(2);
 
     if (!state.getGridParticipants().isEmpty()) {
-      pages.add(WebRtcCallParticipantsPage.forMultipleParticipants(state.getGridParticipants(), state.getFocusedParticipant(), state.isInPipMode(), isPortrait, isLandscapeEnabled, state.isIncomingRing()));
+      pages.add(WebRtcCallParticipantsPage.forMultipleParticipants(state.getGridParticipants(), state.getFocusedParticipant(), state.isInPipMode(), isPortrait, isLandscapeEnabled, state.isIncomingRing(), navBarBottomInset));
     }
 
     if (state.getFocusedParticipant() != CallParticipant.EMPTY && state.getAllRemoteParticipants().size() > 1) {
@@ -424,6 +461,7 @@ public class WebRtcCallView extends ConstraintLayout {
 
     if (state == WebRtcLocalRenderState.EXPANDED) {
       expandPip(localCallParticipant, focusedParticipant);
+      smallLocalRender.setCallParticipant(focusedParticipant);
       return;
     } else if ((state == WebRtcLocalRenderState.SMALL_RECTANGLE || state == WebRtcLocalRenderState.GONE) && pictureInPictureExpansionHelper.isExpandedOrExpanding()) {
       shrinkPip(localCallParticipant);
@@ -470,11 +508,16 @@ public class WebRtcCallView extends ConstraintLayout {
         largeLocalRenderNoVideo.setVisibility(View.VISIBLE);
         largeLocalRenderNoVideoAvatar.setVisibility(View.VISIBLE);
 
-        GlideApp.with(getContext().getApplicationContext())
-                .load(new ProfileContactPhoto(localCallParticipant.getRecipient(), localCallParticipant.getRecipient().getProfileAvatar()))
-                .transform(new CenterCrop(), new BlurTransformation(getContext(), 0.25f, BlurTransformation.MAX_RADIUS))
-                .diskCacheStrategy(DiskCacheStrategy.ALL)
-                .into(largeLocalRenderNoVideoAvatar);
+        ContactPhoto localAvatar = new ProfileContactPhoto(localCallParticipant.getRecipient());
+
+        if (!localAvatar.equals(previousLocalAvatar)) {
+          previousLocalAvatar = localAvatar;
+          GlideApp.with(getContext().getApplicationContext())
+                  .load(localAvatar)
+                  .transform(new CenterCrop(), new BlurTransformation(getContext(), 0.25f, BlurTransformation.MAX_RADIUS))
+                  .diskCacheStrategy(DiskCacheStrategy.ALL)
+                  .into(largeLocalRenderNoVideoAvatar);
+        }
 
         smallLocalRenderFrame.setVisibility(View.GONE);
         break;
@@ -589,23 +632,19 @@ public class WebRtcCallView extends ConstraintLayout {
     if (webRtcControls.displayIncomingCallButtons()) {
       visibleViewSet.addAll(incomingCallViews);
 
-      incomingRingStatus.setVisibility(VISIBLE);
-      incomingRingStatus.setText(R.string.WebRtcCallView__signal_call);
+      incomingRingStatus.setText(webRtcControls.displayAnswerWithoutVideo() ? R.string.WebRtcCallView__signal_video_call: R.string.WebRtcCallView__signal_call);
 
       answer.setImageDrawable(AppCompatResources.getDrawable(getContext(), R.drawable.webrtc_call_screen_answer));
     }
 
-    if (webRtcControls.displayAnswerWithAudio()) {
-      visibleViewSet.add(answerWithAudio);
-      visibleViewSet.add(answerWithAudioLabel);
-
-      incomingRingStatus.setVisibility(VISIBLE);
-      incomingRingStatus.setText(R.string.WebRtcCallView__signal_video_call);
+    if (webRtcControls.displayAnswerWithoutVideo()) {
+      visibleViewSet.add(answerWithoutVideo);
+      visibleViewSet.add(answerWithoutVideoLabel);
 
       answer.setImageDrawable(AppCompatResources.getDrawable(getContext(), R.drawable.webrtc_call_screen_answer_with_video));
     }
 
-    if (!webRtcControls.displayIncomingCallButtons() && !webRtcControls.displayAnswerWithAudio()){
+    if (!webRtcControls.displayIncomingCallButtons()){
       incomingRingStatus.setVisibility(GONE);
     }
 
@@ -785,15 +824,23 @@ public class WebRtcCallView extends ConstraintLayout {
       dimens = new Point(ViewUtil.dpToPx(90), ViewUtil.dpToPx(160));
     }
 
-    ResizeAnimation animation = new ResizeAnimation(smallLocalRenderFrame, dimens.x, dimens.y);
-    animation.setDuration(PIP_RESIZE_DURATION);
-    animation.setAnimationListener(new SimpleAnimationListener() {
+    SimpleAnimationListener animationListener = new SimpleAnimationListener() {
       @Override
       public void onAnimationEnd(Animation animation) {
         pictureInPictureGestureHelper.enableCorners();
         pictureInPictureGestureHelper.adjustPip();
       }
-    });
+    };
+
+    ViewGroup.LayoutParams layoutParams = smallLocalRenderFrame.getLayoutParams();
+    if (layoutParams.width == dimens.x && layoutParams.height == dimens.y) {
+      animationListener.onAnimationEnd(null);
+      return;
+    }
+
+    ResizeAnimation animation = new ResizeAnimation(smallLocalRenderFrame, dimens.x, dimens.y);
+    animation.setDuration(PIP_RESIZE_DURATION);
+    animation.setAnimationListener(animationListener);
 
     smallLocalRenderFrame.startAnimation(animation);
   }
@@ -855,6 +902,11 @@ public class WebRtcCallView extends ConstraintLayout {
   }
 
   private void layoutParticipants() {
+    int desiredMargin = ViewUtil.dpToPx(withControlsHeight(pagerBottomMarginDp));
+    if (ViewKt.getMarginBottom(callParticipantsPager) == desiredMargin) {
+      return;
+    }
+
     Transition transition = new AutoTransition().setDuration(TRANSITION_DURATION_MILLIS);
 
     TransitionManager.beginDelayedTransition(participantsParent, transition);
@@ -862,7 +914,7 @@ public class WebRtcCallView extends ConstraintLayout {
     ConstraintSet constraintSet = new ConstraintSet();
     constraintSet.clone(participantsParent);
 
-    constraintSet.setMargin(R.id.call_screen_participants_pager, ConstraintSet.BOTTOM, ViewUtil.dpToPx(withControlsHeight(pagerBottomMarginDp)));
+    constraintSet.setMargin(R.id.call_screen_participants_pager, ConstraintSet.BOTTOM, desiredMargin);
     constraintSet.applyTo(participantsParent);
   }
 
@@ -934,8 +986,10 @@ public class WebRtcCallView extends ConstraintLayout {
     constraintSet.applyTo(parent);
 
     if (showSmallHeader) {
+      smallHeaderConstraints.setVisibility(incomingRingStatus.getId(), visibleViewSet.contains(incomingRingStatus) ? View.VISIBLE : View.GONE);
       smallHeaderConstraints.applyTo(toolbar);
     } else {
+      largeHeaderConstraints.setVisibility(incomingRingStatus.getId(), visibleViewSet.contains(incomingRingStatus) ? View.VISIBLE : View.GONE);
       largeHeaderConstraints.applyTo(toolbar);
     }
   }

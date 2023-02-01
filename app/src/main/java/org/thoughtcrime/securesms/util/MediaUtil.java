@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.WorkerThread;
+import androidx.exifinterface.media.ExifInterface;
 
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.resource.gif.GifDrawable;
@@ -55,6 +56,7 @@ public class MediaUtil {
   public static final String IMAGE_JPEG        = "image/jpeg";
   public static final String IMAGE_HEIC        = "image/heic";
   public static final String IMAGE_HEIF        = "image/heif";
+  public static final String IMAGE_AVIF        = "image/avif";
   public static final String IMAGE_WEBP        = "image/webp";
   public static final String IMAGE_GIF         = "image/gif";
   public static final String AUDIO_AAC         = "audio/aac";
@@ -189,7 +191,7 @@ public class MediaUtil {
       try {
         if (MediaUtil.isJpegType(contentType)) {
           attachmentStream = PartAuthority.getAttachmentStream(context, uri);
-          dimens = BitmapUtil.getExifDimensions(attachmentStream);
+          dimens = BitmapUtil.getExifDimensions(new ExifInterface(attachmentStream));
           attachmentStream.close();
           attachmentStream = null;
         }
@@ -276,6 +278,10 @@ public class MediaUtil {
     return !TextUtils.isEmpty(contentType) && contentType.trim().equals(IMAGE_HEIF);
   }
 
+  public static boolean isAvifType(String contentType) {
+    return !TextUtils.isEmpty(contentType) && contentType.trim().equals(IMAGE_AVIF);
+  }
+
   public static boolean isFile(Attachment attachment) {
     return !isGif(attachment) && !isImage(attachment) && !isAudio(attachment) && !isVideo(attachment);
   }
@@ -293,7 +299,7 @@ public class MediaUtil {
       return false;
     }
 
-    return contentType.startsWith("image/") ||
+    return (contentType.startsWith("image/") && !contentType.equals("image/svg+xml")) ||
            contentType.equals(MediaStore.Images.Media.CONTENT_TYPE);
   }
 
@@ -317,6 +323,10 @@ public class MediaUtil {
 
   public static boolean isImageOrVideoType(String contentType) {
     return isImageType(contentType) || isVideoType(contentType);
+  }
+
+  public static boolean isStorySupportedType(String contentType) {
+    return isImageOrVideoType(contentType) && !isGif(contentType);
   }
 
   public static boolean isImageVideoOrAudioType(String contentType) {

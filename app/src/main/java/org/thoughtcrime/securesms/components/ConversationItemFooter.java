@@ -29,6 +29,7 @@ import org.signal.core.util.concurrent.SignalExecutors;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.animation.AnimationCompleteListener;
 import org.thoughtcrime.securesms.database.SignalDatabase;
+import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
@@ -36,15 +37,16 @@ import org.thoughtcrime.securesms.permissions.Permissions;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.service.ExpiringMessageManager;
 import org.thoughtcrime.securesms.util.DateUtils;
+import org.thoughtcrime.securesms.util.MessageRecordUtil;
 import org.thoughtcrime.securesms.util.Projection;
 import org.thoughtcrime.securesms.util.SignalLocalMetrics;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.dualsim.SubscriptionInfoCompat;
 import org.thoughtcrime.securesms.util.dualsim.SubscriptionManagerCompat;
-import org.whispersystems.libsignal.util.guava.Optional;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 public class ConversationItemFooter extends ConstraintLayout {
@@ -246,7 +248,7 @@ public class ConversationItemFooter extends ConstraintLayout {
                                });
 
     if (isOutgoing) {
-      dateView.setMaxWidth(ViewUtil.dpToPx(28));
+      dateView.setMaxWidth(ViewUtil.dpToPx(32));
     } else {
       ConstraintSet constraintSet = new ConstraintSet();
       constraintSet.clone(this);
@@ -315,6 +317,8 @@ public class ConversationItemFooter extends ConstraintLayout {
       dateView.setText(R.string.ConversationItem_click_to_approve_unencrypted);
     } else if (messageRecord.isRateLimited()) {
       dateView.setText(R.string.ConversationItem_send_paused);
+    } else if (MessageRecordUtil.isScheduled(messageRecord)) {
+      dateView.setText(DateUtils.getOnlyTimeString(getContext(), locale, ((MediaMmsMessageRecord) messageRecord).getScheduledDate()));
     } else {
       dateView.setText(DateUtils.getSimpleRelativeTimeSpanString(getContext(), locale, messageRecord.getTimestamp()));
     }
@@ -361,9 +365,9 @@ public class ConversationItemFooter extends ConstraintLayout {
           boolean                mms               = messageRecord.isMms();
 
           if (mms) {
-            SignalDatabase.mms().markExpireStarted(id);
+            SignalDatabase.messages().markExpireStarted(id);
           } else {
-            SignalDatabase.sms().markExpireStarted(id);
+            SignalDatabase.messages().markExpireStarted(id);
           }
 
           expirationManager.scheduleDeletion(id, mms, messageRecord.getExpiresIn());
@@ -392,7 +396,7 @@ public class ConversationItemFooter extends ConstraintLayout {
     previousMessageId = newMessageId;
 
 
-    if (messageRecord.isFailed() || messageRecord.isPendingInsecureSmsFallback()) {
+    if (messageRecord.isFailed() || messageRecord.isPendingInsecureSmsFallback() || MessageRecordUtil.isScheduled(messageRecord)) {
       deliveryStatusView.setNone();
       return;
     }

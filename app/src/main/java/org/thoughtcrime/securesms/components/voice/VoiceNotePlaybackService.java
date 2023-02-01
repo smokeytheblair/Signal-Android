@@ -16,7 +16,6 @@ import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.content.ContextCompat;
 import androidx.media.MediaBrowserServiceCompat;
 
 import com.google.android.exoplayer2.C;
@@ -24,17 +23,20 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 import com.google.android.exoplayer2.ui.PlayerNotificationManager;
 
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.MessageDatabase;
+import org.thoughtcrime.securesms.database.MessageTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageId;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.jobs.ForegroundServiceUtil;
 import org.thoughtcrime.securesms.jobs.MultiDeviceViewedUpdateJob;
 import org.thoughtcrime.securesms.jobs.SendViewedReceiptJob;
+import org.thoughtcrime.securesms.jobs.UnableToStartException;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.service.KeyCachingService;
 
@@ -204,6 +206,19 @@ public class VoiceNotePlaybackService extends MediaBrowserServiceCompat {
     public void onPlayerError(@NonNull PlaybackException error) {
       Log.w(TAG, "ExoPlayer error occurred:", error);
     }
+
+    @Override
+    public void onAudioAttributesChanged(AudioAttributes audioAttributes) {
+      final int stream;
+      if (audioAttributes.usage == C.USAGE_VOICE_COMMUNICATION) {
+        stream = AudioManager.STREAM_VOICE_CALL;
+      } else {
+        stream = AudioManager.STREAM_MUSIC;
+      }
+
+      Log.i(TAG, "onAudioAttributesChanged: Setting audio stream to " + stream);
+      mediaSession.setPlaybackToLocal(stream);
+    }
   }
 
   private @Nullable PlaybackParameters getPlaybackParametersForWindowPosition(int currentWindowIndex) {
@@ -240,16 +255,16 @@ public class VoiceNotePlaybackService extends MediaBrowserServiceCompat {
           return;
         }
         long            messageId       = extras.getLong(VoiceNoteMediaItemFactory.EXTRA_MESSAGE_ID);
-        RecipientId     recipientId     = RecipientId.from(extras.getString(VoiceNoteMediaItemFactory.EXTRA_INDIVIDUAL_RECIPIENT_ID));
-        MessageDatabase messageDatabase = SignalDatabase.mms();
+        RecipientId  recipientId     = RecipientId.from(extras.getString(VoiceNoteMediaItemFactory.EXTRA_INDIVIDUAL_RECIPIENT_ID));
+        MessageTable messageDatabase = SignalDatabase.messages();
 
-        MessageDatabase.MarkedMessageInfo markedMessageInfo = messageDatabase.setIncomingMessageViewed(messageId);
+        MessageTable.MarkedMessageInfo markedMessageInfo = messageDatabase.setIncomingMessageViewed(messageId);
 
         if (markedMessageInfo != null) {
           ApplicationDependencies.getJobManager().add(new SendViewedReceiptJob(markedMessageInfo.getThreadId(),
                                                                                recipientId,
                                                                                markedMessageInfo.getSyncMessageId().getTimetamp(),
-                                                                               new MessageId(messageId, true)));
+                                                                               new MessageId(messageId)));
           MultiDeviceViewedUpdateJob.enqueue(Collections.singletonList(markedMessageInfo.getSyncMessageId()));
         }
       });
@@ -261,9 +276,13 @@ public class VoiceNotePlaybackService extends MediaBrowserServiceCompat {
     @Override
     public void onNotificationPosted(int notificationId, Notification notification, boolean ongoing) {
       if (ongoing && !isForegroundService) {
-        ContextCompat.startForegroundService(getApplicationContext(), new Intent(getApplicationContext(), VoiceNotePlaybackService.class));
-        startForeground(notificationId, notification);
-        isForegroundService = true;
+        try {
+          ForegroundServiceUtil.startWhenCapable(getApplicationContext(), new Intent(getApplicationContext(), VoiceNotePlaybackService.class));
+          startForeground(notificationId, notification);
+          isForegroundService = true;
+        } catch (UnableToStartException e) {
+          Log.e(TAG, "Unable to start foreground service!", e);
+        }
       }
     }
 

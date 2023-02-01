@@ -2,30 +2,32 @@ package org.thoughtcrime.securesms.mediasend.v2.review
 
 import android.animation.Animator
 import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.view.View
 import androidx.core.animation.doOnEnd
-import org.thoughtcrime.securesms.util.ViewUtil
+import org.thoughtcrime.securesms.util.ContextUtil
 import org.thoughtcrime.securesms.util.visible
 
 object MediaReviewAnimatorController {
 
   fun getSlideInAnimator(view: View): Animator {
-    return ObjectAnimator.ofFloat(view, "translationY", view.translationY, 0f)
+    return if (ContextUtil.getAnimationScale(view.context) == 0f) {
+      view.translationY = 0f
+      ValueAnimator.ofFloat(0f, 1f)
+    } else {
+      ObjectAnimator.ofFloat(view, "translationY", view.translationY, 0f)
+    }
   }
 
-  fun getSlideOutAnimator(view: View): Animator {
-    return ObjectAnimator.ofFloat(view, "translationY", view.translationX, ViewUtil.dpToPx(48).toFloat())
-  }
-
-  fun getFadeInAnimator(view: View): Animator {
+  fun getFadeInAnimator(view: View, isEnabled: Boolean = true): Animator {
     view.visible = true
-    view.isEnabled = true
+    view.isEnabled = isEnabled
 
     return ObjectAnimator.ofFloat(view, "alpha", view.alpha, 1f)
   }
 
-  fun getFadeOutAnimator(view: View): Animator {
-    view.isEnabled = false
+  fun getFadeOutAnimator(view: View, isEnabled: Boolean = false): Animator {
+    view.isEnabled = isEnabled
 
     val animator = ObjectAnimator.ofFloat(view, "alpha", view.alpha, 0f)
 

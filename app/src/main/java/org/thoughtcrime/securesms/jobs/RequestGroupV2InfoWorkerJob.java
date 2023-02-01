@@ -4,9 +4,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.WorkerThread;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.GroupDatabase;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.database.model.GroupRecord;
 import org.thoughtcrime.securesms.groups.GroupChangeBusyException;
 import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.groups.GroupManager;
@@ -16,11 +15,11 @@ import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.recipients.Recipient;
-import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.groupsv2.NoCredentialForRedemptionTimeException;
 import org.whispersystems.signalservice.api.push.exceptions.PushNetworkException;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -41,7 +40,7 @@ final class RequestGroupV2InfoWorkerJob extends BaseJob {
   @WorkerThread
   RequestGroupV2InfoWorkerJob(@NonNull GroupId.V2 groupId, int toRevision) {
     this(new Parameters.Builder()
-                       .setQueue(PushProcessMessageJob.getQueueName(Recipient.externalGroupExact(ApplicationDependencies.getApplication(), groupId).getId()))
+                       .setQueue(PushProcessMessageJob.getQueueName(Recipient.externalGroupExact(groupId).getId()))
                        .addConstraint(NetworkConstraint.KEY)
                        .setLifespan(TimeUnit.DAYS.toMillis(1))
                        .setMaxAttempts(Parameters.UNLIMITED)
@@ -77,10 +76,15 @@ final class RequestGroupV2InfoWorkerJob extends BaseJob {
       Log.i(TAG, "Updating group to revision " + toRevision);
     }
 
-    Optional<GroupDatabase.GroupRecord> group = SignalDatabase.groups().getGroup(groupId);
+    Optional<GroupRecord> group = SignalDatabase.groups().getGroup(groupId);
 
     if (!group.isPresent()) {
       Log.w(TAG, "Group not found");
+      return;
+    }
+
+    if (Recipient.externalGroupExact(groupId).isBlocked()) {
+      Log.i(TAG, "Not fetching group info for blocked group " + groupId);
       return;
     }
 

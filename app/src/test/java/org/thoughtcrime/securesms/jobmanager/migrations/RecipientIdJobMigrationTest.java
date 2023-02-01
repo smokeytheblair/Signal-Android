@@ -1,13 +1,13 @@
 package org.thoughtcrime.securesms.jobmanager.migrations;
 
 import android.app.Application;
-import android.content.Context;
 
-import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
+import org.mockito.Mock;
+import org.mockito.MockedStatic;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.JobMigration.JobData;
@@ -19,10 +19,7 @@ import org.thoughtcrime.securesms.jobs.MultiDeviceReadUpdateJob;
 import org.thoughtcrime.securesms.jobs.MultiDeviceVerifiedUpdateJob;
 import org.thoughtcrime.securesms.jobs.MultiDeviceViewOnceOpenJob;
 import org.thoughtcrime.securesms.jobs.PushGroupSendJob;
-import org.thoughtcrime.securesms.jobs.PushGroupUpdateJob;
-import org.thoughtcrime.securesms.jobs.PushMediaSendJob;
-import org.thoughtcrime.securesms.jobs.PushTextSendJob;
-import org.thoughtcrime.securesms.jobs.RequestGroupInfoJob;
+import org.thoughtcrime.securesms.jobs.IndividualSendJob;
 import org.thoughtcrime.securesms.jobs.RetrieveProfileAvatarJob;
 import org.thoughtcrime.securesms.jobs.SendDeliveryReceiptJob;
 import org.thoughtcrime.securesms.jobs.SmsSendJob;
@@ -34,22 +31,21 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.powermock.api.mockito.PowerMockito.doReturn;
-import static org.powermock.api.mockito.PowerMockito.mock;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
-import static org.powermock.api.mockito.PowerMockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-@RunWith(PowerMockRunner.class)
-@PrepareForTest({ Recipient.class, Job.Parameters.class })
 public class RecipientIdJobMigrationTest {
 
-  @Before
-  public void init() {
-    mockStatic(Recipient.class);
-    mockStatic(Job.Parameters.class);
-  }
+  @Rule
+  public MockitoRule rule = MockitoJUnit.rule();
+
+  @Mock
+  private MockedStatic<Recipient> recipientMockedStatic;
+
+  @Mock
+  private MockedStatic<Job.Parameters> jobParametersMockStatic;
 
   @Test
   public void migrate_multiDeviceContactUpdateJob() throws Exception {
@@ -82,24 +78,6 @@ public class RecipientIdJobMigrationTest {
     assertEquals(JsonUtils.toJson(new NewSerializableSyncMessageId("1", 1)), converted.getData().getString("message_id"));
 
     new MultiDeviceViewOnceOpenJob.Factory().create(mock(Job.Parameters.class), converted.getData());
-  }
-
-  @Test
-  public void migrate_requestGroupInfoJob() throws Exception {
-    JobData testData = new JobData("RequestGroupInfoJob", null, new Data.Builder().putString("source", "+16101234567")
-                                                                                  .putString("group_id", "__textsecure_group__!abcdef0123456789abcdef0123456789")
-                                                                                  .build());
-    mockRecipientResolve("+16101234567", 1);
-
-    RecipientIdJobMigration subject   = new RecipientIdJobMigration(mock(Application.class));
-    JobData                 converted = subject.migrate(testData);
-
-    assertEquals("RequestGroupInfoJob", converted.getFactoryKey());
-    assertNull(converted.getQueueKey());
-    assertEquals("1", converted.getData().getString("source"));
-    assertEquals("__textsecure_group__!abcdef0123456789abcdef0123456789", converted.getData().getString("group_id"));
-
-    new RequestGroupInfoJob.Factory().create(mock(Job.Parameters.class), converted.getData());
   }
 
   @Test
@@ -179,24 +157,6 @@ public class RecipientIdJobMigrationTest {
     assertFalse(converted.getData().hasString("filter_address"));
 
     new PushGroupSendJob.Factory().create(mock(Job.Parameters.class), converted.getData());
-  }
-
-  @Test
-  public void migrate_pushGroupUpdateJob() throws Exception {
-    JobData testData = new JobData("PushGroupUpdateJob", null, new Data.Builder().putString("source", "+16101234567")
-                                                                                 .putString("group_id", "__textsecure_group__!abcdef0123456789abcdef0123456789")
-                                                                                 .build());
-    mockRecipientResolve("+16101234567", 1);
-
-    RecipientIdJobMigration subject   = new RecipientIdJobMigration(mock(Application.class));
-    JobData                 converted = subject.migrate(testData);
-
-    assertEquals("PushGroupUpdateJob", converted.getFactoryKey());
-    assertNull(converted.getQueueKey());
-    assertEquals("1", converted.getData().getString("source"));
-    assertEquals("__textsecure_group__!abcdef0123456789abcdef0123456789", converted.getData().getString("group_id"));
-
-    new PushGroupUpdateJob.Factory().create(mock(Job.Parameters.class), converted.getData());
   }
 
   @Test
@@ -287,21 +247,6 @@ public class RecipientIdJobMigrationTest {
   }
 
   @Test
-  public void migrate_pushTextSendJob() throws Exception {
-    JobData testData = new JobData("PushTextSendJob", "+16101234567", new Data.Builder().putLong("message_id", 1).build());
-    mockRecipientResolve("+16101234567", 1);
-
-    RecipientIdJobMigration subject   = new RecipientIdJobMigration(mock(Application.class));
-    JobData                 converted = subject.migrate(testData);
-
-    assertEquals("PushTextSendJob", converted.getFactoryKey());
-    assertEquals(RecipientId.from(1).toQueueKey(), converted.getQueueKey());
-    assertEquals(1, converted.getData().getLong("message_id"));
-
-    new PushTextSendJob.Factory().create(mock(Job.Parameters.class), converted.getData());
-  }
-
-  @Test
   public void migrate_pushMediaSendJob() throws Exception {
     JobData testData = new JobData("PushMediaSendJob", "+16101234567", new Data.Builder().putLong("message_id", 1).build());
     mockRecipientResolve("+16101234567", 1);
@@ -313,7 +258,7 @@ public class RecipientIdJobMigrationTest {
     assertEquals(RecipientId.from(1).toQueueKey(), converted.getQueueKey());
     assertEquals(1, converted.getData().getLong("message_id"));
 
-    new PushMediaSendJob.Factory().create(mock(Job.Parameters.class), converted.getData());
+    new IndividualSendJob.Factory().create(mock(Job.Parameters.class), converted.getData());
   }
 
   @Test
@@ -348,8 +293,9 @@ public class RecipientIdJobMigrationTest {
     new SmsSendJob.Factory().create(mock(Job.Parameters.class), converted.getData());
   }
 
-  private void mockRecipientResolve(String address, long recipientId) throws Exception {
-    doReturn(mockRecipient(recipientId)).when(Recipient.class, "external", any(Context.class), eq(address));
+  private void mockRecipientResolve(String address, long recipientId) {
+    Recipient mockRecipient = mockRecipient(recipientId);
+    recipientMockedStatic.when(() -> Recipient.external(any(), eq(address))).thenReturn(mockRecipient);
   }
 
   private Recipient mockRecipient(long id) {

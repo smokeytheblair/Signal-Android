@@ -4,7 +4,7 @@ import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.database.ThreadDatabase;
+import org.thoughtcrime.securesms.database.ThreadTable;
 import org.thoughtcrime.securesms.database.model.ThreadRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
@@ -13,6 +13,7 @@ import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.transport.RetryLaterException;
 import org.thoughtcrime.securesms.util.ConversationUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
+import org.thoughtcrime.securesms.util.Util;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,11 +64,11 @@ public class ConversationShortcutUpdateJob extends BaseJob {
       return;
     }
 
-    ThreadDatabase  threadDatabase = SignalDatabase.threads();
-    int             maxShortcuts   = ConversationUtil.getMaxShortcuts(context);
+    ThreadTable threadTable  = SignalDatabase.threads();
+    int         maxShortcuts = ConversationUtil.getMaxShortcuts(context);
     List<Recipient> ranked         = new ArrayList<>(maxShortcuts);
 
-    try (ThreadDatabase.Reader reader = threadDatabase.readerFor(threadDatabase.getRecentConversationList(maxShortcuts, false, false))) {
+    try (ThreadTable.Reader reader = threadTable.readerFor(threadTable.getRecentConversationList(maxShortcuts, false, false, false, true, !Util.isDefaultSmsProvider(context), false))) {
       ThreadRecord record;
       while ((record = reader.getNext()) != null) {
         ranked.add(record.getRecipient().resolve());
@@ -79,6 +80,8 @@ public class ConversationShortcutUpdateJob extends BaseJob {
     if (!success) {
       throw new RetryLaterException();
     }
+
+    ConversationUtil.removeLongLivedShortcuts(context, threadTable.getArchivedRecipients());
   }
 
   @Override

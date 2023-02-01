@@ -10,7 +10,8 @@ import androidx.annotation.Nullable;
 
 import com.annimon.stream.Stream;
 
-import org.whispersystems.libsignal.util.Pair;
+import org.signal.core.util.StringUtil;
+import org.signal.libsignal.protocol.util.Pair;
 
 import java.security.InvalidParameterException;
 import java.util.Collections;
@@ -25,7 +26,7 @@ public class SearchUtil {
 
   public static Spannable getHighlightedSpan(@NonNull Locale locale,
                                              @NonNull StyleFactory styleFactory,
-                                             @Nullable String text,
+                                             @Nullable CharSequence text,
                                              @Nullable String highlight,
                                              int matchMode)
   {
@@ -33,9 +34,9 @@ public class SearchUtil {
       return new SpannableString("");
     }
 
-    text = text.replaceAll("\n", " ");
+    text = StringUtil.replace(text, '\n', " ");
 
-    return getHighlightedSpan(locale, styleFactory, new SpannableString(text), highlight, matchMode);
+    return getHighlightedSpan(locale, styleFactory, SpannableString.valueOf(text), highlight, matchMode);
   }
 
   public static Spannable getHighlightedSpan(@NonNull Locale locale,
@@ -53,7 +54,7 @@ public class SearchUtil {
       return text;
     }
 
-    SpannableString              spanned = new SpannableString(text);
+    SpannableString              spanned = SpannableString.valueOf(text);
     List<Pair<Integer, Integer>> ranges;
 
     switch (matchMode) {
@@ -66,14 +67,12 @@ public class SearchUtil {
       default:
         throw new InvalidParameterException("match mode must be STRICT or MATCH_ALL: " + matchMode);
     }
-    if (matchMode == STRICT) {
-      ranges = getStrictHighlightRanges(locale, text.toString(), highlight);
-    } else {
-      ranges = getHighlightRanges(locale, text.toString(), highlight);
-    }
 
+    CharacterStyle[] styles = styleFactory.createStyles();
     for (Pair<Integer, Integer> range : ranges) {
-      spanned.setSpan(styleFactory.create(), range.first(), range.second(), Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
+      for (CharacterStyle style : styles) {
+        spanned.setSpan(style, range.first(), range.second(), Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
+      }
     }
 
     return spanned;
@@ -153,6 +152,6 @@ public class SearchUtil {
   }
 
   public interface StyleFactory {
-    CharacterStyle create();
+    CharacterStyle[] createStyles();
   }
 }

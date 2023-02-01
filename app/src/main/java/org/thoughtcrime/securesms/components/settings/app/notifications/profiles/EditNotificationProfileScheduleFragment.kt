@@ -1,5 +1,6 @@
 package org.thoughtcrime.securesms.components.settings.app.notifications.profiles
 
+import android.content.Context
 import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
@@ -14,7 +15,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
-import com.dd.CircularProgressButton
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
@@ -25,7 +25,9 @@ import org.thoughtcrime.securesms.components.settings.app.notifications.profiles
 import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.formatHours
+import org.thoughtcrime.securesms.util.navigation.safeNavigate
 import org.thoughtcrime.securesms.util.orderOfDaysInWeek
+import org.thoughtcrime.securesms.util.views.CircularProgressMaterialButton
 import org.thoughtcrime.securesms.util.visible
 import java.time.DayOfWeek
 import java.time.LocalTime
@@ -73,7 +75,7 @@ class EditNotificationProfileScheduleFragment : LoggingFragment(R.layout.fragmen
     val startTime: TextView = view.findViewById(R.id.edit_notification_profile_schedule_start_time)
     val endTime: TextView = view.findViewById(R.id.edit_notification_profile_schedule_end_time)
 
-    val next: CircularProgressButton = view.findViewById(R.id.edit_notification_profile_schedule__next)
+    val next: CircularProgressMaterialButton = view.findViewById(R.id.edit_notification_profile_schedule__next)
     next.setOnClickListener {
       lifecycleDisposable += viewModel.save(createMode)
         .subscribeBy(
@@ -81,7 +83,7 @@ class EditNotificationProfileScheduleFragment : LoggingFragment(R.layout.fragmen
             when (result) {
               SaveScheduleResult.Success -> {
                 if (createMode) {
-                  findNavController().navigate(EditNotificationProfileScheduleFragmentDirections.actionEditNotificationProfileScheduleFragmentToNotificationProfileCreatedFragment(profileId))
+                  findNavController().safeNavigate(EditNotificationProfileScheduleFragmentDirections.actionEditNotificationProfileScheduleFragmentToNotificationProfileCreatedFragment(profileId))
                 } else {
                   findNavController().navigateUp()
                 }
@@ -105,7 +107,7 @@ class EditNotificationProfileScheduleFragment : LoggingFragment(R.layout.fragmen
     val days: Map<CheckedTextView, DayOfWeek> = listOf(day1, day2, day3, day4, day5, day6, day7).zip(Locale.getDefault().orderOfDaysInWeek()).toMap()
 
     days.forEach { (view, day) ->
-      DrawableCompat.setTintList(view.background, ContextCompat.getColorStateList(requireContext(), R.color.notification_profile_schedule_background_tint))
+      DrawableCompat.setTintList(view.background, ContextCompat.getColorStateList(view.context, R.color.notification_profile_schedule_background_tint))
       view.setOnClickListener { viewModel.toggleDay(day) }
       view.setText(DAY_TO_STARTING_LETTER[day]!!)
     }
@@ -121,11 +123,11 @@ class EditNotificationProfileScheduleFragment : LoggingFragment(R.layout.fragmen
             view.isEnabled = schedule.enabled
           }
 
-          startTime.text = schedule.startTime().formatTime()
+          startTime.text = schedule.startTime().formatTime(view.context)
           startTime.setOnClickListener { showTimeSelector(true, schedule.startTime()) }
           startTime.isEnabled = schedule.enabled
 
-          endTime.text = schedule.endTime().formatTime()
+          endTime.text = schedule.endTime().formatTime(view.context)
           endTime.setOnClickListener { showTimeSelector(false, schedule.endTime()) }
           endTime.isEnabled = schedule.enabled
 
@@ -168,11 +170,11 @@ class EditNotificationProfileScheduleFragment : LoggingFragment(R.layout.fragmen
   }
 }
 
-private fun LocalTime.formatTime(): SpannableString {
+private fun LocalTime.formatTime(context: Context): SpannableString {
   val amPm = DateTimeFormatter.ofPattern("a")
     .format(this)
 
-  val formattedTime: String = this.formatHours()
+  val formattedTime: String = this.formatHours(context)
 
   return SpannableString(formattedTime).apply {
     val amPmIndex = formattedTime.indexOf(string = amPm, ignoreCase = true)

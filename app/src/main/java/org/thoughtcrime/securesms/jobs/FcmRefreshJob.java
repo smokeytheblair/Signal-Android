@@ -28,6 +28,7 @@ import androidx.core.app.NotificationCompat;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
 
+import org.signal.core.util.PendingIntentFlags;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.PlayServicesProblemActivity;
 import org.thoughtcrime.securesms.R;
@@ -40,10 +41,10 @@ import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.notifications.NotificationChannels;
 import org.thoughtcrime.securesms.notifications.NotificationIds;
 import org.thoughtcrime.securesms.transport.RetryLaterException;
-import org.whispersystems.libsignal.util.guava.Optional;
 import org.whispersystems.signalservice.api.push.exceptions.NonSuccessfulResponseCodeException;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 public class FcmRefreshJob extends BaseJob {
@@ -56,8 +57,8 @@ public class FcmRefreshJob extends BaseJob {
     this(new Job.Parameters.Builder()
                            .setQueue("FcmRefreshJob")
                            .addConstraint(NetworkConstraint.KEY)
-                           .setMaxAttempts(1)
-                           .setLifespan(TimeUnit.MINUTES.toMillis(5))
+                           .setMaxAttempts(3)
+                           .setLifespan(TimeUnit.HOURS.toMillis(6))
                            .setMaxInstancesForFactory(1)
                            .build());
   }
@@ -87,7 +88,7 @@ public class FcmRefreshJob extends BaseJob {
     if (result != ConnectionResult.SUCCESS) {
       notifyFcmFailure();
     } else {
-      Optional<String> token = FcmUtil.getToken();
+      Optional<String> token = FcmUtil.getToken(context);
 
       if (token.isPresent()) {
         String oldToken = SignalStore.account().getFcmToken();
@@ -109,7 +110,7 @@ public class FcmRefreshJob extends BaseJob {
 
   @Override
   public void onFailure() {
-    Log.w(TAG, "GCM reregistration failed after retry attempt exhaustion!");
+    Log.w(TAG, "FCM reregistration failed after retry attempt exhaustion!");
   }
 
   @Override
@@ -120,8 +121,8 @@ public class FcmRefreshJob extends BaseJob {
 
   private void notifyFcmFailure() {
     Intent                     intent        = new Intent(context, PlayServicesProblemActivity.class);
-    PendingIntent              pendingIntent = PendingIntent.getActivity(context, 1122, intent, PendingIntent.FLAG_CANCEL_CURRENT);
-    NotificationCompat.Builder builder       = new NotificationCompat.Builder(context, NotificationChannels.FAILURES);
+    PendingIntent              pendingIntent = PendingIntent.getActivity(context, 1122, intent, PendingIntentFlags.cancelCurrent());
+    NotificationCompat.Builder builder       = new NotificationCompat.Builder(context, NotificationChannels.getInstance().FAILURES);
 
     builder.setSmallIcon(R.drawable.ic_notification);
     builder.setLargeIcon(BitmapFactory.decodeResource(context.getResources(),

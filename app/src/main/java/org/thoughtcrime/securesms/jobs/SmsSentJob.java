@@ -6,13 +6,14 @@ import android.telephony.SmsManager;
 import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.MessageDatabase;
+import org.thoughtcrime.securesms.database.MessageTable;
 import org.thoughtcrime.securesms.database.NoSuchMessageException;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.database.model.SmsMessageRecord;
+import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
+import org.thoughtcrime.securesms.notifications.v2.ConversationId;
 import org.thoughtcrime.securesms.service.SmsDeliveryListener;
 
 public class SmsSentJob extends BaseJob {
@@ -91,13 +92,13 @@ public class SmsSentJob extends BaseJob {
   }
 
   private void handleDeliveredResult(long messageId, int result) {
-    SignalDatabase.sms().markSmsStatus(messageId, result);
+    SignalDatabase.messages().markSmsStatus(messageId, result);
   }
 
   private void handleSentResult(long messageId, int result) {
     try {
-      MessageDatabase  database = SignalDatabase.sms();
-      SmsMessageRecord record   = database.getSmsMessage(messageId);
+      MessageTable  database = SignalDatabase.messages();
+      MessageRecord record   = database.getMessageRecord(messageId);
 
       switch (result) {
         case Activity.RESULT_OK:
@@ -108,7 +109,7 @@ public class SmsSentJob extends BaseJob {
           if (isMultipart) {
             Log.w(TAG, "Service connectivity problem, but not retrying due to multipart");
             database.markAsSentFailed(messageId);
-            ApplicationDependencies.getMessageNotifier().notifyMessageDeliveryFailed(context, record.getRecipient(), record.getThreadId());
+            ApplicationDependencies.getMessageNotifier().notifyMessageDeliveryFailed(context, record.getRecipient(), ConversationId.forConversation(record.getThreadId()));
           } else {
             Log.w(TAG, "Service connectivity problem, requeuing...");
             ApplicationDependencies.getJobManager().add(new SmsSendJob(messageId, record.getIndividualRecipient(), runAttempt + 1));
@@ -116,7 +117,7 @@ public class SmsSentJob extends BaseJob {
           break;
         default:
           database.markAsSentFailed(messageId);
-          ApplicationDependencies.getMessageNotifier().notifyMessageDeliveryFailed(context, record.getRecipient(), record.getThreadId());
+          ApplicationDependencies.getMessageNotifier().notifyMessageDeliveryFailed(context, record.getRecipient(), ConversationId.forConversation(record.getThreadId()));
       }
     } catch (NoSuchMessageException e) {
       Log.w(TAG, e);

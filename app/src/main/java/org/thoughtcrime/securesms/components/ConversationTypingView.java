@@ -11,15 +11,11 @@ import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.content.ContextCompat;
 
-import com.annimon.stream.Stream;
-
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.badges.BadgeImageView;
 import org.thoughtcrime.securesms.mms.GlideRequests;
 import org.thoughtcrime.securesms.recipients.Recipient;
-import org.whispersystems.libsignal.util.Pair;
 
-import java.util.LinkedList;
 import java.util.List;
 
 public class ConversationTypingView extends ConstraintLayout {
@@ -72,11 +68,13 @@ public class ConversationTypingView extends ConstraintLayout {
     }
 
     if (hasWallpaper) {
-      bubble.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.conversation_item_wallpaper_bubble_color));
-      typistCount.getBackground().setColorFilter(ContextCompat.getColor(getContext(), R.color.conversation_item_wallpaper_bubble_color), PorterDuff.Mode.SRC_IN);
+      bubble.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.conversation_item_recv_bubble_color_wallpaper));
+      typistCount.getBackground().setColorFilter(ContextCompat.getColor(getContext(), R.color.conversation_item_recv_bubble_color_wallpaper), PorterDuff.Mode.SRC_IN);
+      indicator.setDotTint(ContextCompat.getColor(getContext(), R.color.conversation_typing_indicator_foreground_tint_wallpaper));
     } else {
-      bubble.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.signal_background_secondary));
-      typistCount.getBackground().setColorFilter(ContextCompat.getColor(getContext(), R.color.signal_background_secondary), PorterDuff.Mode.SRC_IN);
+      bubble.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.conversation_item_recv_bubble_color_normal));
+      typistCount.getBackground().setColorFilter(ContextCompat.getColor(getContext(), R.color.conversation_item_recv_bubble_color_normal), PorterDuff.Mode.SRC_IN);
+      indicator.setDotTint(ContextCompat.getColor(getContext(), R.color.conversation_typing_indicator_foreground_tint_normal));
     }
 
     indicator.startAnimation();

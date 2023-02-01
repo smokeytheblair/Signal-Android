@@ -8,7 +8,6 @@ import androidx.navigation.fragment.findNavController
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.emoji.EmojiUtil
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
-import org.thoughtcrime.securesms.components.settings.DSLSettingsAdapter
 import org.thoughtcrime.securesms.components.settings.DSLSettingsFragment
 import org.thoughtcrime.securesms.components.settings.DSLSettingsIcon
 import org.thoughtcrime.securesms.components.settings.DSLSettingsText
@@ -17,11 +16,11 @@ import org.thoughtcrime.securesms.components.settings.app.notifications.profiles
 import org.thoughtcrime.securesms.components.settings.app.notifications.profiles.models.NotificationProfilePreference
 import org.thoughtcrime.securesms.components.settings.configure
 import org.thoughtcrime.securesms.components.settings.conversation.preferences.LargeIconClickPreference
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
-import org.thoughtcrime.securesms.megaphone.Megaphones
 import org.thoughtcrime.securesms.notifications.profiles.NotificationProfile
 import org.thoughtcrime.securesms.notifications.profiles.NotificationProfiles
 import org.thoughtcrime.securesms.util.LifecycleDisposable
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
+import org.thoughtcrime.securesms.util.navigation.safeNavigate
 
 /**
  * Primary entry point for Notification Profiles. When user has no profiles, shows empty state, otherwise shows
@@ -36,11 +35,6 @@ class NotificationProfilesFragment : DSLSettingsFragment() {
   private val lifecycleDisposable = LifecycleDisposable()
   private var toolbar: Toolbar? = null
 
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    ApplicationDependencies.getMegaphoneRepository().markFinished(Megaphones.Event.NOTIFICATION_PROFILES)
-  }
-
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     super.onViewCreated(view, savedInstanceState)
 
@@ -54,7 +48,7 @@ class NotificationProfilesFragment : DSLSettingsFragment() {
     toolbar = null
   }
 
-  override fun bindAdapter(adapter: DSLSettingsAdapter) {
+  override fun bindAdapter(adapter: MappingAdapter) {
     NoNotificationProfiles.register(adapter)
     LargeIconClickPreference.register(adapter)
     NotificationProfilePreference.register(adapter)
@@ -75,7 +69,7 @@ class NotificationProfilesFragment : DSLSettingsFragment() {
       if (profiles.isEmpty()) {
         customPref(
           NoNotificationProfiles.Model(
-            onClick = { findNavController().navigate(R.id.action_notificationProfilesFragment_to_editNotificationProfileFragment) }
+            onClick = { findNavController().safeNavigate(R.id.action_notificationProfilesFragment_to_editNotificationProfileFragment) }
           )
         )
       } else {
@@ -85,7 +79,7 @@ class NotificationProfilesFragment : DSLSettingsFragment() {
           LargeIconClickPreference.Model(
             title = DSLSettingsText.from(R.string.NotificationProfilesFragment__new_profile),
             icon = DSLSettingsIcon.from(R.drawable.add_to_a_group, NO_TINT),
-            onClick = { findNavController().navigate(R.id.action_notificationProfilesFragment_to_editNotificationProfileFragment) }
+            onClick = { findNavController().safeNavigate(R.id.action_notificationProfilesFragment_to_editNotificationProfileFragment) }
           )
         )
 
@@ -98,7 +92,7 @@ class NotificationProfilesFragment : DSLSettingsFragment() {
               icon = if (profile.emoji.isNotEmpty()) EmojiUtil.convertToDrawable(requireContext(), profile.emoji)?.let { DSLSettingsIcon.from(it) } else DSLSettingsIcon.from(R.drawable.ic_moon_24, NO_TINT),
               color = profile.color,
               onClick = {
-                findNavController().navigate(NotificationProfilesFragmentDirections.actionNotificationProfilesFragmentToNotificationProfileDetailsFragment(profile.id))
+                findNavController().safeNavigate(NotificationProfilesFragmentDirections.actionNotificationProfilesFragmentToNotificationProfileDetailsFragment(profile.id))
               }
             )
           )

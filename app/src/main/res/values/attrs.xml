@@ -4,6 +4,9 @@
 
     <attr name="search_view_style" format="reference" />
 
+    <attr name="circularProgressMaterialButtonStyle" format="reference" />
+    <attr name="circularProgressIndicatorStyle" format="reference" />
+
     <attr name="emoji_category_recent" format="reference"/>
     <attr name="emoji_category_people" format="reference"/>
     <attr name="emoji_category_nature" format="reference"/>
@@ -15,9 +18,26 @@
     <attr name="emoji_category_flags" format="reference"/>
     <attr name="emoji_category_emoticons" format="reference"/>
 
+    <attr name="mediaKeyboardBackgroundColor" format="color" />
+    <attr name="mediaKeyboardBottomBarBackgroundColor" format="color" />
+
     <attr name="settingsToolbarStyle" format="reference" />
 
+    <attr name="contactCheckboxBackground" format="reference" />
+
     <attr name="contact_filter_toolbar_icon_tint" format="color" />
+
+    <declare-styleable name="SegmentedProgressBar">
+        <attr name="totalSegments" format="integer" />
+        <attr name="timePerSegment" format="integer" />
+        <attr name="segmentMargins" format="dimension" />
+        <attr name="segmentCornerRadius" format="dimension" />
+        <attr name="segmentStrokeWidth" format="dimension" />
+        <attr name="segmentBackgroundColor" format="color" />
+        <attr name="segmentSelectedBackgroundColor" format="color" />
+        <attr name="segmentStrokeColor" format="color" />
+        <attr name="segmentSelectedStrokeColor" format="color" />
+    </declare-styleable>
 
     <declare-styleable name="CustomDefaultPreference">
         <attr name="custom_pref_toggle" format="string"/>
@@ -121,6 +141,11 @@
         <attr name="emoji_maxLength" format="integer" />
         <attr name="emoji_forceCustom" format="boolean" />
         <attr name="emoji_renderMentions" format="boolean" />
+        <attr name="emoji_forceJumbo" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="EmojiImageView">
+        <attr name="forceJumbo" format="boolean" />
     </declare-styleable>
 
     <declare-styleable name="RingtonePreference">
@@ -128,28 +153,14 @@
         <attr name="summaryHasRingtone" format="string|reference" />
     </declare-styleable>
 
-    <declare-styleable name="ColorPickerPreference">
-        <attr name="currentColor" format="reference" />
-
-        <attr name="colors" format="reference" />
-
-        <attr name="sortColors" format="boolean|reference" />
-
-        <attr name="colorDescriptions" format="reference" />
-
-        <attr name="columns" format="integer|reference" />
-
-        <attr name="colorSize" format="enum|reference">
-            <enum name="large" value="1" />
-            <enum name="small" value="2" />
-        </attr>
-    </declare-styleable>
-
     <declare-styleable name="QuoteView">
         <attr name="message_type" format="enum">
             <enum name="preview" value="0" />
             <enum name="outgoing" value="1" />
             <enum name="incoming" value="2" />
+            <enum name="story_reply_outgoing" value="3" />
+            <enum name="story_reply_incoming" value="4" />
+            <enum name="story_reply_preview" value="5" />
         </attr>
         <attr name="quote_colorPrimary" format="color" />
         <attr name="quote_colorSecondary" format="color" />
@@ -220,6 +231,7 @@
             <enum name="bottom" value="0" />
             <enum name="top" value="1" />
         </attr>
+        <attr name="media_keyboard_theme" format="reference" />
     </declare-styleable>
 
     <declare-styleable name="CameraXFlashState">
@@ -244,14 +256,12 @@
 
     <declare-styleable name="OutlinedThumbnailView">
         <attr name="otv_cornerRadius" format="dimension|reference" />
+        <attr name="otv_strokeColor" format="color" />
+        <attr name="otv_strokeWidth" format="dimension" />
     </declare-styleable>
 
     <declare-styleable name="ReactionsConversationView">
       <attr name="rcv_outgoing" format="boolean" />
-    </declare-styleable>
-
-    <declare-styleable name="AdaptiveActionsToolbar">
-        <attr name="aat_max_shown" format="integer" />
     </declare-styleable>
 
     <declare-styleable name="VideoThumbnailsRangeSelectorView">
@@ -264,6 +274,10 @@
         <attr name="thumbHintTextSize" format="dimension" />
         <attr name="thumbHintTextColor" format="color" />
         <attr name="thumbHintBackgroundColor" format="color" />
+    </declare-styleable>
+
+    <declare-styleable name="VideoPlayer">
+        <attr name="playerLayoutId" format="dimension" />
     </declare-styleable>
 
     <declare-styleable name="GroupMemberListView">
@@ -336,5 +350,23 @@
             <enum name="badge_64" value="4" />
             <enum name="badge_112" value="5" />
         </attr>
+    </declare-styleable>
+
+    <declare-styleable name="EmojiToggle">
+        <attr name="force_outline" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="GiftMessageView">
+        <attr name="giftMessageView__textColor" format="color" />
+        <attr name="giftMessageView__buttonTextColor" format="color" />
+        <attr name="giftMessageView__buttonBackgroundTint" format="color" />
+    </declare-styleable>
+
+    <declare-styleable name="CircularProgressMaterialButton">
+        <attr name="circularProgressMaterialButton__label" format="string" />
+    </declare-styleable>
+    <declare-styleable name="AnimatedInOutImageButton">
+        <attr name="rotationWhenVisible" format="float" />
+        <attr name="rotationWhenHidden" format="float" />
     </declare-styleable>
 </resources>

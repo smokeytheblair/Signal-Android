@@ -1,5 +1,7 @@
 package org.thoughtcrime.securesms.components.settings
 
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
@@ -18,9 +20,11 @@ import org.thoughtcrime.securesms.components.settings.models.Button
 import org.thoughtcrime.securesms.components.settings.models.Space
 import org.thoughtcrime.securesms.components.settings.models.Text
 import org.thoughtcrime.securesms.util.CommunicationActions
-import org.thoughtcrime.securesms.util.MappingAdapter
-import org.thoughtcrime.securesms.util.MappingViewHolder
 import org.thoughtcrime.securesms.util.ViewUtil
+import org.thoughtcrime.securesms.util.adapter.mapping.LayoutFactory
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingViewHolder
+import org.thoughtcrime.securesms.util.views.LearnMoreTextView
 import org.thoughtcrime.securesms.util.visible
 
 class DSLSettingsAdapter : MappingAdapter() {
@@ -28,6 +32,7 @@ class DSLSettingsAdapter : MappingAdapter() {
     registerFactory(ClickPreference::class.java, LayoutFactory(::ClickPreferenceViewHolder, R.layout.dsl_preference_item))
     registerFactory(LongClickPreference::class.java, LayoutFactory(::LongClickPreferenceViewHolder, R.layout.dsl_preference_item))
     registerFactory(TextPreference::class.java, LayoutFactory(::TextPreferenceViewHolder, R.layout.dsl_preference_item))
+    registerFactory(LearnMoreTextPreference::class.java, LayoutFactory(::LearnMoreTextPreferenceViewHolder, R.layout.dsl_learn_more_preference_item))
     registerFactory(RadioListPreference::class.java, LayoutFactory(::RadioListPreferenceViewHolder, R.layout.dsl_preference_item))
     registerFactory(MultiSelectListPreference::class.java, LayoutFactory(::MultiSelectListPreferenceViewHolder, R.layout.dsl_preference_item))
     registerFactory(ExternalLinkPreference::class.java, LayoutFactory(::ExternalLinkPreferenceViewHolder, R.layout.dsl_preference_item))
@@ -44,6 +49,7 @@ class DSLSettingsAdapter : MappingAdapter() {
 
 abstract class PreferenceViewHolder<T : PreferenceModel<T>>(itemView: View) : MappingViewHolder<T>(itemView) {
   protected val iconView: ImageView = itemView.findViewById(R.id.icon)
+  private val iconEndView: ImageView? = itemView.findViewById(R.id.icon_end)
   protected val titleView: TextView = itemView.findViewById(R.id.title)
   protected val summaryView: TextView = itemView.findViewById(R.id.summary)
 
@@ -56,6 +62,10 @@ abstract class PreferenceViewHolder<T : PreferenceModel<T>>(itemView: View) : Ma
     val icon = model.icon?.resolve(context)
     iconView.setImageDrawable(icon)
     iconView.visible = icon != null
+
+    val iconEnd = model.iconEnd?.resolve(context)
+    iconEndView?.setImageDrawable(iconEnd)
+    iconEndView?.visible = iconEnd != null
 
     val title = model.title?.resolve(context)
     if (title != null) {
@@ -85,10 +95,19 @@ abstract class PreferenceViewHolder<T : PreferenceModel<T>>(itemView: View) : Ma
 
 class TextPreferenceViewHolder(itemView: View) : PreferenceViewHolder<TextPreference>(itemView)
 
+class LearnMoreTextPreferenceViewHolder(itemView: View) : PreferenceViewHolder<LearnMoreTextPreference>(itemView) {
+  override fun bind(model: LearnMoreTextPreference) {
+    super.bind(model)
+    (titleView as LearnMoreTextView).setOnLinkClickListener { model.onClick() }
+    (summaryView as LearnMoreTextView).setOnLinkClickListener { model.onClick() }
+  }
+}
+
 class ClickPreferenceViewHolder(itemView: View) : PreferenceViewHolder<ClickPreference>(itemView) {
   override fun bind(model: ClickPreference) {
     super.bind(model)
     itemView.setOnClickListener { model.onClick() }
+    itemView.setOnLongClickListener { model.onLongClick?.invoke() ?: false }
   }
 }
 
@@ -213,7 +232,9 @@ class ExternalLinkPreferenceViewHolder(itemView: View) : PreferenceViewHolder<Ex
   override fun bind(model: ExternalLinkPreference) {
     super.bind(model)
 
-    val externalLinkIcon = requireNotNull(ContextCompat.getDrawable(context, R.drawable.ic_open_20))
+    val externalLinkIcon = requireNotNull(ContextCompat.getDrawable(context, R.drawable.symbol_open_20)).apply {
+      colorFilter = PorterDuffColorFilter(ContextCompat.getColor(context, R.color.signal_icon_tint_primary), PorterDuff.Mode.SRC_IN)
+    }
     externalLinkIcon.setBounds(0, 0, ViewUtil.dpToPx(20), ViewUtil.dpToPx(20))
 
     if (ViewUtil.isLtr(itemView)) {

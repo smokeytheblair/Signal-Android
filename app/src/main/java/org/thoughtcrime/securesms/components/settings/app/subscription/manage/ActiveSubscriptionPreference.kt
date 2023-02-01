@@ -5,7 +5,6 @@ import android.view.View
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import com.google.android.material.button.MaterialButton
 import org.signal.core.util.money.FiatMoney
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.badges.BadgeImageView
@@ -14,9 +13,10 @@ import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.payments.FiatMoneyUtil
 import org.thoughtcrime.securesms.subscription.Subscription
 import org.thoughtcrime.securesms.util.DateUtils
-import org.thoughtcrime.securesms.util.MappingAdapter
-import org.thoughtcrime.securesms.util.MappingViewHolder
 import org.thoughtcrime.securesms.util.SpanUtil
+import org.thoughtcrime.securesms.util.adapter.mapping.LayoutFactory
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
+import org.thoughtcrime.securesms.util.adapter.mapping.MappingViewHolder
 import org.thoughtcrime.securesms.util.visible
 import org.whispersystems.signalservice.api.subscriptions.ActiveSubscription
 import java.util.Locale
@@ -30,7 +30,6 @@ object ActiveSubscriptionPreference {
   class Model(
     val price: FiatMoney,
     val subscription: Subscription,
-    val onAddBoostClick: () -> Unit,
     val renewalTimestamp: Long = -1L,
     val redemptionState: ManageDonationsState.SubscriptionRedemptionState,
     val activeSubscription: ActiveSubscription.Subscription,
@@ -54,16 +53,13 @@ object ActiveSubscriptionPreference {
 
     val badge: BadgeImageView = itemView.findViewById(R.id.my_support_badge)
     val title: TextView = itemView.findViewById(R.id.my_support_title)
-    val price: TextView = itemView.findViewById(R.id.my_support_price)
     val expiry: TextView = itemView.findViewById(R.id.my_support_expiry)
-    val boost: MaterialButton = itemView.findViewById(R.id.my_support_boost)
     val progress: ProgressBar = itemView.findViewById(R.id.my_support_progress)
 
     override fun bind(model: Model) {
       badge.setBadge(model.subscription.badge)
-      title.text = model.subscription.name
 
-      price.text = context.getString(
+      title.text = context.getString(
         R.string.MySupportPreference__s_per_month,
         FiatMoneyUtil.format(
           context.resources,
@@ -71,16 +67,13 @@ object ActiveSubscriptionPreference {
           FiatMoneyUtil.formatOptions()
         )
       )
+
       expiry.movementMethod = LinkMovementMethod.getInstance()
 
       when (model.redemptionState) {
         ManageDonationsState.SubscriptionRedemptionState.NONE -> presentRenewalState(model)
         ManageDonationsState.SubscriptionRedemptionState.IN_PROGRESS -> presentInProgressState()
         ManageDonationsState.SubscriptionRedemptionState.FAILED -> presentFailureState(model)
-      }
-
-      boost.setOnClickListener {
-        model.onAddBoostClick()
       }
     }
 
@@ -142,6 +135,6 @@ object ActiveSubscriptionPreference {
   }
 
   fun register(adapter: MappingAdapter) {
-    adapter.registerFactory(Model::class.java, MappingAdapter.LayoutFactory({ ViewHolder(it) }, R.layout.my_support_preference))
+    adapter.registerFactory(Model::class.java, LayoutFactory({ ViewHolder(it) }, R.layout.my_support_preference))
   }
 }

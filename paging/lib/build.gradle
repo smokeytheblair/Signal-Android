@@ -1,6 +1,4 @@
 apply plugin: 'com.android.library'
-apply plugin: 'witness'
-apply from: 'witness-verifications.gradle'
 
 android {
     buildToolsVersion BUILD_TOOL_VERSION
@@ -9,6 +7,7 @@ android {
     defaultConfig {
         minSdkVersion MINIMUM_SDK
         targetSdkVersion TARGET_SDK
+        multiDexEnabled true
     }
 
     compileOptions {
@@ -17,13 +16,12 @@ android {
     }
 }
 
-dependencyVerification {
-    configuration = '(debug|release)RuntimeClasspath'
-}
-
 dependencies {
     implementation libs.androidx.appcompat
+    implementation libs.androidx.multidex
     implementation libs.material.material
+    implementation libs.rxjava3.rxandroid
+    implementation libs.rxjava3.rxjava
     implementation project(':core-util')
     testImplementation testLibs.junit.junit
 }

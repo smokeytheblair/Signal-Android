@@ -15,8 +15,8 @@ import androidx.lifecycle.ViewModelProvider;
 import com.annimon.stream.Stream;
 
 import org.signal.core.util.concurrent.SignalExecutors;
-import org.thoughtcrime.securesms.database.GroupDatabase;
-import org.thoughtcrime.securesms.database.GroupDatabase.GroupRecord;
+import org.thoughtcrime.securesms.database.GroupTable;
+import org.thoughtcrime.securesms.database.model.GroupRecord;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.groups.GroupChangeBusyException;
@@ -26,17 +26,22 @@ import org.thoughtcrime.securesms.groups.GroupManager;
 import org.thoughtcrime.securesms.groups.GroupsV1MigrationUtil;
 import org.thoughtcrime.securesms.groups.ui.GroupChangeFailureReason;
 import org.thoughtcrime.securesms.groups.ui.invitesandrequests.invite.GroupLinkInviteFriendsBottomSheetDialogFragment;
+import org.thoughtcrime.securesms.groups.v2.GroupBlockJoinRequestResult;
+import org.thoughtcrime.securesms.groups.v2.GroupManagementRepository;
 import org.thoughtcrime.securesms.profiles.spoofing.ReviewRecipient;
 import org.thoughtcrime.securesms.profiles.spoofing.ReviewUtil;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.util.AsynchronousCallback;
-import org.thoughtcrime.securesms.util.concurrent.SimpleTask;
+import org.signal.core.util.concurrent.SimpleTask;
 import org.thoughtcrime.securesms.util.livedata.LiveDataUtil;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Single;
 
 final class ConversationGroupViewModel extends ViewModel {
 
@@ -46,11 +51,13 @@ final class ConversationGroupViewModel extends ViewModel {
   private final LiveData<Integer>                   actionableRequestingMembers;
   private final LiveData<ReviewState>               reviewState;
   private final LiveData<List<RecipientId>>         gv1MigrationSuggestions;
+  private final GroupManagementRepository           groupManagementRepository;
 
   private boolean firstTimeInviteFriendsTriggered;
 
   private ConversationGroupViewModel() {
-    this.liveRecipient = new MutableLiveData<>();
+    this.liveRecipient             = new MutableLiveData<>();
+    this.groupManagementRepository = new GroupManagementRepository();
 
     LiveData<GroupRecord>     groupRecord = LiveDataUtil.mapAsync(liveRecipient, ConversationGroupViewModel::getGroupRecordForRecipient);
     LiveData<List<Recipient>> duplicates  = LiveDataUtil.mapAsync(groupRecord, record -> {
@@ -78,10 +85,10 @@ final class ConversationGroupViewModel extends ViewModel {
     liveRecipient.setValue(recipient);
   }
 
-  void onSuggestedMembersBannerDismissed(@NonNull GroupId groupId, @NonNull List<RecipientId> suggestions) {
+  void onSuggestedMembersBannerDismissed(@NonNull GroupId groupId) {
     SignalExecutors.BOUNDED.execute(() -> {
       if (groupId.isV2()) {
-        SignalDatabase.groups().removeUnmigratedV1Members(groupId.requireV2(), suggestions);
+        SignalDatabase.groups().removeUnmigratedV1Members(groupId.requireV2());
         liveRecipient.postValue(liveRecipient.getValue());
       }
     });
@@ -112,14 +119,14 @@ final class ConversationGroupViewModel extends ViewModel {
 
   boolean isNonAdminInAnnouncementGroup() {
     ConversationMemberLevel level = selfMembershipLevel.getValue();
-    return level != null && level.getMemberLevel() != GroupDatabase.MemberLevel.ADMINISTRATOR && level.isAnnouncementGroup();
+    return level != null && level.getMemberLevel() != GroupTable.MemberLevel.ADMINISTRATOR && level.isAnnouncementGroup();
   }
 
   private static @Nullable GroupRecord getGroupRecordForRecipient(@Nullable Recipient recipient) {
     if (recipient != null && recipient.isGroup()) {
-      Application context         = ApplicationDependencies.getApplication();
-      GroupDatabase groupDatabase = SignalDatabase.groups();
-      return groupDatabase.getGroup(recipient.getId()).orNull();
+      Application context       = ApplicationDependencies.getApplication();
+      GroupTable  groupDatabase = SignalDatabase.groups();
+      return groupDatabase.getGroup(recipient.getId()).orElse(null);
     } else {
       return null;
     }
@@ -128,7 +135,7 @@ final class ConversationGroupViewModel extends ViewModel {
   private static int mapToActionableRequestingMemberCount(@Nullable GroupRecord record) {
     if (record != null                          &&
         record.isV2Group()                      &&
-        record.memberLevel(Recipient.self()) == GroupDatabase.MemberLevel.ADMINISTRATOR)
+        record.memberLevel(Recipient.self()) == GroupTable.MemberLevel.ADMINISTRATOR)
     {
       return record.requireV2GroupProperties()
                    .getDecryptedGroup()
@@ -154,15 +161,10 @@ final class ConversationGroupViewModel extends ViewModel {
 
   @WorkerThread
   private static List<RecipientId> mapToGroupV1MigrationSuggestions(@Nullable GroupRecord record) {
-    if (record == null) {
-      return Collections.emptyList();
-    }
-
-    if (!record.isV2Group()) {
-      return Collections.emptyList();
-    }
-
-    if (!record.isActive() || record.isPendingMember(Recipient.self())) {
+    if (record == null ||
+        !record.isV2Group() ||
+        !record.isActive() ||
+        record.isPendingMember(Recipient.self())) {
       return Collections.emptyList();
     }
 
@@ -213,6 +215,11 @@ final class ConversationGroupViewModel extends ViewModel {
     GroupLinkInviteFriendsBottomSheetDialogFragment.show(supportFragmentManager, groupId);
   }
 
+  public Single<GroupBlockJoinRequestResult> blockJoinRequests(@NonNull Recipient groupRecipient, @NonNull Recipient recipient) {
+    return groupManagementRepository.blockJoinRequests(groupRecipient.requireGroupId().requireV2(), recipient)
+        .observeOn(AndroidSchedulers.mainThread());
+  }
+
   static final class ReviewState {
 
     private static final ReviewState EMPTY = new ReviewState(null, Recipient.UNKNOWN, 0);
@@ -259,15 +266,15 @@ final class ConversationGroupViewModel extends ViewModel {
   }
 
   static final class ConversationMemberLevel {
-    private final GroupDatabase.MemberLevel memberLevel;
-    private final boolean                   isAnnouncementGroup;
+    private final GroupTable.MemberLevel memberLevel;
+    private final boolean                isAnnouncementGroup;
 
-    private ConversationMemberLevel(GroupDatabase.MemberLevel memberLevel, boolean isAnnouncementGroup) {
+    private ConversationMemberLevel(GroupTable.MemberLevel memberLevel, boolean isAnnouncementGroup) {
       this.memberLevel         = memberLevel;
       this.isAnnouncementGroup = isAnnouncementGroup;
     }
 
-    public @NonNull GroupDatabase.MemberLevel getMemberLevel() {
+    public @NonNull GroupTable.MemberLevel getMemberLevel() {
       return memberLevel;
     }
 

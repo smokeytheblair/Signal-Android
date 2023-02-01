@@ -5,17 +5,16 @@ import android.annotation.SuppressLint;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.database.Cursor;
 import android.net.Uri;
 import android.util.Pair;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
 
 import net.zetetic.database.sqlcipher.SQLiteDatabase;
 
 import org.greenrobot.eventbus.EventBus;
-import org.signal.core.util.Conversions;
-import org.signal.core.util.StreamUtil;
+import org.signal.core.util.SqlUtil;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.backup.BackupProtos.Attachment;
 import org.thoughtcrime.securesms.backup.BackupProtos.BackupFrame;
@@ -25,19 +24,17 @@ import org.thoughtcrime.securesms.backup.BackupProtos.SqlStatement;
 import org.thoughtcrime.securesms.backup.BackupProtos.Sticker;
 import org.thoughtcrime.securesms.crypto.AttachmentSecret;
 import org.thoughtcrime.securesms.crypto.ModernEncryptingPartOutputStream;
-import org.thoughtcrime.securesms.database.AttachmentDatabase;
-import org.thoughtcrime.securesms.database.EmojiSearchDatabase;
+import org.thoughtcrime.securesms.database.AttachmentTable;
+import org.thoughtcrime.securesms.database.EmojiSearchTable;
 import org.thoughtcrime.securesms.database.KeyValueDatabase;
-import org.thoughtcrime.securesms.database.SearchDatabase;
-import org.thoughtcrime.securesms.database.StickerDatabase;
+import org.thoughtcrime.securesms.database.SearchTable;
+import org.thoughtcrime.securesms.database.StickerTable;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.keyvalue.KeyValueDataSet;
+import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.util.BackupUtil;
-import org.thoughtcrime.securesms.util.SqlUtil;
-import org.whispersystems.libsignal.kdf.HKDFv3;
-import org.whispersystems.libsignal.util.ByteUtil;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -45,23 +42,18 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.Mac;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
+import java.util.Queue;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class FullBackupImporter extends FullBackupBase {
 
@@ -84,18 +76,18 @@ public class FullBackupImporter extends FullBackupBase {
     int count = 0;
 
     SQLiteDatabase keyValueDatabase = KeyValueDatabase.getInstance(ApplicationDependencies.getApplication()).getSqlCipherDatabase();
+
+    db.beginTransaction();
+    keyValueDatabase.beginTransaction();
     try {
       BackupRecordInputStream inputStream = new BackupRecordInputStream(is, passphrase);
-
-      db.beginTransaction();
-      keyValueDatabase.beginTransaction();
 
       dropAllTables(db);
 
       BackupFrame frame;
 
       while (!(frame = inputStream.readFrame()).getEnd()) {
-        if (count % 100 == 0) EventBus.getDefault().post(new BackupEvent(BackupEvent.Type.PROGRESS, count));
+        if (count % 100 == 0) EventBus.getDefault().post(new BackupEvent(BackupEvent.Type.PROGRESS, count, 0));
         count++;
 
         if      (frame.hasVersion())    processVersion(db, frame.getVersion());
@@ -115,7 +107,7 @@ public class FullBackupImporter extends FullBackupBase {
       keyValueDatabase.endTransaction();
     }
 
-    EventBus.getDefault().post(new BackupEvent(BackupEvent.Type.FINISHED, count));
+    EventBus.getDefault().post(new BackupEvent(BackupEvent.Type.FINISHED, count, 0));
   }
 
   private static @NonNull InputStream getInputStream(@NonNull Context context, @NonNull Uri uri) throws IOException{
@@ -135,12 +127,11 @@ public class FullBackupImporter extends FullBackupBase {
   }
 
   private static void processStatement(@NonNull SQLiteDatabase db, SqlStatement statement) {
-    boolean isForSmsFtsSecretTable = statement.getStatement().contains(SearchDatabase.SMS_FTS_TABLE_NAME + "_");
-    boolean isForMmsFtsSecretTable = statement.getStatement().contains(SearchDatabase.MMS_FTS_TABLE_NAME + "_");
-    boolean isForEmojiSecretTable  = statement.getStatement().contains(EmojiSearchDatabase.TABLE_NAME + "_");
+    boolean isForMmsFtsSecretTable = statement.getStatement().contains(SearchTable.FTS_TABLE_NAME + "_");
+    boolean isForEmojiSecretTable  = statement.getStatement().contains(EmojiSearchTable.TABLE_NAME + "_");
     boolean isForSqliteSecretTable = statement.getStatement().toLowerCase().startsWith("create table sqlite_");
 
-    if (isForSmsFtsSecretTable || isForMmsFtsSecretTable || isForEmojiSecretTable || isForSqliteSecretTable) {
+    if (isForMmsFtsSecretTable || isForEmojiSecretTable || isForSqliteSecretTable) {
       Log.i(TAG, "Ignoring import for statement: " + statement.getStatement());
       return;
     }
@@ -162,7 +153,7 @@ public class FullBackupImporter extends FullBackupBase {
   private static void processAttachment(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret, @NonNull SQLiteDatabase db, @NonNull Attachment attachment, BackupRecordInputStream inputStream)
       throws IOException
   {
-    File                       dataFile = AttachmentDatabase.newFile(context);
+    File                       dataFile = AttachmentTable.newFile(context);
     Pair<byte[], OutputStream> output   = ModernEncryptingPartOutputStream.createFor(attachmentSecret, dataFile, false);
 
     ContentValues contentValues = new ContentValues();
@@ -170,24 +161,24 @@ public class FullBackupImporter extends FullBackupBase {
     try {
       inputStream.readAttachmentTo(output.second, attachment.getLength());
 
-      contentValues.put(AttachmentDatabase.DATA, dataFile.getAbsolutePath());
-      contentValues.put(AttachmentDatabase.DATA_RANDOM, output.first);
-    } catch (BadMacException e) {
+      contentValues.put(AttachmentTable.DATA, dataFile.getAbsolutePath());
+      contentValues.put(AttachmentTable.DATA_RANDOM, output.first);
+    } catch (BackupRecordInputStream.BadMacException e) {
       Log.w(TAG, "Bad MAC for attachment " + attachment.getAttachmentId() + "! Can't restore it.", e);
       dataFile.delete();
-      contentValues.put(AttachmentDatabase.DATA, (String) null);
-      contentValues.put(AttachmentDatabase.DATA_RANDOM, (String) null);
+      contentValues.put(AttachmentTable.DATA, (String) null);
+      contentValues.put(AttachmentTable.DATA_RANDOM, (String) null);
     }
 
-    db.update(AttachmentDatabase.TABLE_NAME, contentValues,
-              AttachmentDatabase.ROW_ID + " = ? AND " + AttachmentDatabase.UNIQUE_ID + " = ?",
+    db.update(AttachmentTable.TABLE_NAME, contentValues,
+              AttachmentTable.ROW_ID + " = ? AND " + AttachmentTable.UNIQUE_ID + " = ?",
               new String[] {String.valueOf(attachment.getRowId()), String.valueOf(attachment.getAttachmentId())});
   }
 
   private static void processSticker(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret, @NonNull SQLiteDatabase db, @NonNull Sticker sticker, BackupRecordInputStream inputStream)
       throws IOException
   {
-    File stickerDirectory = context.getDir(StickerDatabase.DIRECTORY, Context.MODE_PRIVATE);
+    File stickerDirectory = context.getDir(StickerTable.DIRECTORY, Context.MODE_PRIVATE);
     File dataFile         = File.createTempFile("sticker", ".mms", stickerDirectory);
 
     Pair<byte[], OutputStream> output = ModernEncryptingPartOutputStream.createFor(attachmentSecret, dataFile, false);
@@ -195,19 +186,19 @@ public class FullBackupImporter extends FullBackupBase {
     inputStream.readAttachmentTo(output.second, sticker.getLength());
 
     ContentValues contentValues = new ContentValues();
-    contentValues.put(StickerDatabase.FILE_PATH, dataFile.getAbsolutePath());
-    contentValues.put(StickerDatabase.FILE_LENGTH, sticker.getLength());
-    contentValues.put(StickerDatabase.FILE_RANDOM, output.first);
+    contentValues.put(StickerTable.FILE_PATH, dataFile.getAbsolutePath());
+    contentValues.put(StickerTable.FILE_LENGTH, sticker.getLength());
+    contentValues.put(StickerTable.FILE_RANDOM, output.first);
 
-    db.update(StickerDatabase.TABLE_NAME, contentValues,
-              StickerDatabase._ID + " = ?",
+    db.update(StickerTable.TABLE_NAME, contentValues,
+              StickerTable._ID + " = ?",
               new String[] {String.valueOf(sticker.getRowId())});
   }
 
   private static void processAvatar(@NonNull Context context, @NonNull SQLiteDatabase db, @NonNull BackupProtos.Avatar avatar, @NonNull BackupRecordInputStream inputStream) throws IOException {
     if (avatar.hasRecipientId()) {
       RecipientId recipientId = RecipientId.from(avatar.getRecipientId());
-      inputStream.readAttachmentTo(AvatarHelper.getOutputStream(context, recipientId), avatar.getLength());
+      inputStream.readAttachmentTo(AvatarHelper.getOutputStream(context, recipientId, false), avatar.getLength());
     } else {
       if (avatar.hasName() && SqlUtil.tableExists(db, "recipient_preferences")) {
         Log.w(TAG, "Avatar is missing a recipientId. Clearing signal_profile_avatar (legacy) so it can be fetched later.");
@@ -250,6 +241,17 @@ public class FullBackupImporter extends FullBackupBase {
   private static void processPreference(@NonNull Context context, SharedPreference preference) {
     SharedPreferences preferences = context.getSharedPreferences(preference.getFile(), 0);
 
+    // Identity keys were moved from shared prefs into SignalStore. Need to handle importing backups made before the migration.
+    if ("SecureSMS-Preferences".equals(preference.getFile())) {
+      if ("pref_identity_public_v3".equals(preference.getKey()) && preference.hasValue()) {
+        SignalStore.account().restoreLegacyIdentityPublicKeyFromBackup(preference.getValue());
+      } else if ("pref_identity_private_v3".equals(preference.getKey()) && preference.hasValue()) {
+        SignalStore.account().restoreLegacyIdentityPrivateKeyFromBackup(preference.getValue());
+      }
+
+      return;
+    }
+
     if (preference.hasValue()) {
       preferences.edit().putString(preference.getKey(), preference.getValue()).commit();
     } else if (preference.hasBooleanValue()) {
@@ -260,155 +262,70 @@ public class FullBackupImporter extends FullBackupBase {
   }
 
   private static void dropAllTables(@NonNull SQLiteDatabase db) {
-    try (Cursor cursor = db.rawQuery("SELECT name, type FROM sqlite_master", null)) {
-      while (cursor != null && cursor.moveToNext()) {
-        String name = cursor.getString(0);
-        String type = cursor.getString(1);
-
-        if ("table".equals(type) && !name.startsWith("sqlite_")) {
-          db.execSQL("DROP TABLE IF EXISTS " + name);
-        }
-      }
+    for (String trigger : SqlUtil.getAllTriggers(db)) {
+      Log.i(TAG, "Dropping trigger: " + trigger);
+      db.execSQL("DROP TRIGGER IF EXISTS " + trigger);
+    }
+    for (String table : getTablesToDropInOrder(db)) {
+      Log.i(TAG, "Dropping table: " + table);
+      db.execSQL("DROP TABLE IF EXISTS " + table);
     }
   }
 
-  private static class BackupRecordInputStream extends BackupStream {
+  /**
+   * Returns the list of tables we should drop, in the order they should be dropped in.
+   * The order is chosen to ensure we won't violate any foreign key constraints when we import them.
+   */
+  private static List<String> getTablesToDropInOrder(@NonNull SQLiteDatabase input) {
+    List<String> tables = SqlUtil.getAllTables(input)
+                                 .stream()
+                                 .filter(table -> !table.startsWith("sqlite_"))
+                                 .sorted()
+                                 .collect(Collectors.toList());
 
-    private final InputStream in;
-    private final Cipher      cipher;
-    private final Mac         mac;
 
-    private final byte[] cipherKey;
-    private final byte[] macKey;
-
-    private byte[] iv;
-    private int    counter;
-
-    private BackupRecordInputStream(@NonNull InputStream in, @NonNull String passphrase) throws IOException {
-      try {
-        this.in = in;
-
-        byte[] headerLengthBytes = new byte[4];
-        StreamUtil.readFully(in, headerLengthBytes);
-
-        int headerLength = Conversions.byteArrayToInt(headerLengthBytes);
-        byte[] headerFrame = new byte[headerLength];
-        StreamUtil.readFully(in, headerFrame);
-
-        BackupFrame frame = BackupFrame.parseFrom(headerFrame);
-
-        if (!frame.hasHeader()) {
-          throw new IOException("Backup stream does not start with header!");
-        }
-
-        BackupProtos.Header header = frame.getHeader();
-
-        this.iv = header.getIv().toByteArray();
-
-        if (iv.length != 16) {
-          throw new IOException("Invalid IV length!");
-        }
-
-        byte[]   key     = getBackupKey(passphrase, header.hasSalt() ? header.getSalt().toByteArray() : null);
-        byte[]   derived = new HKDFv3().deriveSecrets(key, "Backup Export".getBytes(), 64);
-        byte[][] split   = ByteUtil.split(derived, 32, 32);
-
-        this.cipherKey = split[0];
-        this.macKey    = split[1];
-
-        this.cipher = Cipher.getInstance("AES/CTR/NoPadding");
-        this.mac    = Mac.getInstance("HmacSHA256");
-        this.mac.init(new SecretKeySpec(macKey, "HmacSHA256"));
-
-        this.counter = Conversions.byteArrayToInt(iv);
-      } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException e) {
-        throw new AssertionError(e);
-      }
+    Map<String, Set<String>> dependsOn = new LinkedHashMap<>();
+    for (String table : tables) {
+      dependsOn.put(table, SqlUtil.getForeignKeyDependencies(input, table));
     }
 
-    BackupFrame readFrame() throws IOException {
-      return readFrame(in);
+    for (String table : tables) {
+      Set<String> dependsOnTable = dependsOn.keySet().stream().filter(t -> dependsOn.get(t).contains(table)).collect(Collectors.toSet());
+      Log.i(TAG, "Tables that depend on " + table + ": " + dependsOnTable);
     }
 
-    void readAttachmentTo(OutputStream out, int length) throws IOException {
-      try {
-        Conversions.intToByteArray(iv, 0, counter++);
-        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(cipherKey, "AES"), new IvParameterSpec(iv));
-        mac.update(iv);
-
-        byte[] buffer = new byte[8192];
-
-        while (length > 0) {
-          int read = in.read(buffer, 0, Math.min(buffer.length, length));
-          if (read == -1) throw new IOException("File ended early!");
-
-          mac.update(buffer, 0, read);
-
-          byte[] plaintext = cipher.update(buffer, 0, read);
-
-          if (plaintext != null) {
-            out.write(plaintext, 0, plaintext.length);
-          }
-
-          length -= read;
-        }
-
-        byte[] plaintext = cipher.doFinal();
-
-        if (plaintext != null) {
-          out.write(plaintext, 0, plaintext.length);
-        }
-
-        out.close();
-
-        byte[] ourMac   = ByteUtil.trim(mac.doFinal(), 10);
-        byte[] theirMac = new byte[10];
-
-        try {
-          StreamUtil.readFully(in, theirMac);
-        } catch (IOException e) {
-          throw new IOException(e);
-        }
-
-        if (!MessageDigest.isEqual(ourMac, theirMac)) {
-          throw new BadMacException();
-        }
-      } catch (InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
-        throw new AssertionError(e);
-      }
-    }
-
-    private BackupFrame readFrame(InputStream in) throws IOException {
-      try {
-        byte[] length = new byte[4];
-        StreamUtil.readFully(in, length);
-
-        byte[] frame = new byte[Conversions.byteArrayToInt(length)];
-        StreamUtil.readFully(in, frame);
-
-        byte[] theirMac = new byte[10];
-        System.arraycopy(frame, frame.length - 10, theirMac, 0, theirMac.length);
-
-        mac.update(frame, 0, frame.length - 10);
-        byte[] ourMac = ByteUtil.trim(mac.doFinal(), 10);
-
-        if (!MessageDigest.isEqual(ourMac, theirMac)) {
-          throw new IOException("Bad MAC");
-        }
-
-        Conversions.intToByteArray(iv, 0, counter++);
-        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(cipherKey, "AES"), new IvParameterSpec(iv));
-
-        byte[] plaintext = cipher.doFinal(frame, 0, frame.length - 10);
-
-        return BackupFrame.parseFrom(plaintext);
-      } catch (InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
-        throw new AssertionError(e);
-      }
-    }
+    return computeTableDropOrder(dependsOn);
   }
 
-  private static class BadMacException extends IOException {}
+  @VisibleForTesting
+  static List<String> computeTableDropOrder(@NonNull Map<String, Set<String>> dependsOn) {
+    List<String> rootNodes = dependsOn.keySet()
+                                      .stream()
+                                      .filter(table -> {
+                                        boolean nothingDependsOnIt = dependsOn.values().stream().noneMatch(it -> it.contains(table));
+                                        return nothingDependsOnIt;
+                                      })
+                                      .sorted()
+                                      .collect(Collectors.toList());
+
+    LinkedHashSet<String> dropOrder = new LinkedHashSet<>();
+
+    Queue<String> processOrder = new LinkedList<>(rootNodes);
+
+    while (!processOrder.isEmpty()) {
+      String head = processOrder.remove();
+
+      dropOrder.remove(head);
+      dropOrder.add(head);
+
+      Set<String> dependencies = dependsOn.get(head);
+      if (dependencies != null) {
+        processOrder.addAll(dependencies);
+      }
+    }
+
+    return new ArrayList<>(dropOrder);
+  }
 
   public static class DatabaseDowngradeException extends IOException {
     DatabaseDowngradeException(int currentVersion, int backupVersion) {

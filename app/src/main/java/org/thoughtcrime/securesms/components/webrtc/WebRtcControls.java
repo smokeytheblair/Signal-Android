@@ -8,7 +8,6 @@ import androidx.annotation.Px;
 import androidx.annotation.StringRes;
 
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.util.FeatureFlags;
 import org.thoughtcrime.securesms.webrtc.audio.SignalAudioManager;
 
 import java.util.Set;
@@ -142,7 +141,7 @@ public final class WebRtcControls {
   }
 
   boolean displayEndCall() {
-    return isAtLeastOutgoing();
+    return isAtLeastOutgoing() || callState == CallState.RECONNECTING;
   }
 
   boolean displayMuteAudio() {
@@ -165,7 +164,7 @@ public final class WebRtcControls {
     return isOngoing();
   }
 
-  boolean displayAnswerWithAudio() {
+  boolean displayAnswerWithoutVideo() {
     return isIncoming() && isRemoteVideoEnabled;
   }
 
@@ -182,7 +181,7 @@ public final class WebRtcControls {
   }
 
   boolean isFadeOutEnabled() {
-    return isAtLeastOutgoing() && isRemoteVideoEnabled;
+    return isAtLeastOutgoing() && isRemoteVideoEnabled && callState != CallState.RECONNECTING;
   }
 
   boolean displaySmallOngoingCallButtons() {
@@ -217,7 +216,7 @@ public final class WebRtcControls {
   }
 
   boolean displayRingToggle() {
-    return FeatureFlags.groupCallRinging() && isPreJoin() && isGroupCall() && !hasAtLeastOneRemote;
+    return isPreJoin() && isGroupCall() && !hasAtLeastOneRemote;
   }
 
   private boolean isError() {
@@ -248,6 +247,7 @@ public final class WebRtcControls {
     NONE,
     ERROR,
     PRE_JOIN,
+    RECONNECTING,
     INCOMING,
     OUTGOING,
     ONGOING,
