@@ -11,6 +11,8 @@ import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.viewModels
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import org.signal.core.util.concurrent.LifecycleDisposable
+import org.signal.core.util.getParcelableCompat
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.FixedRoundedCornerBottomSheetDialogFragment
 import org.thoughtcrime.securesms.recipients.RecipientId
@@ -18,7 +20,6 @@ import org.thoughtcrime.securesms.stories.viewer.page.StoryViewerPageViewModel
 import org.thoughtcrime.securesms.stories.viewer.reply.BottomSheetBehaviorDelegate
 import org.thoughtcrime.securesms.stories.viewer.reply.reaction.OnReactionSentView
 import org.thoughtcrime.securesms.util.BottomSheetUtil.requireCoordinatorLayout
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -34,7 +35,7 @@ class StoryGroupReplyBottomSheetDialogFragment : FixedRoundedCornerBottomSheetDi
     get() = requireArguments().getLong(ARG_STORY_ID)
 
   private val groupRecipientId: RecipientId
-    get() = requireArguments().getParcelable(ARG_GROUP_RECIPIENT_ID)!!
+    get() = requireArguments().getParcelableCompat(ARG_GROUP_RECIPIENT_ID, RecipientId::class.java)!!
 
   private val isFromNotification: Boolean
     get() = requireArguments().getBoolean(ARG_IS_FROM_NOTIFICATION, false)

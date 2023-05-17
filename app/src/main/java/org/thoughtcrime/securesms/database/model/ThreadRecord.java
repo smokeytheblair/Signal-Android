@@ -185,6 +185,10 @@ public final class ThreadRecord {
     return StatusUtil.isDelivered(deliveryStatus, deliveryReceiptCount);
   }
 
+  public boolean isScheduledMessage() {
+    return extra != null && extra.isScheduled();
+  }
+
   public @Nullable RecipientId getGroupAddedBy() {
     if (extra != null && extra.getGroupAddedBy() != null) return RecipientId.from(extra.getGroupAddedBy());
     else                                                  return null;
@@ -215,6 +219,11 @@ public final class ThreadRecord {
 
   public boolean isMessageRequestAccepted() {
     if (extra != null) return extra.isMessageRequestAccepted();
+    else               return true;
+  }
+
+  public boolean isRecipientHidden() {
+    if (extra != null) return extra.isRecipientHidden();
     else               return true;
   }
 

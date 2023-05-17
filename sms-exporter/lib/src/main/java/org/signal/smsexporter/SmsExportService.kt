@@ -1,5 +1,6 @@
 package org.signal.smsexporter
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.Service
 import android.content.Intent
@@ -14,6 +15,7 @@ import org.signal.smsexporter.internal.mms.ExportMmsPartsUseCase
 import org.signal.smsexporter.internal.mms.ExportMmsRecipientsUseCase
 import org.signal.smsexporter.internal.mms.GetOrCreateMmsThreadIdsUseCase
 import org.signal.smsexporter.internal.sms.ExportSmsMessagesUseCase
+import java.io.EOFException
 import java.io.FileNotFoundException
 import java.io.InputStream
 import java.util.concurrent.Executor
@@ -53,6 +55,7 @@ abstract class SmsExportService : Service() {
     return START_NOT_STICKY
   }
 
+  @SuppressLint("MissingPermission")
   private fun startExport(clearExportState: Boolean) {
     if (isStarted) {
       Log.d(TAG, "Already running exporter.")
@@ -80,6 +83,10 @@ abstract class SmsExportService : Service() {
           val successful = when (message) {
             is ExportableMessage.Sms<*> -> exportSms(exportState, message)
             is ExportableMessage.Mms<*> -> exportMms(exportState, message)
+            is ExportableMessage.Skip<*> -> {
+              onMessageExportSucceeded(message)
+              true
+            }
           }
 
           if (!successful) {
@@ -228,9 +235,9 @@ abstract class SmsExportService : Service() {
       onMessageExportSucceeded(sms)
       true
     }, onFailure = {
-      onMessageExportFailed(sms)
-      false
-    })
+        onMessageExportFailed(sms)
+        false
+      })
   }
 
   private fun exportMms(smsExportState: SmsExportState, mms: ExportableMessage.Mms<*>): Boolean {
@@ -342,8 +349,14 @@ abstract class SmsExportService : Service() {
       onAttachmentPartExportSucceeded(output.message, output.part)
       Try.success(Unit)
     } catch (e: Exception) {
-      Log.d(TAG, "Failed to write attachment to disk.", e)
-      Try.failure(e)
+      if (e is EOFException) {
+        Log.d(TAG, "Unrecoverable failure to write attachment to disk, marking as successful and moving on", e)
+        onAttachmentPartExportSucceeded(output.message, output.part)
+        Try.success(Unit)
+      } else {
+        Log.d(TAG, "Failed to write attachment to disk.", e)
+        Try.failure(e)
+      }
     }
   }
 

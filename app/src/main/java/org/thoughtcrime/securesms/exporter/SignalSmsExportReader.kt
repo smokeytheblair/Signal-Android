@@ -1,5 +1,6 @@
 package org.thoughtcrime.securesms.exporter
 
+import org.json.JSONException
 import org.signal.core.util.logging.Log
 import org.signal.smsexporter.ExportableMessage
 import org.signal.smsexporter.SmsExportState
@@ -37,7 +38,7 @@ class SignalSmsExportReader(
   }
 
   fun getCount(): Int {
-    return messageTable.unexportedInsecureMessagesCount
+    return messageTable.getUnexportedInsecureMessagesCount()
   }
 
   override fun close() {
@@ -50,7 +51,7 @@ class SignalSmsExportReader(
       messageReader = null
 
       val refreshedMmsReader = MessageTable.mmsReaderFor(messageTable.getUnexportedInsecureMessages(CURSOR_LIMIT))
-      if (refreshedMmsReader.count > 0) {
+      if (refreshedMmsReader.getCount() > 0) {
         messageReader = refreshedMmsReader
         return
       } else {
@@ -87,11 +88,16 @@ class SignalSmsExportReader(
       try {
         return if (messageIterator?.hasNext() == true) {
           record = messageIterator!!.next()
-          readExportableMmsMessageFromRecord(record, messageReader!!.messageExportStateForCurrentRecord)
+          readExportableMmsMessageFromRecord(record, messageReader!!.getMessageExportStateForCurrentRecord())
         } else {
           throw NoSuchElementException()
         }
       } catch (e: Throwable) {
+        if (e.cause is JSONException) {
+          Log.w(TAG, "Error processing attachment json, skipping message.", e)
+          return ExportableMessage.Skip(messageReader!!.getCurrentId())
+        }
+
         Log.w(TAG, "Error processing message: isMms: ${record?.isMms} type: ${record?.type}")
         throw e
       }
@@ -109,7 +115,7 @@ class SignalSmsExportReader(
       } else if (threadRecipient != null) {
         setOf(threadRecipient.smsExportAddress())
       } else {
-        setOf(record.individualRecipient.smsExportAddress())
+        setOf(record.toRecipient.smsExportAddress())
       }
 
       val parts: MutableList<ExportableMessage.Mms.Part> = mutableListOf()
@@ -132,7 +138,7 @@ class SignalSmsExportReader(
           }
       }
 
-      val sender: String = if (record.isOutgoing) Recipient.self().smsExportAddress() else record.individualRecipient.smsExportAddress()
+      val sender: String = if (record.isOutgoing) Recipient.self().smsExportAddress() else record.fromRecipient.smsExportAddress()
 
       return ExportableMessage.Mms(
         id = MessageId(record.id),

@@ -11,6 +11,26 @@
         android:label="app_settings_fragment"
         tools:layout="@layout/dsl_settings_fragment">
         <action
+            android:id="@+id/action_appSettingsFragment_to_usernameLinkSettingsFragment"
+            app:destination="@id/usernameLinkSettingsFragment"
+            app:enterAnim="@anim/fragment_open_enter"
+            app:exitAnim="@anim/fragment_open_exit"
+            app:popEnterAnim="@anim/fragment_close_enter"
+            app:popExitAnim="@anim/fragment_close_exit" />
+        <action
+            android:id="@+id/action_appSettingsFragment_to_usernameEducationFragment"
+            app:destination="@id/manageProfileActivity"
+            app:enterAnim="@anim/fragment_open_enter"
+            app:exitAnim="@anim/fragment_open_exit"
+            app:popEnterAnim="@anim/fragment_close_enter"
+            app:popExitAnim="@anim/fragment_close_exit">
+            <argument
+                android:name="start_at_username"
+                app:argType="boolean"
+                android:defaultValue="true"
+            />
+        </action>
+        <action
             android:id="@+id/action_appSettingsFragment_to_accountSettingsFragment"
             app:destination="@id/accountSettingsFragment"
             app:enterAnim="@anim/fragment_open_enter"
@@ -155,6 +175,13 @@
             app:exitAnim="@anim/fragment_open_exit"
             app:popEnterAnim="@anim/fragment_close_enter"
             app:popExitAnim="@anim/fragment_close_exit" />
+        <action
+            android:id="@+id/action_accountSettingsFragment_to_exportAccountFragment"
+            app:destination="@id/exportAccountDataFragment"
+            app:enterAnim="@anim/fragment_open_enter"
+            app:exitAnim="@anim/fragment_open_exit"
+            app:popEnterAnim="@anim/fragment_close_enter"
+            app:popExitAnim="@anim/fragment_close_exit" />
     </fragment>
 
     <include app:graph="@navigation/app_settings_change_number" />
@@ -169,6 +196,11 @@
         android:name="org.thoughtcrime.securesms.components.settings.app.wrapped.WrappedDeleteAccountFragment"
         android:label="delete_account_fragment"
         tools:layout="@layout/delete_account_fragment" />
+
+    <fragment
+        android:id="@+id/exportAccountDataFragment"
+        android:name="org.thoughtcrime.securesms.components.settings.app.account.export.ExportAccountDataFragment"
+        android:label="export_account_data_fragment" />
 
     <activity
         android:id="@+id/oldDeviceTransferActivity"
@@ -486,6 +518,16 @@
         app:popUpTo="@id/app_settings"
         app:popUpToInclusive="true" />
 
+    <action
+        android:id="@+id/action_direct_to_devices"
+        app:destination="@id/deviceActivity"
+        app:enterAnim="@anim/fragment_open_enter"
+        app:exitAnim="@anim/fragment_open_exit"
+        app:popEnterAnim="@anim/fragment_close_enter"
+        app:popExitAnim="@anim/fragment_close_exit"
+        app:popUpTo="@id/app_settings"
+        app:popUpToInclusive="true" />
+
     <!-- endregion -->
 
     <!-- Internal Settings -->
@@ -758,6 +800,23 @@
             app:popUpToInclusive="true" />
 
     </fragment>
+
+    <fragment
+        android:id="@+id/usernameLinkSettingsFragment"
+        android:name="org.thoughtcrime.securesms.components.settings.app.usernamelinks.main.UsernameLinkSettingsFragment" >
+
+        <action
+            android:id="@+id/action_usernameLinkSettingsFragment_to_usernameLinkQrColorPickerFragment"
+            app:destination="@id/usernameLinkQrColorPickerFragment"
+            app:enterAnim="@anim/fragment_open_enter"
+            app:exitAnim="@anim/fragment_open_exit"
+            app:popEnterAnim="@anim/fragment_close_enter"
+            app:popExitAnim="@anim/fragment_close_exit" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/usernameLinkQrColorPickerFragment"
+        android:name="org.thoughtcrime.securesms.components.settings.app.usernamelinks.colorpicker.UsernameLinkQrColorPickerFragment" />
 
     <include app:graph="@navigation/story_privacy_settings" />
 

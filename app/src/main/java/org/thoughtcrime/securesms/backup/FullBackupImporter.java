@@ -16,12 +16,14 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase;
 import org.greenrobot.eventbus.EventBus;
 import org.signal.core.util.SqlUtil;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.backup.BackupProtos.Attachment;
-import org.thoughtcrime.securesms.backup.BackupProtos.BackupFrame;
-import org.thoughtcrime.securesms.backup.BackupProtos.DatabaseVersion;
-import org.thoughtcrime.securesms.backup.BackupProtos.SharedPreference;
-import org.thoughtcrime.securesms.backup.BackupProtos.SqlStatement;
-import org.thoughtcrime.securesms.backup.BackupProtos.Sticker;
+import org.thoughtcrime.securesms.backup.proto.Attachment;
+import org.thoughtcrime.securesms.backup.proto.Avatar;
+import org.thoughtcrime.securesms.backup.proto.BackupFrame;
+import org.thoughtcrime.securesms.backup.proto.DatabaseVersion;
+import org.thoughtcrime.securesms.backup.proto.KeyValue;
+import org.thoughtcrime.securesms.backup.proto.SharedPreference;
+import org.thoughtcrime.securesms.backup.proto.SqlStatement;
+import org.thoughtcrime.securesms.backup.proto.Sticker;
 import org.thoughtcrime.securesms.crypto.AttachmentSecret;
 import org.thoughtcrime.securesms.crypto.ModernEncryptingPartOutputStream;
 import org.thoughtcrime.securesms.database.AttachmentTable;
@@ -35,6 +37,7 @@ import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.util.BackupUtil;
+import org.thoughtcrime.securesms.util.Util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -77,6 +80,7 @@ public class FullBackupImporter extends FullBackupBase {
 
     SQLiteDatabase keyValueDatabase = KeyValueDatabase.getInstance(ApplicationDependencies.getApplication()).getSqlCipherDatabase();
 
+    db.setForeignKeyConstraintsEnabled(false);
     db.beginTransaction();
     keyValueDatabase.beginTransaction();
     try {
@@ -86,25 +90,37 @@ public class FullBackupImporter extends FullBackupBase {
 
       BackupFrame frame;
 
-      while (!(frame = inputStream.readFrame()).getEnd()) {
+      while ((frame = inputStream.readFrame()).end != Boolean.TRUE) {
         if (count % 100 == 0) EventBus.getDefault().post(new BackupEvent(BackupEvent.Type.PROGRESS, count, 0));
         count++;
 
-        if      (frame.hasVersion())    processVersion(db, frame.getVersion());
-        else if (frame.hasStatement())  processStatement(db, frame.getStatement());
-        else if (frame.hasPreference()) processPreference(context, frame.getPreference());
-        else if (frame.hasAttachment()) processAttachment(context, attachmentSecret, db, frame.getAttachment(), inputStream);
-        else if (frame.hasSticker())    processSticker(context, attachmentSecret, db, frame.getSticker(), inputStream);
-        else if (frame.hasAvatar())     processAvatar(context, db, frame.getAvatar(), inputStream);
-        else if (frame.hasKeyValue())   processKeyValue(frame.getKeyValue());
+        if      (frame.version != null)    processVersion(db, frame.version);
+        else if (frame.statement != null)  processStatement(db, frame.statement);
+        else if (frame.preference != null) processPreference(context, frame.preference);
+        else if (frame.attachment != null) processAttachment(context, attachmentSecret, db, frame.attachment, inputStream);
+        else if (frame.sticker != null)    processSticker(context, attachmentSecret, db, frame.sticker, inputStream);
+        else if (frame.avatar != null)     processAvatar(context, db, frame.avatar, inputStream);
+        else if (frame.keyValue != null)   processKeyValue(frame.keyValue);
         else                            count--;
       }
 
       db.setTransactionSuccessful();
       keyValueDatabase.setTransactionSuccessful();
     } finally {
+      List<SqlUtil.ForeignKeyViolation> violations = SqlUtil.getForeignKeyViolations(db)
+          .stream()
+          .filter(it -> !it.getTable().startsWith("msl_"))
+          .collect(Collectors.toList());
+
+      if (violations.size() > 0) {
+        Log.w(TAG, "Foreign key constraints failed!\n" + Util.join(violations, "\n"));
+        //noinspection ThrowFromFinallyBlock
+        throw new ForeignKeyViolationException(violations);
+      }
+
       db.endTransaction();
       keyValueDatabase.endTransaction();
+      db.setForeignKeyConstraintsEnabled(true);
     }
 
     EventBus.getDefault().post(new BackupEvent(BackupEvent.Type.FINISHED, count, 0));
@@ -119,35 +135,40 @@ public class FullBackupImporter extends FullBackupBase {
   }
 
   private static void processVersion(@NonNull SQLiteDatabase db, DatabaseVersion version) throws IOException {
-    if (version.getVersion() > db.getVersion()) {
-      throw new DatabaseDowngradeException(db.getVersion(), version.getVersion());
+    if (version.version == null || version.version > db.getVersion()) {
+      throw new DatabaseDowngradeException(db.getVersion(), version.version != null ? version.version : -1);
     }
 
-    db.setVersion(version.getVersion());
+    db.setVersion(version.version);
   }
 
   private static void processStatement(@NonNull SQLiteDatabase db, SqlStatement statement) {
-    boolean isForMmsFtsSecretTable = statement.getStatement().contains(SearchTable.FTS_TABLE_NAME + "_");
-    boolean isForEmojiSecretTable  = statement.getStatement().contains(EmojiSearchTable.TABLE_NAME + "_");
-    boolean isForSqliteSecretTable = statement.getStatement().toLowerCase().startsWith("create table sqlite_");
+    if (statement.statement == null) {
+      Log.w(TAG, "Null statement!");
+      return;
+    }
+
+    boolean isForMmsFtsSecretTable = statement.statement.contains(SearchTable.FTS_TABLE_NAME + "_");
+    boolean isForEmojiSecretTable  = statement.statement.contains(EmojiSearchTable.TABLE_NAME + "_");
+    boolean isForSqliteSecretTable = statement.statement.toLowerCase().startsWith("create table sqlite_");
 
     if (isForMmsFtsSecretTable || isForEmojiSecretTable || isForSqliteSecretTable) {
-      Log.i(TAG, "Ignoring import for statement: " + statement.getStatement());
+      Log.i(TAG, "Ignoring import for statement: " + statement.statement);
       return;
     }
 
     List<Object> parameters = new LinkedList<>();
 
-    for (SqlStatement.SqlParameter parameter : statement.getParametersList()) {
-      if      (parameter.hasStringParamter())   parameters.add(parameter.getStringParamter());
-      else if (parameter.hasDoubleParameter())  parameters.add(parameter.getDoubleParameter());
-      else if (parameter.hasIntegerParameter()) parameters.add(parameter.getIntegerParameter());
-      else if (parameter.hasBlobParameter())    parameters.add(parameter.getBlobParameter().toByteArray());
-      else if (parameter.hasNullparameter())    parameters.add(null);
+    for (SqlStatement.SqlParameter parameter : statement.parameters) {
+      if      (parameter.stringParamter != null)   parameters.add(parameter.stringParamter);
+      else if (parameter.doubleParameter != null)  parameters.add(parameter.doubleParameter);
+      else if (parameter.integerParameter != null) parameters.add(parameter.integerParameter);
+      else if (parameter.blobParameter != null)    parameters.add(parameter.blobParameter.toByteArray());
+      else if (parameter.nullparameter != null)    parameters.add(null);
     }
 
-    if (parameters.size() > 0) db.execSQL(statement.getStatement(), parameters.toArray());
-    else                       db.execSQL(statement.getStatement());
+    if (parameters.size() > 0) db.execSQL(statement.statement, parameters.toArray());
+    else                       db.execSQL(statement.statement);
   }
 
   private static void processAttachment(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret, @NonNull SQLiteDatabase db, @NonNull Attachment attachment, BackupRecordInputStream inputStream)
@@ -159,12 +180,12 @@ public class FullBackupImporter extends FullBackupBase {
     ContentValues contentValues = new ContentValues();
 
     try {
-      inputStream.readAttachmentTo(output.second, attachment.getLength());
+      inputStream.readAttachmentTo(output.second, attachment.length);
 
       contentValues.put(AttachmentTable.DATA, dataFile.getAbsolutePath());
       contentValues.put(AttachmentTable.DATA_RANDOM, output.first);
     } catch (BackupRecordInputStream.BadMacException e) {
-      Log.w(TAG, "Bad MAC for attachment " + attachment.getAttachmentId() + "! Can't restore it.", e);
+      Log.w(TAG, "Bad MAC for attachment " + attachment.attachmentId + "! Can't restore it.", e);
       dataFile.delete();
       contentValues.put(AttachmentTable.DATA, (String) null);
       contentValues.put(AttachmentTable.DATA_RANDOM, (String) null);
@@ -172,7 +193,7 @@ public class FullBackupImporter extends FullBackupBase {
 
     db.update(AttachmentTable.TABLE_NAME, contentValues,
               AttachmentTable.ROW_ID + " = ? AND " + AttachmentTable.UNIQUE_ID + " = ?",
-              new String[] {String.valueOf(attachment.getRowId()), String.valueOf(attachment.getAttachmentId())});
+              new String[] {String.valueOf(attachment.rowId), String.valueOf(attachment.attachmentId)});
   }
 
   private static void processSticker(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret, @NonNull SQLiteDatabase db, @NonNull Sticker sticker, BackupRecordInputStream inputStream)
@@ -183,52 +204,57 @@ public class FullBackupImporter extends FullBackupBase {
 
     Pair<byte[], OutputStream> output = ModernEncryptingPartOutputStream.createFor(attachmentSecret, dataFile, false);
 
-    inputStream.readAttachmentTo(output.second, sticker.getLength());
+    inputStream.readAttachmentTo(output.second, sticker.length);
 
     ContentValues contentValues = new ContentValues();
     contentValues.put(StickerTable.FILE_PATH, dataFile.getAbsolutePath());
-    contentValues.put(StickerTable.FILE_LENGTH, sticker.getLength());
+    contentValues.put(StickerTable.FILE_LENGTH, sticker.length);
     contentValues.put(StickerTable.FILE_RANDOM, output.first);
 
     db.update(StickerTable.TABLE_NAME, contentValues,
               StickerTable._ID + " = ?",
-              new String[] {String.valueOf(sticker.getRowId())});
+              new String[] {String.valueOf(sticker.rowId)});
   }
 
-  private static void processAvatar(@NonNull Context context, @NonNull SQLiteDatabase db, @NonNull BackupProtos.Avatar avatar, @NonNull BackupRecordInputStream inputStream) throws IOException {
-    if (avatar.hasRecipientId()) {
-      RecipientId recipientId = RecipientId.from(avatar.getRecipientId());
-      inputStream.readAttachmentTo(AvatarHelper.getOutputStream(context, recipientId, false), avatar.getLength());
+  private static void processAvatar(@NonNull Context context, @NonNull SQLiteDatabase db, @NonNull Avatar avatar, @NonNull BackupRecordInputStream inputStream) throws IOException {
+    if (avatar.recipientId != null) {
+      RecipientId recipientId = RecipientId.from(avatar.recipientId);
+      inputStream.readAttachmentTo(AvatarHelper.getOutputStream(context, recipientId, false), avatar.length);
     } else {
-      if (avatar.hasName() && SqlUtil.tableExists(db, "recipient_preferences")) {
+      if (avatar.name != null && SqlUtil.tableExists(db, "recipient_preferences")) {
         Log.w(TAG, "Avatar is missing a recipientId. Clearing signal_profile_avatar (legacy) so it can be fetched later.");
-        db.execSQL("UPDATE recipient_preferences SET signal_profile_avatar = NULL WHERE recipient_ids = ?", new String[] { avatar.getName() });
-      } else if (avatar.hasName() && SqlUtil.tableExists(db, "recipient")) {
+        db.execSQL("UPDATE recipient_preferences SET signal_profile_avatar = NULL WHERE recipient_ids = ?", new String[] { avatar.name });
+      } else if (avatar.name != null && SqlUtil.tableExists(db, "recipient")) {
         Log.w(TAG, "Avatar is missing a recipientId. Clearing signal_profile_avatar so it can be fetched later.");
-        db.execSQL("UPDATE recipient SET signal_profile_avatar = NULL WHERE phone = ?", new String[] { avatar.getName() });
+        db.execSQL("UPDATE recipient SET signal_profile_avatar = NULL WHERE phone = ?", new String[] { avatar.name });
       } else {
         Log.w(TAG, "Avatar is missing a recipientId. Skipping avatar restore.");
       }
 
-      inputStream.readAttachmentTo(new ByteArrayOutputStream(), avatar.getLength());
+      inputStream.readAttachmentTo(new ByteArrayOutputStream(), avatar.length);
     }
   }
 
-  private static void processKeyValue(BackupProtos.KeyValue keyValue) {
+  private static void processKeyValue(KeyValue keyValue) {
     KeyValueDataSet dataSet = new KeyValueDataSet();
 
-    if (keyValue.hasBlobValue()) {
-      dataSet.putBlob(keyValue.getKey(), keyValue.getBlobValue().toByteArray());
-    } else if (keyValue.hasBooleanValue()) {
-      dataSet.putBoolean(keyValue.getKey(), keyValue.getBooleanValue());
-    } else if (keyValue.hasFloatValue()) {
-      dataSet.putFloat(keyValue.getKey(), keyValue.getFloatValue());
-    } else if (keyValue.hasIntegerValue()) {
-      dataSet.putInteger(keyValue.getKey(), keyValue.getIntegerValue());
-    } else if (keyValue.hasLongValue()) {
-      dataSet.putLong(keyValue.getKey(), keyValue.getLongValue());
-    } else if (keyValue.hasStringValue()) {
-      dataSet.putString(keyValue.getKey(), keyValue.getStringValue());
+    if (keyValue.key == null) {
+      Log.w(TAG, "Null preference key!");
+      return;
+    }
+
+    if (keyValue.blobValue != null) {
+      dataSet.putBlob(keyValue.key, keyValue.blobValue.toByteArray());
+    } else if (keyValue.booleanValue != null) {
+      dataSet.putBoolean(keyValue.key, keyValue.booleanValue);
+    } else if (keyValue.floatValue != null) {
+      dataSet.putFloat(keyValue.key, keyValue.floatValue);
+    } else if (keyValue.integerValue != null) {
+      dataSet.putInteger(keyValue.key, keyValue.integerValue);
+    } else if (keyValue.longValue != null) {
+      dataSet.putLong(keyValue.key, keyValue.longValue);
+    } else if (keyValue.stringValue != null) {
+      dataSet.putString(keyValue.key, keyValue.stringValue);
     } else {
       Log.i(TAG, "Unknown KeyValue backup value, skipping");
       return;
@@ -239,25 +265,25 @@ public class FullBackupImporter extends FullBackupBase {
 
   @SuppressLint("ApplySharedPref")
   private static void processPreference(@NonNull Context context, SharedPreference preference) {
-    SharedPreferences preferences = context.getSharedPreferences(preference.getFile(), 0);
+    SharedPreferences preferences = context.getSharedPreferences(preference.file_, 0);
 
     // Identity keys were moved from shared prefs into SignalStore. Need to handle importing backups made before the migration.
-    if ("SecureSMS-Preferences".equals(preference.getFile())) {
-      if ("pref_identity_public_v3".equals(preference.getKey()) && preference.hasValue()) {
-        SignalStore.account().restoreLegacyIdentityPublicKeyFromBackup(preference.getValue());
-      } else if ("pref_identity_private_v3".equals(preference.getKey()) && preference.hasValue()) {
-        SignalStore.account().restoreLegacyIdentityPrivateKeyFromBackup(preference.getValue());
+    if ("SecureSMS-Preferences".equals(preference.file_)) {
+      if ("pref_identity_public_v3".equals(preference.key) && preference.value_ != null) {
+        SignalStore.account().restoreLegacyIdentityPublicKeyFromBackup(preference.value_);
+      } else if ("pref_identity_private_v3".equals(preference.key) && preference.value_ != null) {
+        SignalStore.account().restoreLegacyIdentityPrivateKeyFromBackup(preference.value_);
       }
 
       return;
     }
 
-    if (preference.hasValue()) {
-      preferences.edit().putString(preference.getKey(), preference.getValue()).commit();
-    } else if (preference.hasBooleanValue()) {
-      preferences.edit().putBoolean(preference.getKey(), preference.getBooleanValue()).commit();
-    } else if (preference.hasIsStringSetValue() && preference.getIsStringSetValue()) {
-      preferences.edit().putStringSet(preference.getKey(), new HashSet<>(preference.getStringSetValueList())).commit();
+    if (preference.value_ != null) {
+      preferences.edit().putString(preference.key, preference.value_).commit();
+    } else if (preference.booleanValue != null) {
+      preferences.edit().putBoolean(preference.key, preference.booleanValue).commit();
+    } else if (preference.isStringSetValue == Boolean.TRUE) {
+      preferences.edit().putStringSet(preference.key, new HashSet<>(preference.stringSetValue)).commit();
     }
   }
 
@@ -286,7 +312,10 @@ public class FullBackupImporter extends FullBackupBase {
 
     Map<String, Set<String>> dependsOn = new LinkedHashMap<>();
     for (String table : tables) {
-      dependsOn.put(table, SqlUtil.getForeignKeyDependencies(input, table));
+      Set<String> dependencies = SqlUtil.getForeignKeyDependencies(input, table);
+      dependencies.remove(table);
+
+      dependsOn.put(table, dependencies);
     }
 
     for (String table : tables) {
@@ -330,6 +359,21 @@ public class FullBackupImporter extends FullBackupBase {
   public static class DatabaseDowngradeException extends IOException {
     DatabaseDowngradeException(int currentVersion, int backupVersion) {
       super("Tried to import a backup with version " + backupVersion + " into a database with version " + currentVersion);
+    }
+  }
+
+  public static class ForeignKeyViolationException extends IOException {
+    public ForeignKeyViolationException(List<SqlUtil.ForeignKeyViolation> violations) {
+      super(buildMessage(violations));
+    }
+
+    private static String buildMessage(List<SqlUtil.ForeignKeyViolation> violations) {
+      Set<String> unique = violations
+          .stream()
+          .map(it -> it.getTable() + " -> " + it.getColumn())
+          .collect(Collectors.toSet());
+
+      return Util.join(unique, ", ");
     }
   }
 }

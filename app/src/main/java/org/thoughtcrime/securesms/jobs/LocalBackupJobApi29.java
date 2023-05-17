@@ -23,7 +23,6 @@ import org.thoughtcrime.securesms.backup.BackupVerifier;
 import org.thoughtcrime.securesms.backup.FullBackupExporter;
 import org.thoughtcrime.securesms.crypto.AttachmentSecretProvider;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.jobmanager.Data;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.notifications.NotificationChannels;
@@ -68,8 +67,8 @@ public final class LocalBackupJobApi29 extends BaseJob {
   }
 
   @Override
-  public @NonNull Data serialize() {
-    return Data.EMPTY;
+  public @Nullable byte[] serialize() {
+    return null;
   }
 
   @Override
@@ -189,24 +188,28 @@ public final class LocalBackupJobApi29 extends BaseJob {
     }
   }
 
-  private boolean verifyBackup(String backupPassword, DocumentFile temporaryFile, BackupEvent finishedEvent) {
+  private boolean verifyBackup(String backupPassword, DocumentFile temporaryFile, BackupEvent finishedEvent) throws FullBackupExporter.BackupCanceledException {
     Boolean valid    = null;
     int     attempts = 0;
 
-    while (attempts < MAX_STORAGE_ATTEMPTS && valid == null) {
+    while (attempts < MAX_STORAGE_ATTEMPTS && valid == null && !isCanceled()) {
       ThreadUtil.sleep(WAIT_FOR_SCOPED_STORAGE[attempts]);
 
       try (InputStream cipherStream = context.getContentResolver().openInputStream(temporaryFile.getUri())) {
         try {
-          valid = BackupVerifier.verifyFile(cipherStream, backupPassword, finishedEvent.getCount());
+          valid = BackupVerifier.verifyFile(cipherStream, backupPassword, finishedEvent.getCount(), this::isCanceled);
         } catch (IOException e) {
           Log.w(TAG, "Unable to verify backup", e);
           valid = false;
         }
-      } catch (IOException e) {
+      } catch (SecurityException | IOException e) {
         attempts++;
-        Log.w(TAG, "Unable to find backup file, attempt: " + attempts + "/" + MAX_STORAGE_ATTEMPTS);
+        Log.w(TAG, "Unable to find backup file, attempt: " + attempts + "/" + MAX_STORAGE_ATTEMPTS, e);
       }
+    }
+
+    if (isCanceled()) {
+      throw new FullBackupExporter.BackupCanceledException();
     }
 
     return valid != null ? valid : false;
@@ -288,7 +291,7 @@ public final class LocalBackupJobApi29 extends BaseJob {
   public static class Factory implements Job.Factory<LocalBackupJobApi29> {
     @Override
     public @NonNull
-    LocalBackupJobApi29 create(@NonNull Parameters parameters, @NonNull Data data) {
+    LocalBackupJobApi29 create(@NonNull Parameters parameters, @Nullable byte[] serializedData) {
       return new LocalBackupJobApi29(parameters);
     }
   }

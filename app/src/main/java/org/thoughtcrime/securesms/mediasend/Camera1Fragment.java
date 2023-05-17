@@ -29,7 +29,6 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.cardview.widget.CardView;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 
@@ -39,6 +38,7 @@ import com.bumptech.glide.load.Transformation;
 import com.bumptech.glide.load.resource.bitmap.CenterCrop;
 import com.bumptech.glide.request.target.SimpleTarget;
 import com.bumptech.glide.request.transition.Transition;
+import com.google.android.material.card.MaterialCardView;
 
 import org.signal.core.util.Stopwatch;
 import org.signal.core.util.logging.Log;
@@ -284,7 +284,7 @@ public class Camera1Fragment extends LoggingFragment implements CameraFragment,
            .into(thumbnail);
     } else {
       thumbBackground.setBackgroundResource(R.drawable.media_selection_camera_switch_background);
-      thumbnail.setImageResource(R.drawable.ic_gallery_outline_24);
+      thumbnail.setImageResource(R.drawable.symbol_album_tilt_24);
       thumbnail.setColorFilter(Color.WHITE);
       thumbnail.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
     }
@@ -337,6 +337,11 @@ public class Camera1Fragment extends LoggingFragment implements CameraFragment,
       onCaptureClicked();
     });
 
+    captureButton.setOnLongClickListener(unused -> {
+      CameraFragment.toastVideoRecordingNotAvailable(requireContext());
+      return true;
+    });
+
     orderEnforcer.run(Stage.CAMERA_PROPERTIES_AVAILABLE, () -> {
       if (properties.getCameraCount() > 1) {
         flipButton.setVisibility(properties.getCameraCount() > 1 ? View.VISIBLE : View.GONE);
@@ -360,9 +365,9 @@ public class Camera1Fragment extends LoggingFragment implements CameraFragment,
   }
 
   private void initializeViewFinderAndControlsPositioning() {
-    CardView      cameraCard    = requireView().findViewById(R.id.camera_preview_parent);
-    View          controls      = requireView().findViewById(R.id.camera_controls_container);
-    CameraDisplay cameraDisplay = CameraDisplay.getDisplay(requireActivity());
+    MaterialCardView cameraCard = requireView().findViewById(R.id.camera_preview_parent);
+    View             controls   = requireView().findViewById(R.id.camera_controls_container);
+    CameraDisplay    cameraDisplay = CameraDisplay.getDisplay(requireActivity());
 
     if (!cameraDisplay.getRoundViewFinderCorners()) {
       cameraCard.setRadius(0f);

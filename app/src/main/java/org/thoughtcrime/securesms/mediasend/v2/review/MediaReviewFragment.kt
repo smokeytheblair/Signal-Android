@@ -26,6 +26,7 @@ import androidx.viewpager2.widget.ViewPager2
 import app.cash.exhaustive.Exhaustive
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.signal.core.util.concurrent.SimpleTask
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.contacts.paged.ContactSearchKey
@@ -47,8 +48,6 @@ import org.thoughtcrime.securesms.mms.SentMediaQuality
 import org.thoughtcrime.securesms.permissions.Permissions
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.scribbles.ImageEditorFragment
-import org.thoughtcrime.securesms.util.FeatureFlags
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.MediaUtil
 import org.thoughtcrime.securesms.util.SystemWindowInsetsSetter
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
@@ -86,7 +85,7 @@ class MediaReviewFragment : Fragment(R.layout.v2_media_review_fragment), Schedul
   private lateinit var progressWrapper: TouchInterceptingFrameLayout
 
   private val navigator = MediaSelectionNavigator(
-    toGallery = R.id.action_mediaReviewFragment_to_mediaGalleryFragment,
+    toGallery = R.id.action_mediaReviewFragment_to_mediaGalleryFragment
   )
 
   private var animatorSet: AnimatorSet? = null
@@ -219,7 +218,7 @@ class MediaReviewFragment : Fragment(R.layout.v2_media_review_fragment), Schedul
         performSend()
       }
     }
-    if (FeatureFlags.scheduledMessageSends()) {
+    if (!sharedViewModel.isStory()) {
       sendButton.setOnLongClickListener {
         ScheduleMessageContextMenu.show(it, (requireView() as ViewGroup)) { time: Long ->
           if (time == -1L) {
@@ -503,24 +502,22 @@ class MediaReviewFragment : Fragment(R.layout.v2_media_review_fragment), Schedul
   }
 
   private fun computeSendButtonAnimators(state: MediaSelectionState): List<Animator> {
-
     val slideIn = listOf(
-      MediaReviewAnimatorController.getSlideInAnimator(sendButton),
+      MediaReviewAnimatorController.getSlideInAnimator(sendButton)
     )
 
     return slideIn + if (state.isTouchEnabled) {
       listOf(
-        MediaReviewAnimatorController.getFadeInAnimator(sendButton, state.canSend),
+        MediaReviewAnimatorController.getFadeInAnimator(sendButton, state.canSend)
       )
     } else {
       listOf(
-        MediaReviewAnimatorController.getFadeOutAnimator(sendButton, state.canSend),
+        MediaReviewAnimatorController.getFadeOutAnimator(sendButton, state.canSend)
       )
     }
   }
 
   private fun computeSaveButtonAnimators(state: MediaSelectionState): List<Animator> {
-
     val slideIn = listOf(
       MediaReviewAnimatorController.getSlideInAnimator(saveButton)
     )

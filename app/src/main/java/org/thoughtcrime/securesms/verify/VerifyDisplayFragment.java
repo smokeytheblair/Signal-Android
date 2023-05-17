@@ -54,7 +54,7 @@ import org.thoughtcrime.securesms.database.IdentityTable;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.jobs.MultiDeviceVerifiedUpdateJob;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
-import org.thoughtcrime.securesms.qr.QrCode;
+import org.thoughtcrime.securesms.qr.QrCodeUtil;
 import org.thoughtcrime.securesms.recipients.LiveRecipient;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
@@ -284,15 +284,14 @@ public class VerifyDisplayFragment extends Fragment implements ViewTreeObserver.
   public boolean onContextItemSelected(MenuItem item) {
     if (fingerprint == null) return super.onContextItemSelected(item);
 
-    switch (item.getItemId()) {
-      case R.id.menu_copy:
-        handleCopyToClipboard(fingerprint, codes.length);
-        return true;
-      case R.id.menu_compare:
-        handleCompareWithClipboard(fingerprint);
-        return true;
-      default:
-        return super.onContextItemSelected(item);
+    if (item.getItemId() ==  R.id.menu_copy) {
+      handleCopyToClipboard(fingerprint, codes.length);
+      return true;
+    } else if (item.getItemId() == R.id.menu_compare) {
+      handleCompareWithClipboard(fingerprint);
+      return true;
+    } else {
+      return super.onContextItemSelected(item);
     }
   }
 
@@ -409,7 +408,7 @@ public class VerifyDisplayFragment extends Fragment implements ViewTreeObserver.
 
     byte[] qrCodeData   = fingerprint.getScannableFingerprint().getSerialized();
     String qrCodeString = new String(qrCodeData, Charset.forName("ISO-8859-1"));
-    Bitmap qrCodeBitmap = QrCode.create(qrCodeString);
+    Bitmap qrCodeBitmap = QrCodeUtil.create(qrCodeString);
 
     qrCode.setImageBitmap(qrCodeBitmap);
 

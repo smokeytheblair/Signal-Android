@@ -9,15 +9,15 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import io.reactivex.rxjava3.kotlin.subscribeBy
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.thoughtcrime.securesms.ContactSelectionListFragment
 import org.thoughtcrime.securesms.LoggingFragment
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.ContactFilterView
-import org.thoughtcrime.securesms.contacts.ContactsCursorLoader
+import org.thoughtcrime.securesms.contacts.ContactSelectionDisplayMode
 import org.thoughtcrime.securesms.groups.SelectionLimits
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.Util
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.views.CircularProgressMaterialButton
@@ -100,20 +100,20 @@ class SelectRecipientsFragment : LoggingFragment(), ContactSelectionListFragment
   }
 
   private fun getDefaultDisplayMode(): Int {
-    var mode = ContactsCursorLoader.DisplayMode.FLAG_PUSH or
-      ContactsCursorLoader.DisplayMode.FLAG_ACTIVE_GROUPS or
-      ContactsCursorLoader.DisplayMode.FLAG_HIDE_NEW or
-      ContactsCursorLoader.DisplayMode.FLAG_HIDE_RECENT_HEADER or
-      ContactsCursorLoader.DisplayMode.FLAG_GROUPS_AFTER_CONTACTS
+    var mode = ContactSelectionDisplayMode.FLAG_PUSH or
+      ContactSelectionDisplayMode.FLAG_ACTIVE_GROUPS or
+      ContactSelectionDisplayMode.FLAG_HIDE_NEW or
+      ContactSelectionDisplayMode.FLAG_HIDE_RECENT_HEADER or
+      ContactSelectionDisplayMode.FLAG_GROUPS_AFTER_CONTACTS
 
     if (Util.isDefaultSmsProvider(requireContext()) && SignalStore.misc().smsExportPhase.allowSmsFeatures()) {
-      mode = mode or ContactsCursorLoader.DisplayMode.FLAG_SMS
+      mode = mode or ContactSelectionDisplayMode.FLAG_SMS
     }
 
-    return mode or ContactsCursorLoader.DisplayMode.FLAG_HIDE_GROUPS_V1
+    return mode or ContactSelectionDisplayMode.FLAG_HIDE_GROUPS_V1
   }
 
-  override fun onBeforeContactSelected(recipientId: Optional<RecipientId>, number: String?, callback: Consumer<Boolean>) {
+  override fun onBeforeContactSelected(isFromUnknownSearchKey: Boolean, recipientId: Optional<RecipientId>, number: String?, callback: Consumer<Boolean>) {
     if (recipientId.isPresent) {
       viewModel.select(recipientId.get())
       callback.accept(true)

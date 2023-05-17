@@ -17,9 +17,9 @@ import org.signal.libsignal.protocol.SignalProtocolAddress;
 import org.thoughtcrime.securesms.crypto.ReentrantSessionLock;
 import org.thoughtcrime.securesms.crypto.storage.SignalIdentityKeyStore;
 import org.thoughtcrime.securesms.database.IdentityTable;
-import org.thoughtcrime.securesms.database.MessageTable;
 import org.thoughtcrime.securesms.database.NoSuchMessageException;
 import org.thoughtcrime.securesms.database.SignalDatabase;
+import org.thoughtcrime.securesms.database.documents.IdentityKeyMismatch;
 import org.thoughtcrime.securesms.database.model.IdentityRecord;
 import org.thoughtcrime.securesms.database.model.MessageId;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
@@ -35,6 +35,7 @@ import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -152,8 +153,25 @@ public final class SafetyNumberChangeRepository {
       for (ChangedRecipient changedRecipient : changedRecipients) {
         SignalProtocolAddress mismatchAddress = changedRecipient.getRecipient().requireServiceId().toProtocolAddress(SignalServiceAddress.DEFAULT_DEVICE_ID);
 
-        Log.d(TAG, "Saving identity for: " + changedRecipient.getRecipient().getId() + " " + changedRecipient.getIdentityRecord().getIdentityKey().hashCode());
-        SignalIdentityKeyStore.SaveResult result = ApplicationDependencies.getProtocolStore().aci().identities().saveIdentity(mismatchAddress, changedRecipient.getIdentityRecord().getIdentityKey(), true);
+        IdentityKey newIdentityKey = messageRecord.getIdentityKeyMismatches()
+                                                  .stream()
+                                                  .filter(mismatch -> mismatch.getRecipientId(context).equals(changedRecipient.getRecipient().getId()))
+                                                  .map(IdentityKeyMismatch::getIdentityKey)
+                                                  .filter(Objects::nonNull)
+                                                  .findFirst()
+                                                  .orElse(null);
+
+        if (newIdentityKey == null) {
+          Log.w(TAG, "Could not find new identity key in the MessageRecords mismatched identities! Using the recipients current identity key");
+          newIdentityKey = changedRecipient.getIdentityRecord().getIdentityKey();
+        }
+
+        if (newIdentityKey.hashCode() != changedRecipient.getIdentityRecord().getIdentityKey().hashCode()) {
+          Log.w(TAG, "Note: The new identity key does not match the identity key we currently have for the recipient. This is not unexpected, but calling it out for debugging reasons. New: " + newIdentityKey.hashCode() + ", Current: " + changedRecipient.getIdentityRecord().getIdentityKey().hashCode());
+        }
+
+        Log.d(TAG, "Saving identity for: " + changedRecipient.getRecipient().getId() + " " + newIdentityKey.hashCode());
+        SignalIdentityKeyStore.SaveResult result = ApplicationDependencies.getProtocolStore().aci().identities().saveIdentity(mismatchAddress, newIdentityKey, true);
 
         Log.d(TAG, "Saving identity result: " + result);
         if (result == SignalIdentityKeyStore.SaveResult.NO_CHANGE) {
@@ -184,7 +202,7 @@ public final class SafetyNumberChangeRepository {
       if (messageRecord.isMms()) {
         SignalDatabase.messages().removeMismatchedIdentity(messageRecord.getId(), id, identityKey);
 
-        if (messageRecord.getRecipient().isDistributionList() || messageRecord.getRecipient().isPushGroup()) {
+        if (messageRecord.getToRecipient().isDistributionList() || messageRecord.getToRecipient().isPushGroup()) {
           resendIds.add(id);
         } else {
           MessageSender.resend(context, messageRecord);
@@ -197,7 +215,7 @@ public final class SafetyNumberChangeRepository {
     }
 
     if (Util.hasItems(resendIds)) {
-      if (messageRecord.getRecipient().isPushGroup()) {
+      if (messageRecord.getToRecipient().isPushGroup()) {
         MessageSender.resendGroupMessage(context, messageRecord, resendIds);
       } else {
         MessageSender.resendDistributionList(context, messageRecord, resendIds);

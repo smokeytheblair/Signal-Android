@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable
 import android.media.AudioManager
 import android.os.Bundle
 import android.text.SpannableString
+import android.text.method.LinkMovementMethod
 import android.text.method.ScrollingMovementMethod
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -18,28 +19,30 @@ import android.view.View
 import android.view.animation.Interpolator
 import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.cardview.widget.CardView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.view.animation.PathInterpolatorCompat
-import androidx.core.view.doOnNextLayout
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.progressindicator.CircularProgressIndicatorSpec
 import com.google.android.material.progressindicator.IndeterminateDrawable
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Observable
 import org.signal.core.util.DimensionUnit
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.signal.core.util.dp
+import org.signal.core.util.getParcelableCompat
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.animation.AnimationCompleteListener
 import org.thoughtcrime.securesms.components.AvatarImageView
+import org.thoughtcrime.securesms.components.emoji.EmojiTextView
 import org.thoughtcrime.securesms.components.segmentedprogressbar.SegmentedProgressBar
 import org.thoughtcrime.securesms.components.segmentedprogressbar.SegmentedProgressBarListener
 import org.thoughtcrime.securesms.contacts.avatars.FallbackContactPhoto
@@ -80,7 +83,6 @@ import org.thoughtcrime.securesms.util.AvatarUtil
 import org.thoughtcrime.securesms.util.BottomSheetUtil
 import org.thoughtcrime.securesms.util.DateUtils
 import org.thoughtcrime.securesms.util.Debouncer
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.ServiceUtil
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.fragments.requireListener
@@ -153,7 +155,9 @@ class StoryViewerPageFragment :
 
   private var sendingProgressDrawable: IndeterminateDrawable<CircularProgressIndicatorSpec>? = null
 
-  private val storyViewerPageArgs: StoryViewerPageArgs by lazy(LazyThreadSafetyMode.NONE) { requireArguments().getParcelable(ARGS)!! }
+  private val storyViewerPageArgs: StoryViewerPageArgs by lazy(LazyThreadSafetyMode.NONE) {
+    requireArguments().getParcelableCompat(ARGS, StoryViewerPageArgs::class.java)!!
+  }
 
   @SuppressLint("ClickableViewAccessibility")
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -173,8 +177,8 @@ class StoryViewerPageFragment :
     val moreButton: View = view.findViewById(R.id.more)
     val distributionList: TextView = view.findViewById(R.id.distribution_list)
     val cardWrapper: TouchInterceptingFrameLayout = view.findViewById(R.id.story_content_card_touch_interceptor)
-    val card: CardView = view.findViewById(R.id.story_content_card)
-    val caption: TextView = view.findViewById(R.id.story_caption)
+    val card: MaterialCardView = view.findViewById(R.id.story_content_card)
+    val caption: EmojiTextView = view.findViewById(R.id.story_caption)
     val largeCaption: TextView = view.findViewById(R.id.story_large_caption)
     val largeCaptionOverlay: View = view.findViewById(R.id.story_large_caption_overlay)
     val reactionAnimationView: OnReactionSentView = view.findViewById(R.id.on_reaction_sent_view)
@@ -228,7 +232,7 @@ class StoryViewerPageFragment :
     val singleTapHandler = SingleTapHandler(
       cardWrapper,
       viewModel::goToNextPost,
-      viewModel::goToPreviousPost,
+      viewModel::goToPreviousPost
     )
 
     val gestureDetector = GestureDetectorCompat(
@@ -245,7 +249,9 @@ class StoryViewerPageFragment :
     gestureDetector.setOnDoubleTapListener(null)
 
     val scaleListener = StoryScaleListener(
-      viewModel, sharedViewModel, card
+      viewModel,
+      sharedViewModel,
+      card
     )
 
     val scaleDetector = ScaleGestureDetector(
@@ -295,6 +301,7 @@ class StoryViewerPageFragment :
     progressBar.listener = object : SegmentedProgressBarListener {
       override fun onPage(oldPageIndex: Int, newPageIndex: Int) {
         if (oldPageIndex != newPageIndex && context != null) {
+          Log.d(TAG, "onPage: Moving from $oldPageIndex to $newPageIndex")
           viewModel.setSelectedPostIndex(newPageIndex)
         }
       }
@@ -365,10 +372,12 @@ class StoryViewerPageFragment :
       }
     }
 
-    lifecycleDisposable += sharedViewModel.state.distinctUntilChanged().observeOn(AndroidSchedulers.mainThread()).subscribe { parentState ->
-      viewModel.setIsRunningSharedElementAnimation(!parentState.loadState.isCrossfaderReady)
-      storyContentContainer.visible = parentState.loadState.isCrossfaderReady
+    lifecycleDisposable += sharedViewModel.loadState.subscribe {
+      viewModel.setIsRunningSharedElementAnimation(!it.isCrossfaderReady)
+      storyContentContainer.visible = it.isCrossfaderReady
+    }
 
+    lifecycleDisposable += sharedViewModel.state.distinctUntilChanged().observeOn(AndroidSchedulers.mainThread()).subscribe { parentState ->
       if (parentState.pages.size <= parentState.page) {
         viewModel.setIsSelectedPage(false)
       } else if (storyViewerPageArgs.recipientId == parentState.pages[parentState.page]) {
@@ -605,7 +614,7 @@ class StoryViewerPageFragment :
   private fun adjustConstraintsForScreenDimensions(
     viewsAndReplies: View,
     cardWrapper: View,
-    card: CardView
+    card: MaterialCardView
   ) {
     val constraintSet = ConstraintSet()
     constraintSet.clone(storyPageContainer)
@@ -760,21 +769,25 @@ class StoryViewerPageFragment :
         markViewedIfAble()
       }
       AttachmentTable.TRANSFER_PROGRESS_PENDING -> {
+        Log.d(TAG, "Story content download is pending.")
         storySlate.moveToState(StorySlateView.State.LOADING, post.id)
         sharedViewModel.setContentIsReady()
         viewModel.setIsDisplayingSlate(true)
       }
       AttachmentTable.TRANSFER_PROGRESS_STARTED -> {
+        Log.d(TAG, "Story content download is in progress.")
         storySlate.moveToState(StorySlateView.State.LOADING, post.id)
         sharedViewModel.setContentIsReady()
         viewModel.setIsDisplayingSlate(true)
       }
       AttachmentTable.TRANSFER_PROGRESS_FAILED -> {
+        Log.d(TAG, "Story content download has failed temporarily.")
         storySlate.moveToState(StorySlateView.State.ERROR, post.id)
         sharedViewModel.setContentIsReady()
         viewModel.setIsDisplayingSlate(true)
       }
       AttachmentTable.TRANSFER_PROGRESS_PERMANENT_FAILURE -> {
+        Log.d(TAG, "Story content download has failed permanently.")
         storySlate.moveToState(StorySlateView.State.FAILED, post.id, post.sender)
         sharedViewModel.setContentIsReady()
         viewModel.setIsDisplayingSlate(true)
@@ -805,12 +818,12 @@ class StoryViewerPageFragment :
   }
 
   @SuppressLint("SetTextI18n")
-  private fun presentCaption(caption: TextView, largeCaption: TextView, largeCaptionOverlay: View, storyPost: StoryPost) {
+  private fun presentCaption(caption: EmojiTextView, largeCaption: TextView, largeCaptionOverlay: View, storyPost: StoryPost) {
     val displayBody: CharSequence = if (storyPost.content is StoryPost.Content.AttachmentContent) {
       val displayBodySpan = SpannableString(storyPost.content.attachment.caption ?: "")
       val ranges: BodyRangeList? = storyPost.conversationMessage.messageRecord.messageRanges
       if (ranges != null && displayBodySpan.isNotEmpty()) {
-        MessageStyler.style(ranges, displayBodySpan)
+        MessageStyler.style(storyPost.conversationMessage.messageRecord.dateSent, ranges, displayBodySpan)
       }
 
       displayBodySpan
@@ -818,48 +831,24 @@ class StoryViewerPageFragment :
       ""
     }
 
-    storyNormalBottomGradient.visible = !displayBody.isNotEmpty()
+    storyNormalBottomGradient.visible = displayBody.isEmpty()
     storyCaptionBottomGradient.visible = displayBody.isNotEmpty()
 
     caption.text = displayBody
     largeCaption.text = displayBody
     caption.visible = displayBody.isNotEmpty()
     caption.requestLayout()
+    caption.movementMethod = LinkMovementMethod.getInstance()
+    caption.setOverflowText(getString(R.string.StoryViewerPageFragment__see_more))
+    caption.maxLines = 5
+    caption.text = displayBody
 
-    caption.doOnNextLayout {
-      val maxLines = 5
-      if (displayBody.isNotEmpty() && caption.lineCount > maxLines) {
-        val lastCharShown = caption.layout.getLineVisibleEnd(maxLines - 1)
-        caption.maxLines = maxLines
-
-        val seeMore = (getString(R.string.StoryViewerPageFragment__see_more))
-
-        val seeMoreWidth = caption.paint.measureText(seeMore)
-        var offset = seeMore.length
-        while (true) {
-          val start = lastCharShown - offset
-          if (start < 0) {
-            break
-          }
-
-          val widthOfRemovedChunk = caption.paint.measureText(displayBody.subSequence(start, lastCharShown).toString())
-          if (widthOfRemovedChunk > seeMoreWidth) {
-            break
-          }
-
-          offset += 1
-        }
-
-        caption.text = displayBody.substring(0, lastCharShown - offset) + seeMore
-      }
-
-      if (caption.text.length == displayBody.length) {
-        caption.setOnClickListener(null)
-        caption.isClickable = false
-      } else {
-        caption.setOnClickListener {
-          onShowCaptionOverlay(caption, largeCaption, largeCaptionOverlay)
-        }
+    if (caption.text.length == displayBody.length) {
+      caption.setOnClickListener(null)
+      caption.isClickable = false
+    } else {
+      caption.setOnClickListener {
+        onShowCaptionOverlay(caption, largeCaption, largeCaptionOverlay)
       }
     }
   }
@@ -905,10 +894,12 @@ class StoryViewerPageFragment :
     }
 
     from.setOnClickListener { onSenderClicked(storyPost.sender.id) }
+    from.requestLayout()
   }
 
   private fun presentDate(date: TextView, storyPost: StoryPost) {
     date.text = DateUtils.getBriefRelativeTimeSpanString(context, Locale.getDefault(), storyPost.dateInMilliseconds)
+    date.requestLayout()
   }
 
   private fun presentSenderAvatar(senderAvatar: AvatarImageView, post: StoryPost) {
@@ -982,14 +973,14 @@ class StoryViewerPageFragment :
   }
 
   private fun presentPartialSendBottomBar() {
-    viewsAndReplies.setIconResource(R.drawable.ic_error_outline_24)
+    viewsAndReplies.setIconResource(R.drawable.symbol_error_circle_24)
     viewsAndReplies.iconTint = ColorStateList.valueOf(ContextCompat.getColor(requireContext(), R.color.signal_light_colorError))
     viewsAndReplies.iconSize = 20.dp
     viewsAndReplies.setText(R.string.StoryViewerPageFragment__partially_sent)
   }
 
   private fun presentSendFailureBottomBar() {
-    viewsAndReplies.setIconResource(R.drawable.ic_error_outline_24)
+    viewsAndReplies.setIconResource(R.drawable.symbol_error_circle_24)
     viewsAndReplies.iconTint = ColorStateList.valueOf(ContextCompat.getColor(requireContext(), R.color.signal_light_colorError))
     viewsAndReplies.iconSize = 20.dp
     viewsAndReplies.setText(R.string.StoryViewerPageFragment__send_failed)
@@ -1002,12 +993,12 @@ class StoryViewerPageFragment :
     if (Recipient.self() == post.sender) {
       if (isReceiptsEnabled) {
         if (post.replyCount == 0) {
-          viewsAndReplies.setIconResource(R.drawable.ic_chevron_end_bold_16)
+          viewsAndReplies.setIconResource(R.drawable.symbol_chevron_right_compact_bold_16)
           viewsAndReplies.iconSize = DimensionUnit.DP.toPixels(16f).toInt()
           viewsAndReplies.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
           viewsAndReplies.text = views
         } else {
-          viewsAndReplies.setIconResource(R.drawable.ic_chevron_end_bold_16)
+          viewsAndReplies.setIconResource(R.drawable.symbol_chevron_right_compact_bold_16)
           viewsAndReplies.iconSize = DimensionUnit.DP.toPixels(16f).toInt()
           viewsAndReplies.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
           viewsAndReplies.text = getString(R.string.StoryViewerFragment__s_s, views, replies)
@@ -1017,24 +1008,24 @@ class StoryViewerPageFragment :
           viewsAndReplies.icon = null
           viewsAndReplies.setText(R.string.StoryViewerPageFragment__views_off)
         } else {
-          viewsAndReplies.setIconResource(R.drawable.ic_chevron_end_bold_16)
+          viewsAndReplies.setIconResource(R.drawable.symbol_chevron_right_compact_bold_16)
           viewsAndReplies.iconSize = DimensionUnit.DP.toPixels(16f).toInt()
           viewsAndReplies.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
           viewsAndReplies.text = replies
         }
       }
     } else if (post.replyCount > 0) {
-      viewsAndReplies.setIconResource(R.drawable.ic_chevron_end_bold_16)
+      viewsAndReplies.setIconResource(R.drawable.symbol_chevron_right_compact_bold_16)
       viewsAndReplies.iconSize = DimensionUnit.DP.toPixels(16f).toInt()
       viewsAndReplies.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_END
       viewsAndReplies.text = replies
     } else if (post.group != null) {
-      viewsAndReplies.setIconResource(R.drawable.ic_reply_24_outline)
+      viewsAndReplies.setIconResource(R.drawable.symbol_reply_24)
       viewsAndReplies.iconSize = DimensionUnit.DP.toPixels(20f).toInt()
       viewsAndReplies.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
       viewsAndReplies.setText(R.string.StoryViewerPageFragment__reply_to_group)
     } else {
-      viewsAndReplies.setIconResource(R.drawable.ic_reply_24_outline)
+      viewsAndReplies.setIconResource(R.drawable.symbol_reply_24)
       viewsAndReplies.iconSize = DimensionUnit.DP.toPixels(20f).toInt()
       viewsAndReplies.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
       viewsAndReplies.setText(R.string.StoryViewerPageFragment__reply)
@@ -1062,7 +1053,7 @@ class StoryViewerPageFragment :
         viewModel.setIsDisplayingForwardDialog(true)
         MultiselectForwardFragmentArgs.create(
           requireContext(),
-          storyPost.conversationMessage.multiselectCollection.toSet(),
+          storyPost.conversationMessage.multiselectCollection.toSet()
         ) {
           MultiselectForwardFragment.showBottomSheet(childFragmentManager, it)
         }
@@ -1288,7 +1279,7 @@ class StoryViewerPageFragment :
 
   private class FallbackPhotoProvider : Recipient.FallbackPhotoProvider() {
     override fun getPhotoForGroup(): FallbackContactPhoto {
-      return FallbackPhoto20dp(R.drawable.ic_group_outline_20)
+      return FallbackPhoto20dp(R.drawable.symbol_group_20)
     }
 
     override fun getPhotoForResolvingRecipient(): FallbackContactPhoto {
@@ -1300,11 +1291,11 @@ class StoryViewerPageFragment :
     }
 
     override fun getPhotoForRecipientWithName(name: String, targetSize: Int): FallbackContactPhoto {
-      return FixedSizeGeneratedContactPhoto(name, R.drawable.ic_profile_outline_20)
+      return FixedSizeGeneratedContactPhoto(name, R.drawable.symbol_person_20)
     }
 
     override fun getPhotoForRecipientWithoutName(): FallbackContactPhoto {
-      return FallbackPhoto20dp(R.drawable.ic_profile_outline_20)
+      return FallbackPhoto20dp(R.drawable.symbol_person_20)
     }
   }
 
@@ -1315,10 +1306,12 @@ class StoryViewerPageFragment :
   }
 
   override fun onContentReady() {
+    Log.d(TAG, "Story content is ready.")
     sharedViewModel.setContentIsReady()
   }
 
   override fun onContentNotAvailable() {
+    Log.d(TAG, "Story content is not available.")
     sharedViewModel.setContentIsReady()
   }
 

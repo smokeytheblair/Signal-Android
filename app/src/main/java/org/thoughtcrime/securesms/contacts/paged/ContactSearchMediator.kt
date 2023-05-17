@@ -1,5 +1,6 @@
 package org.thoughtcrime.securesms.contacts.paged
 
+import android.content.Context
 import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -22,16 +23,31 @@ import org.thoughtcrime.securesms.util.adapter.mapping.PagingMappingAdapter
 import org.thoughtcrime.securesms.util.livedata.LiveDataUtil
 import java.util.concurrent.TimeUnit
 
+/**
+ * This mediator serves as the delegate for interacting with the ContactSearch* framework.
+ *
+ * @param fragment The fragment displaying the content search results.
+ * @param fixedContacts Contacts which are "pre-selected" (for example, already a member of a group we're adding to)
+ * @param selectionLimits [SelectionLimits] describing how large the result set can be.
+ * @param displayCheckBox Whether or not to display checkboxes on items.
+ * @param displaySmsTag   Whether or not to display the SMS tag on items.
+ * @param displaySecondaryInformation Whether or not to display phone numbers on known contacts.
+ * @param mapStateToConfiguration Maps a [ContactSearchState] to a [ContactSearchConfiguration]
+ * @param callbacks Hooks to help process, filter, and react to selection
+ * @param performSafetyNumberChecks Whether to perform safety number checks for selected users
+ * @param adapterFactory A factory for creating an instance of [PagingMappingAdapter] to display items
+ * @param arbitraryRepository A repository for managing [ContactSearchKey.Arbitrary] data
+ */
 class ContactSearchMediator(
   private val fragment: Fragment,
+  private val fixedContacts: Set<ContactSearchKey> = setOf(),
   selectionLimits: SelectionLimits,
-  displayCheckBox: Boolean,
-  displaySmsTag: ContactSearchAdapter.DisplaySmsTag,
+  displayOptions: ContactSearchAdapter.DisplayOptions,
   mapStateToConfiguration: (ContactSearchState) -> ContactSearchConfiguration,
-  private val contactSelectionPreFilter: (View?, Set<ContactSearchKey>) -> Set<ContactSearchKey> = { _, s -> s },
+  private val callbacks: Callbacks = SimpleCallbacks(),
   performSafetyNumberChecks: Boolean = true,
   adapterFactory: AdapterFactory = DefaultAdapterFactory,
-  arbitraryRepository: ArbitraryRepository? = null,
+  arbitraryRepository: ArbitraryRepository? = null
 ) {
 
   private val queryDebouncer = Debouncer(300, TimeUnit.MILLISECONDS)
@@ -49,12 +65,26 @@ class ContactSearchMediator(
   )[ContactSearchViewModel::class.java]
 
   val adapter = adapterFactory.create(
-    displayCheckBox = displayCheckBox,
-    displaySmsTag = displaySmsTag,
-    recipientListener = this::toggleSelection,
-    storyListener = this::toggleStorySelection,
-    storyContextMenuCallbacks = StoryContextMenuCallbacks()
-  ) { viewModel.expandSection(it.sectionKey) }
+    context = fragment.requireContext(),
+    fixedContacts = fixedContacts,
+    displayOptions = displayOptions,
+    callbacks = object : ContactSearchAdapter.ClickCallbacks {
+      override fun onStoryClicked(view: View, story: ContactSearchData.Story, isSelected: Boolean) {
+        toggleStorySelection(view, story, isSelected)
+      }
+
+      override fun onKnownRecipientClicked(view: View, knownRecipient: ContactSearchData.KnownRecipient, isSelected: Boolean) {
+        toggleSelection(view, knownRecipient, isSelected)
+      }
+
+      override fun onExpandClicked(expand: ContactSearchData.Expand) {
+        viewModel.expandSection(expand.sectionKey)
+      }
+    },
+    longClickCallbacks = ContactSearchAdapter.LongClickCallbacksAdapter(),
+    storyContextMenuCallbacks = StoryContextMenuCallbacks(),
+    callButtonClickCallbacks = ContactSearchAdapter.EmptyCallButtonClickCallbacks
+  )
 
   init {
     val dataAndSelection: LiveData<Pair<List<ContactSearchData>, Set<ContactSearchKey>>> = LiveDataUtil.combineLatest(
@@ -64,7 +94,9 @@ class ContactSearchMediator(
     )
 
     dataAndSelection.observe(fragment.viewLifecycleOwner) { (data, selection) ->
-      adapter.submitList(ContactSearchAdapter.toMappingModelList(data, selection, arbitraryRepository))
+      adapter.submitList(ContactSearchAdapter.toMappingModelList(data, selection, arbitraryRepository), {
+        callbacks.onAdapterListCommitted(data.size)
+      })
     }
 
     viewModel.controller.observe(fragment.viewLifecycleOwner) { controller ->
@@ -87,15 +119,26 @@ class ContactSearchMediator(
   }
 
   fun setKeysSelected(keys: Set<ContactSearchKey>) {
-    viewModel.setKeysSelected(contactSelectionPreFilter(null, keys))
+    viewModel.setKeysSelected(callbacks.onBeforeContactsSelected(null, keys))
   }
 
   fun setKeysNotSelected(keys: Set<ContactSearchKey>) {
+    keys.forEach {
+      callbacks.onContactDeselected(null, it)
+    }
     viewModel.setKeysNotSelected(keys)
+  }
+
+  fun clearSelection() {
+    viewModel.clearSelection()
   }
 
   fun getSelectedContacts(): Set<ContactSearchKey> {
     return viewModel.getSelectedContacts()
+  }
+
+  fun getFixedContactsSize(): Int {
+    return fixedContacts.size
   }
 
   fun getSelectionState(): LiveData<Set<ContactSearchKey>> {
@@ -124,9 +167,10 @@ class ContactSearchMediator(
 
   private fun toggleSelection(view: View, contactSearchData: ContactSearchData, isSelected: Boolean) {
     return if (isSelected) {
+      callbacks.onContactDeselected(view, contactSearchData.contactSearchKey)
       viewModel.setKeysNotSelected(setOf(contactSearchData.contactSearchKey))
     } else {
-      viewModel.setKeysSelected(contactSelectionPreFilter(view, setOf(contactSearchData.contactSearchKey)))
+      viewModel.setKeysSelected(callbacks.onBeforeContactsSelected(view, setOf(contactSearchData.contactSearchKey)))
     }
   }
 
@@ -160,31 +204,48 @@ class ContactSearchMediator(
     }
   }
 
+  interface Callbacks {
+    fun onBeforeContactsSelected(view: View?, contactSearchKeys: Set<ContactSearchKey>): Set<ContactSearchKey>
+    fun onContactDeselected(view: View?, contactSearchKey: ContactSearchKey)
+    fun onAdapterListCommitted(size: Int)
+  }
+
+  open class SimpleCallbacks : Callbacks {
+    override fun onBeforeContactsSelected(view: View?, contactSearchKeys: Set<ContactSearchKey>): Set<ContactSearchKey> {
+      return contactSearchKeys
+    }
+
+    override fun onContactDeselected(view: View?, contactSearchKey: ContactSearchKey) = Unit
+    override fun onAdapterListCommitted(size: Int) = Unit
+  }
+
   /**
    * Wraps the construction of a PagingMappingAdapter<ContactSearchKey> so that it can
    * be swapped for another implementation, allow listeners to be wrapped, etc.
    */
   fun interface AdapterFactory {
     fun create(
-      displayCheckBox: Boolean,
-      displaySmsTag: ContactSearchAdapter.DisplaySmsTag,
-      recipientListener: (View, ContactSearchData.KnownRecipient, Boolean) -> Unit,
-      storyListener: (View, ContactSearchData.Story, Boolean) -> Unit,
+      context: Context,
+      fixedContacts: Set<ContactSearchKey>,
+      displayOptions: ContactSearchAdapter.DisplayOptions,
+      callbacks: ContactSearchAdapter.ClickCallbacks,
+      longClickCallbacks: ContactSearchAdapter.LongClickCallbacks,
       storyContextMenuCallbacks: ContactSearchAdapter.StoryContextMenuCallbacks,
-      expandListener: (ContactSearchData.Expand) -> Unit
+      callButtonClickCallbacks: ContactSearchAdapter.CallButtonClickCallbacks
     ): PagingMappingAdapter<ContactSearchKey>
   }
 
   private object DefaultAdapterFactory : AdapterFactory {
     override fun create(
-      displayCheckBox: Boolean,
-      displaySmsTag: ContactSearchAdapter.DisplaySmsTag,
-      recipientListener: (View, ContactSearchData.KnownRecipient, Boolean) -> Unit,
-      storyListener: (View, ContactSearchData.Story, Boolean) -> Unit,
+      context: Context,
+      fixedContacts: Set<ContactSearchKey>,
+      displayOptions: ContactSearchAdapter.DisplayOptions,
+      callbacks: ContactSearchAdapter.ClickCallbacks,
+      longClickCallbacks: ContactSearchAdapter.LongClickCallbacks,
       storyContextMenuCallbacks: ContactSearchAdapter.StoryContextMenuCallbacks,
-      expandListener: (ContactSearchData.Expand) -> Unit
+      callButtonClickCallbacks: ContactSearchAdapter.CallButtonClickCallbacks
     ): PagingMappingAdapter<ContactSearchKey> {
-      return ContactSearchAdapter(displayCheckBox, displaySmsTag, recipientListener, storyListener, storyContextMenuCallbacks, expandListener)
+      return ContactSearchAdapter(context, fixedContacts, displayOptions, callbacks, longClickCallbacks, storyContextMenuCallbacks, callButtonClickCallbacks)
     }
   }
 }

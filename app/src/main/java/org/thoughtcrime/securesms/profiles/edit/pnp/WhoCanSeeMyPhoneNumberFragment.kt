@@ -1,10 +1,12 @@
 package org.thoughtcrime.securesms.profiles.edit.pnp
 
 import android.os.Bundle
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import io.reactivex.rxjava3.kotlin.subscribeBy
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.ViewBinderDelegate
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
@@ -13,7 +15,6 @@ import org.thoughtcrime.securesms.components.settings.DSLSettingsText
 import org.thoughtcrime.securesms.components.settings.configure
 import org.thoughtcrime.securesms.databinding.WhoCanSeeMyPhoneNumberFragmentBinding
 import org.thoughtcrime.securesms.util.FeatureFlags
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
 
 /**
@@ -56,16 +57,25 @@ class WhoCanSeeMyPhoneNumberFragment : DSLSettingsFragment(
     return configure {
       radioPref(
         title = DSLSettingsText.from(R.string.PhoneNumberPrivacy_everyone),
-        summary = DSLSettingsText.from(R.string.WhoCanSeeMyPhoneNumberFragment__anyone_who_has),
         isChecked = state == WhoCanSeeMyPhoneNumberState.EVERYONE,
         onClick = { viewModel.onEveryoneCanSeeMyPhoneNumberSelected() }
       )
 
       radioPref(
         title = DSLSettingsText.from(R.string.PhoneNumberPrivacy_nobody),
-        summary = DSLSettingsText.from(R.string.WhoCanSeeMyPhoneNumberFragment__nobody_on_signal),
         isChecked = state == WhoCanSeeMyPhoneNumberState.NOBODY,
         onClick = { viewModel.onNobodyCanSeeMyPhoneNumberSelected() }
+      )
+
+      textPref(
+        title = DSLSettingsText.from(
+          when (state) {
+            WhoCanSeeMyPhoneNumberState.EVERYONE -> R.string.WhoCanSeeMyPhoneNumberFragment__anyone_who_has
+            WhoCanSeeMyPhoneNumberState.NOBODY -> R.string.WhoCanSeeMyPhoneNumberFragment__nobody_on_signal
+          },
+          DSLSettingsText.TextAppearanceModifier(R.style.Signal_Text_BodyMedium),
+          DSLSettingsText.ColorModifier(ContextCompat.getColor(requireContext(), R.color.signal_colorOnSurfaceVariant))
+        )
       )
     }
   }

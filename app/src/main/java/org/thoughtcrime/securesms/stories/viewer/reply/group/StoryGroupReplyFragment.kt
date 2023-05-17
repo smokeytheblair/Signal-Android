@@ -17,7 +17,9 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.kotlin.subscribeBy
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.signal.core.util.concurrent.SignalExecutors
+import org.signal.core.util.getParcelableCompat
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.FixedRoundedCornerBottomSheetDialogFragment
@@ -43,6 +45,7 @@ import org.thoughtcrime.securesms.jobs.RetrieveProfileJob
 import org.thoughtcrime.securesms.keyboard.KeyboardPage
 import org.thoughtcrime.securesms.keyboard.KeyboardPagerViewModel
 import org.thoughtcrime.securesms.keyboard.emoji.EmojiKeyboardCallback
+import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.mediasend.v2.UntrustedRecords
 import org.thoughtcrime.securesms.notifications.v2.ConversationId
 import org.thoughtcrime.securesms.reactions.any.ReactWithAnyEmojiBottomSheetDialogFragment
@@ -53,11 +56,9 @@ import org.thoughtcrime.securesms.safety.SafetyNumberBottomSheet
 import org.thoughtcrime.securesms.sms.MessageSender
 import org.thoughtcrime.securesms.stories.viewer.reply.StoryViewsAndRepliesPagerChild
 import org.thoughtcrime.securesms.stories.viewer.reply.StoryViewsAndRepliesPagerParent
-import org.thoughtcrime.securesms.stories.viewer.reply.composer.StoryReactionBar
 import org.thoughtcrime.securesms.stories.viewer.reply.composer.StoryReplyComposer
 import org.thoughtcrime.securesms.util.DeleteDialog
-import org.thoughtcrime.securesms.util.FragmentDialogs.displayInDialogAboveAnchor
-import org.thoughtcrime.securesms.util.LifecycleDisposable
+import org.thoughtcrime.securesms.util.Dialogs
 import org.thoughtcrime.securesms.util.ServiceUtil
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.PagingMappingAdapter
@@ -134,7 +135,7 @@ class StoryGroupReplyFragment :
     get() = requireArguments().getLong(ARG_STORY_ID)
 
   private val groupRecipientId: RecipientId
-    get() = requireArguments().getParcelable(ARG_GROUP_RECIPIENT_ID)!!
+    get() = requireArguments().getParcelableCompat(ARG_GROUP_RECIPIENT_ID, RecipientId::class.java)!!
 
   private val isFromNotification: Boolean
     get() = requireArguments().getBoolean(ARG_IS_FROM_NOTIFICATION, false)
@@ -351,31 +352,24 @@ class StoryGroupReplyFragment :
   }
 
   override fun onSendActionClicked() {
-    val (body, mentions, bodyRanges) = composer.consumeInput()
-    performSend(body, mentions, bodyRanges)
+    val send = Runnable {
+      val (body, mentions, bodyRanges) = composer.consumeInput()
+      performSend(body, mentions, bodyRanges)
+    }
+
+    if (SignalStore.uiHints().hasNotSeenTextFormattingAlert() && composer.input.hasStyling()) {
+      Dialogs.showFormattedTextDialog(requireContext(), send)
+    } else {
+      send.run()
+    }
   }
 
-  override fun onPickReactionClicked() {
-    displayInDialogAboveAnchor(composer.reactionButton, R.layout.stories_reaction_bar_layout) { dialog, view ->
-      view.findViewById<StoryReactionBar>(R.id.reaction_bar).apply {
-        callback = object : StoryReactionBar.Callback {
-          override fun onTouchOutsideOfReactionBar() {
-            dialog.dismiss()
-          }
+  override fun onPickAnyReactionClicked() {
+    ReactWithAnyEmojiBottomSheetDialogFragment.createForStory().show(childFragmentManager, null)
+  }
 
-          override fun onReactionSelected(emoji: String) {
-            dialog.dismiss()
-            sendReaction(emoji)
-          }
-
-          override fun onOpenReactionPicker() {
-            dialog.dismiss()
-            ReactWithAnyEmojiBottomSheetDialogFragment.createForStory().show(childFragmentManager, null)
-          }
-        }
-        animateIn()
-      }
-    }
+  override fun onReactionClicked(emoji: String) {
+    sendReaction(emoji)
   }
 
   override fun onEmojiSelected(emoji: String?) {
@@ -498,7 +492,6 @@ class StoryGroupReplyFragment :
         if (!recipient.isPushV2Group) {
           annotations
         } else {
-
           val validRecipientIds: Set<String> = recipient.participantIds
             .map { id -> MentionAnnotation.idToMentionAnnotationValue(id) }
             .toSet()

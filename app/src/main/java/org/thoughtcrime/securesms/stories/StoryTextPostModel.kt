@@ -16,6 +16,7 @@ import com.bumptech.glide.load.ResourceDecoder
 import com.bumptech.glide.load.engine.Resource
 import com.bumptech.glide.load.resource.SimpleResource
 import org.signal.core.util.concurrent.safeBlockingGet
+import org.signal.core.util.readParcelableCompat
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.conversation.colors.ChatColors
 import org.thoughtcrime.securesms.database.SignalDatabase
@@ -30,7 +31,6 @@ import org.thoughtcrime.securesms.fonts.TextToScript
 import org.thoughtcrime.securesms.fonts.TypefaceCache
 import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader
 import org.thoughtcrime.securesms.mms.GlideApp
-import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.util.Base64
 import org.thoughtcrime.securesms.util.ParcelUtil
@@ -80,7 +80,7 @@ data class StoryTextPostModel(
       return StoryTextPostModel(
         storyTextPost = StoryTextPost.parseFrom(ParcelUtil.readByteArray(parcel)),
         storySentAtMillis = parcel.readLong(),
-        storyAuthor = parcel.readParcelable(RecipientId::class.java.classLoader)!!,
+        storyAuthor = parcel.readParcelableCompat(RecipientId::class.java)!!,
         bodyRanges = ParcelUtil.readByteArray(parcel)?.let { BodyRangeList.parseFrom(it) }
       )
     }
@@ -93,7 +93,7 @@ data class StoryTextPostModel(
       return parseFrom(
         body = messageRecord.body,
         storySentAtMillis = messageRecord.timestamp,
-        storyAuthor = if (messageRecord.isOutgoing) Recipient.self().id else messageRecord.individualRecipient.id,
+        storyAuthor = messageRecord.fromRecipient.id,
         bodyRanges = messageRecord.messageRanges
       )
     }

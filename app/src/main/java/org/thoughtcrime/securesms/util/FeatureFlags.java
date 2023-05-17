@@ -85,9 +85,9 @@ public final class FeatureFlags {
   private static final String SOFTWARE_AEC_BLOCKLIST_MODELS     = "android.calling.softwareAecBlockList";
   private static final String USE_HARDWARE_AEC_IF_OLD           = "android.calling.useHardwareAecIfOlderThanApi29";
   private static final String USE_AEC3                          = "android.calling.useAec3";
-  private static final String PAYMENTS_COUNTRY_BLOCKLIST        = "android.payments.blocklist";
+  private static final String PAYMENTS_COUNTRY_BLOCKLIST        = "global.payments.disabledRegions";
   public  static final String PHONE_NUMBER_PRIVACY              = "android.pnp";
-  private static final String USE_FCM_FOREGROUND_SERVICE        = "android.useFcmForegroundService.3";
+  private static final String USE_FCM_FOREGROUND_SERVICE        = "android.useFcmForegroundService.4";
   private static final String STORIES_AUTO_DOWNLOAD_MAXIMUM     = "android.stories.autoDownloadMaximum";
   private static final String TELECOM_MANUFACTURER_ALLOWLIST    = "android.calling.telecomAllowList";
   private static final String TELECOM_MODEL_BLOCKLIST           = "android.calling.telecomModelBlockList";
@@ -105,7 +105,13 @@ public final class FeatureFlags {
   private static final String PAYPAL_ONE_TIME_DONATIONS         = "android.oneTimePayPalDonations.2";
   private static final String PAYPAL_RECURRING_DONATIONS        = "android.recurringPayPalDonations.3";
   private static final String TEXT_FORMATTING                   = "android.textFormatting";
-  private static final String SCHEDULED_MESSAGE_SENDS           = "android.scheduledMessageSends";
+  private static final String ANY_ADDRESS_PORTS_KILL_SWITCH     = "android.calling.fieldTrial.anyAddressPortsKillSwitch";
+  private static final String CALLS_TAB                         = "android.calls.tab.2";
+  private static final String TEXT_FORMATTING_SPOILER_SEND      = "android.textFormatting.spoilerSend";
+  private static final String AD_HOC_CALLING                    = "android.calling.ad.hoc";
+  private static final String EDIT_MESSAGE_RECEIVE              = "android.editMessage.receive";
+  private static final String EDIT_MESSAGE_SEND                 = "android.editMessage.send";
+  private static final String CALL_DELETE_SYNC                  = "android.calling.deleteSync";
 
   /**
    * We will only store remote values for flags in this set. If you want a flag to be controllable
@@ -162,12 +168,18 @@ public final class FeatureFlags {
       PAYPAL_ONE_TIME_DONATIONS,
       PAYPAL_RECURRING_DONATIONS,
       TEXT_FORMATTING,
-      SCHEDULED_MESSAGE_SENDS
+      ANY_ADDRESS_PORTS_KILL_SWITCH,
+      CALLS_TAB,
+      TEXT_FORMATTING_SPOILER_SEND,
+      EDIT_MESSAGE_RECEIVE,
+      EDIT_MESSAGE_SEND
   );
 
   @VisibleForTesting
   static final Set<String> NOT_REMOTE_CAPABLE = SetUtil.newHashSet(
-      PHONE_NUMBER_PRIVACY
+      PHONE_NUMBER_PRIVACY,
+      AD_HOC_CALLING,
+      CALL_DELETE_SYNC
   );
 
   /**
@@ -225,7 +237,10 @@ public final class FeatureFlags {
       CREDIT_CARD_PAYMENTS,
       PAYMENTS_REQUEST_ACTIVATE_FLOW,
       CDS_HARD_LIMIT,
-      TEXT_FORMATTING
+      TEXT_FORMATTING,
+      TEXT_FORMATTING_SPOILER_SEND,
+      EDIT_MESSAGE_RECEIVE,
+      EDIT_MESSAGE_SEND
   );
 
   /**
@@ -323,7 +338,7 @@ public final class FeatureFlags {
 
   /** Internal testing extensions. */
   public static boolean internalUser() {
-    return getBoolean(INTERNAL_USER, false);
+    return getBoolean(INTERNAL_USER, false) || Environment.IS_PNP;
   }
 
   /** Whether or not to use the UUID in verification codes. */
@@ -346,7 +361,7 @@ public final class FeatureFlags {
    * IMPORTANT: This is under active development. Enabling this *will* break your contacts in terrible, irreversible ways.
    */
   public static boolean phoneNumberPrivacy() {
-    return getBoolean(PHONE_NUMBER_PRIVACY, false);
+    return getBoolean(PHONE_NUMBER_PRIVACY, false) || Environment.IS_PNP;
   }
 
   /** Whether to use the custom streaming muxer or built in android muxer. */
@@ -411,11 +426,6 @@ public final class FeatureFlags {
   /** Whether or not sending or responding to retry receipts is enabled. */
   public static boolean retryReceipts() {
     return getBoolean(RETRY_RECEIPTS, true);
-  }
-
-  /** How long to wait before considering a retry to be a failure. */
-  public static long retryReceiptLifespan() {
-    return getLong(RETRY_RECEIPT_LIFESPAN, TimeUnit.HOURS.toMillis(1));
   }
 
   /** How old a message is allowed to be while still resending in response to a retry receipt . */
@@ -487,6 +497,7 @@ public final class FeatureFlags {
     return getBoolean(USE_AEC3, true);
   }
 
+  /** Whether or not we show a foreground service on every high-priority FCM push. */
   public static boolean useFcmForegroundService() {
     return getBoolean(USE_FCM_FOREGROUND_SERVICE, false);
   }
@@ -577,10 +588,46 @@ public final class FeatureFlags {
   }
 
   /**
-   *  Whether or not we allow the user to schedule message sends. This takes over the entry point for SMS message sends
+   * Whether or not we should show spoiler text formatting option.
    */
-  public static boolean scheduledMessageSends() {
-    return getBoolean(SCHEDULED_MESSAGE_SENDS, false);
+  public static boolean textFormattingSpoilerSend() {
+    return getBoolean(TEXT_FORMATTING_SPOILER_SEND, false);
+  }
+
+  /**
+   * Enable/disable RingRTC field trial for "AnyAddressPortsKillSwitch"
+   */
+  public static boolean callingFieldTrialAnyAddressPortsKillSwitch() {
+    return getBoolean(ANY_ADDRESS_PORTS_KILL_SWITCH, false);
+  }
+
+  public static boolean editMessageReceiving() {
+    return getBoolean(EDIT_MESSAGE_RECEIVE, false);
+  }
+
+  public static boolean editMessageSending() {
+    return getBoolean(EDIT_MESSAGE_SEND, false);
+  }
+
+  /**
+   * Whether or not the calls tab is enabled
+   */
+  public static boolean callsTab() {
+    return getBoolean(CALLS_TAB, false);
+  }
+
+  /**
+   * Whether or not ad-hoc calling is enabled
+   */
+  public static boolean adHocCalling() {
+    return getBoolean(AD_HOC_CALLING, false);
+  }
+
+  /**
+   * Whether sending deletion sync events is supported
+   */
+  public static boolean callDeleteSync() {
+    return getBoolean(CALL_DELETE_SYNC, false);
   }
 
   /** Only for rendering debug info. */

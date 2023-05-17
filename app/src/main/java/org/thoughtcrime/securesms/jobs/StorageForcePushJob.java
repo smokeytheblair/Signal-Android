@@ -1,6 +1,7 @@
 package org.thoughtcrime.securesms.jobs;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.annimon.stream.Stream;
 
@@ -10,7 +11,7 @@ import org.thoughtcrime.securesms.database.RecipientTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.UnknownStorageIdTable;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
-import org.thoughtcrime.securesms.jobmanager.Data;
+import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
@@ -60,8 +61,8 @@ public class StorageForcePushJob extends BaseJob {
   }
 
   @Override
-  public @NonNull Data serialize() {
-    return Data.EMPTY;
+  public @Nullable byte[] serialize() {
+    return null;
   }
 
   @Override
@@ -88,8 +89,8 @@ public class StorageForcePushJob extends BaseJob {
 
     StorageKey                  storageServiceKey = SignalStore.storageService().getOrCreateStorageKey();
     SignalServiceAccountManager accountManager    = ApplicationDependencies.getSignalServiceAccountManager();
-    RecipientTable        recipientTable    = SignalDatabase.recipients();
-    UnknownStorageIdTable storageIdDatabase = SignalDatabase.unknownStorageIds();
+    RecipientTable              recipientTable    = SignalDatabase.recipients();
+    UnknownStorageIdTable       storageIdTable    = SignalDatabase.unknownStorageIds();
 
     long                        currentVersion       = accountManager.getStorageManifestVersion();
     Map<RecipientId, StorageId> oldContactStorageIds = recipientTable.getContactStorageSyncIdsMap();
@@ -108,7 +109,7 @@ public class StorageForcePushJob extends BaseJob {
     inserts.add(accountRecord);
     allNewStorageIds.add(accountRecord.getId());
 
-    SignalStorageManifest manifest = new SignalStorageManifest(newVersion, allNewStorageIds);
+    SignalStorageManifest manifest = new SignalStorageManifest(newVersion, SignalStore.account().getDeviceId(), allNewStorageIds);
     StorageSyncValidations.validateForcePush(manifest, inserts, Recipient.self().fresh());
 
     try {
@@ -134,7 +135,7 @@ public class StorageForcePushJob extends BaseJob {
     SignalStore.storageService().setManifest(manifest);
     recipientTable.applyStorageIdUpdates(newContactStorageIds);
     recipientTable.applyStorageIdUpdates(Collections.singletonMap(Recipient.self().getId(), accountRecord.getId()));
-    storageIdDatabase.deleteAll();
+    storageIdTable.deleteAll();
   }
 
   @Override
@@ -158,7 +159,7 @@ public class StorageForcePushJob extends BaseJob {
 
   public static final class Factory implements Job.Factory<StorageForcePushJob> {
     @Override
-    public @NonNull StorageForcePushJob create(@NonNull Parameters parameters, @NonNull Data data) {
+    public @NonNull StorageForcePushJob create(@NonNull Parameters parameters, @Nullable byte[] serializedData) {
       return new StorageForcePushJob(parameters);
     }
   }

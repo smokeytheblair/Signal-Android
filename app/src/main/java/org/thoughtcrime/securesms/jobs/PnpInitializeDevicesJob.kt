@@ -4,7 +4,6 @@ import org.signal.core.util.concurrent.safeBlockingGet
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.components.settings.app.changenumber.ChangeNumberRepository
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
-import org.thoughtcrime.securesms.jobmanager.Data
 import org.thoughtcrime.securesms.jobmanager.Job
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint
 import org.thoughtcrime.securesms.keyvalue.SignalStore
@@ -24,7 +23,7 @@ class PnpInitializeDevicesJob private constructor(parameters: Parameters) : Base
   companion object {
     const val KEY = "PnpInitializeDevicesJob"
     private val TAG = Log.tag(PnpInitializeDevicesJob::class.java)
-    private const val PLACEHOLDER_CODE = "123456"
+    private const val PLACEHOLDER_SESSION_ID = "123456789"
 
     @JvmStatic
     fun enqueueIfNecessary() {
@@ -38,8 +37,8 @@ class PnpInitializeDevicesJob private constructor(parameters: Parameters) : Base
 
   constructor() : this(Parameters.Builder().addConstraint(NetworkConstraint.KEY).build())
 
-  override fun serialize(): Data {
-    return Data.EMPTY
+  override fun serialize(): ByteArray? {
+    return null
   }
 
   override fun getFactoryKey(): String {
@@ -88,7 +87,7 @@ class PnpInitializeDevicesJob private constructor(parameters: Parameters) : Base
       try {
         Log.i(TAG, "Calling change number with our current number to distribute PNI messages")
         changeNumberRepository
-          .changeNumber(code = PLACEHOLDER_CODE, newE164 = e164, pniUpdateMode = true)
+          .changeNumber(sessionId = PLACEHOLDER_SESSION_ID, newE164 = e164, pniUpdateMode = true)
           .map(::VerifyResponseWithoutKbs)
           .safeBlockingGet()
           .resultOrThrow
@@ -110,7 +109,7 @@ class PnpInitializeDevicesJob private constructor(parameters: Parameters) : Base
   }
 
   class Factory : Job.Factory<PnpInitializeDevicesJob?> {
-    override fun create(parameters: Parameters, data: Data): PnpInitializeDevicesJob {
+    override fun create(parameters: Parameters, serializedData: ByteArray?): PnpInitializeDevicesJob {
       return PnpInitializeDevicesJob(parameters)
     }
   }

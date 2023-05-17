@@ -37,6 +37,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.kotlin.subscribeBy
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.LoggingFragment
@@ -63,9 +64,8 @@ import org.thoughtcrime.securesms.util.ContextUtil
 import org.thoughtcrime.securesms.util.DateUtils
 import org.thoughtcrime.securesms.util.Debouncer
 import org.thoughtcrime.securesms.util.FullscreenHelper
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.MediaUtil
-import org.thoughtcrime.securesms.util.RemoteDeleteUtil
+import org.thoughtcrime.securesms.util.MessageConstraintsUtil
 import org.thoughtcrime.securesms.util.SaveAttachmentTask
 import org.thoughtcrime.securesms.util.SpanUtil
 import org.thoughtcrime.securesms.util.StorageUtil
@@ -79,7 +79,9 @@ class MediaPreviewV2Fragment : LoggingFragment(R.layout.fragment_media_preview_v
 
   private val lifecycleDisposable = LifecycleDisposable()
   private val binding by ViewBinderDelegate(FragmentMediaPreviewV2Binding::bind)
-  private val viewModel: MediaPreviewV2ViewModel by viewModels()
+  private val viewModel: MediaPreviewV2ViewModel by viewModels(ownerProducer = {
+    requireActivity()
+  })
   private val debouncer = Debouncer(2, TimeUnit.SECONDS)
 
   private lateinit var pagerAdapter: MediaPreviewV2Adapter
@@ -90,7 +92,7 @@ class MediaPreviewV2Fragment : LoggingFragment(R.layout.fragment_media_preview_v
 
   override fun onAttach(context: Context) {
     super.onAttach(context)
-    fullscreenHelper = FullscreenHelper(requireActivity())
+    fullscreenHelper = FullscreenHelper(requireActivity(), true)
     individualItemWidth = context.resources.getDimension(R.dimen.media_rail_item_size).roundToInt()
   }
 
@@ -135,7 +137,7 @@ class MediaPreviewV2Fragment : LoggingFragment(R.layout.fragment_media_preview_v
   @SuppressLint("RestrictedApi")
   private fun initializeToolbar(toolbar: MaterialToolbar) {
     toolbar.setNavigationOnClickListener {
-      requireActivity().onBackPressed()
+      requireActivity().onBackPressedDispatcher.onBackPressed()
     }
 
     toolbar.setTitleTextAppearance(requireContext(), R.style.Signal_Text_TitleMedium)
@@ -253,7 +255,7 @@ class MediaPreviewV2Fragment : LoggingFragment(R.layout.fragment_media_preview_v
     val messageId: Long? = currentItem.attachment?.mmsId
     if (messageId != null) {
       binding.toolbar.setOnClickListener { v ->
-        viewModel.jumpToFragment(v.context, messageId).subscribeBy(
+        lifecycleDisposable += viewModel.jumpToFragment(v.context, messageId).subscribeBy(
           onSuccess = {
             startActivity(it)
             requireActivity().finish()
@@ -350,6 +352,10 @@ class MediaPreviewV2Fragment : LoggingFragment(R.layout.fragment_media_preview_v
   }
 
   private fun scrollAlbumRailToCurrentAdapterPosition(smooth: Boolean = true) {
+    if (!isResumed) {
+      return
+    }
+
     val currentItemPosition = albumRailAdapter.findSelectedItemPosition()
     val albumRail: RecyclerView = binding.mediaPreviewPlaybackControls.recyclerView
     val offsetFromStart = (albumRail.width - individualItemWidth) / 2
@@ -593,7 +599,7 @@ class MediaPreviewV2Fragment : LoggingFragment(R.layout.fragment_media_preview_v
   fun canRemotelyDelete(attachment: DatabaseAttachment): Boolean {
     val mmsId = attachment.mmsId
     val attachmentCount = SignalDatabase.attachments.getAttachmentsForMessage(mmsId).size
-    return attachmentCount <= 1 && RemoteDeleteUtil.isValidSend(listOf(SignalDatabase.messages.getMessageRecord(mmsId)), System.currentTimeMillis())
+    return attachmentCount <= 1 && MessageConstraintsUtil.isValidRemoteDeleteSend(listOf(SignalDatabase.messages.getMessageRecord(mmsId)), System.currentTimeMillis())
   }
 
   private fun editMediaItem(currentItem: MediaTable.MediaRecord) {

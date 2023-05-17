@@ -190,16 +190,28 @@ public class RecipientUtil {
     if (!isBlockable(recipient)) {
       throw new AssertionError("Recipient is not blockable!");
     }
-    Log.i(TAG, "Unblocking " + recipient.getId() + " (group: " + recipient.isGroup() + ")");
+    Log.i(TAG, "Unblocking " + recipient.getId() + " (group: " + recipient.isGroup() + ")", new Throwable());
 
     SignalDatabase.recipients().setBlocked(recipient.getId(), false);
     SignalDatabase.recipients().setProfileSharing(recipient.getId(), true);
     ApplicationDependencies.getJobManager().add(new MultiDeviceBlockedUpdateJob());
     StorageSyncHelper.scheduleSyncForDataChange();
+  }
 
-    if (recipient.hasServiceId()) {
-      ApplicationDependencies.getJobManager().add(MultiDeviceMessageRequestResponseJob.forAccept(recipient.getId()));
+  @WorkerThread
+  public static boolean isRecipientHidden(long threadId) {
+    if (threadId < 0) {
+      return false;
     }
+
+    ThreadTable threadTable     = SignalDatabase.threads();
+    Recipient   threadRecipient = threadTable.getRecipientForThreadId(threadId);
+
+    if (threadRecipient == null) {
+      return false;
+    }
+
+    return threadRecipient.isHidden();
   }
 
   /**
@@ -285,7 +297,8 @@ public class RecipientUtil {
            threadRecipient.isProfileSharing() ||
            threadRecipient.isSystemContact()  ||
            !threadRecipient.isRegistered()    ||
-           threadRecipient.isForceSmsSelection();
+           threadRecipient.isForceSmsSelection() ||
+           threadRecipient.isHidden();
   }
 
   /**
@@ -318,7 +331,7 @@ public class RecipientUtil {
       return false;
     }
 
-    if (threadId == -1 || !SignalDatabase.messages().hasMeaningfulMessage(threadId)) {
+    if (threadId == -1 || SignalDatabase.messages().canSetUniversalTimer(threadId)) {
       SignalDatabase.recipients().setExpireMessages(recipient.getId(), defaultTimer);
       OutgoingMessage outgoingMessage = OutgoingMessage.expirationUpdateMessage(recipient, System.currentTimeMillis(), defaultTimer * 1000L);
       MessageSender.send(context, outgoingMessage, SignalDatabase.threads().getOrCreateThreadIdFor(recipient), MessageSender.SendType.SIGNAL, null, null);
@@ -335,9 +348,11 @@ public class RecipientUtil {
            threadRecipient.isSystemContact() ||
            threadRecipient.isForceSmsSelection() ||
            !threadRecipient.isRegistered() ||
-           hasSentMessageInThread(threadId) ||
-           noSecureMessagesAndNoCallsInThread(threadId) ||
-           isPreMessageRequestThread(threadId);
+           (!threadRecipient.isHidden() && (
+               hasSentMessageInThread(threadId) ||
+               noSecureMessagesAndNoCallsInThread(threadId) ||
+               isPreMessageRequestThread(threadId))
+           );
   }
 
   @WorkerThread

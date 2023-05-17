@@ -4,6 +4,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.ConcatAdapter
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.signal.core.util.dp
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.DialogFragmentDisplayManager
@@ -15,6 +16,7 @@ import org.thoughtcrime.securesms.components.settings.DSLSettingsText
 import org.thoughtcrime.securesms.components.settings.configure
 import org.thoughtcrime.securesms.contacts.paged.ContactSearchAdapter
 import org.thoughtcrime.securesms.contacts.paged.ContactSearchKey
+import org.thoughtcrime.securesms.contacts.paged.ContactSearchPagedDataSourceRepository
 import org.thoughtcrime.securesms.groups.ParcelableGroupId
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.mediasend.v2.stories.ChooseGroupStoryBottomSheet
@@ -24,7 +26,6 @@ import org.thoughtcrime.securesms.stories.dialogs.StoryDialogs
 import org.thoughtcrime.securesms.stories.settings.create.CreateStoryFlowDialogFragment
 import org.thoughtcrime.securesms.stories.settings.create.CreateStoryWithViewersFragment
 import org.thoughtcrime.securesms.util.BottomSheetUtil
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
 import org.thoughtcrime.securesms.util.adapter.mapping.PagingMappingAdapter
 import org.thoughtcrime.securesms.util.navigation.safeNavigate
@@ -39,7 +40,10 @@ class StoriesPrivacySettingsFragment :
   ChooseStoryTypeBottomSheet.Callback,
   GroupStoryEducationSheet.Callback {
 
-  private val viewModel: StoriesPrivacySettingsViewModel by viewModels()
+  private val viewModel: StoriesPrivacySettingsViewModel by viewModels(factoryProducer = {
+    StoriesPrivacySettingsViewModel.Factory(ContactSearchPagedDataSourceRepository(requireContext()))
+  })
+
   private val lifecycleDisposable = LifecycleDisposable()
   private val progressDisplayManager = DialogFragmentDisplayManager { ProgressCardDialogFragment() }
 

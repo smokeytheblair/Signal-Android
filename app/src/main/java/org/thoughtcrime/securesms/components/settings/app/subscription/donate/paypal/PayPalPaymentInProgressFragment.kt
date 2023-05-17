@@ -17,6 +17,8 @@ import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.kotlin.subscribeBy
 import io.reactivex.rxjava3.schedulers.Schedulers
+import org.signal.core.util.concurrent.LifecycleDisposable
+import org.signal.core.util.getParcelableCompat
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.ViewBinderDelegate
@@ -25,7 +27,6 @@ import org.thoughtcrime.securesms.components.settings.app.subscription.donate.Do
 import org.thoughtcrime.securesms.components.settings.app.subscription.donate.DonationProcessorStage
 import org.thoughtcrime.securesms.components.settings.app.subscription.errors.DonationError
 import org.thoughtcrime.securesms.databinding.DonationInProgressFragmentBinding
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import org.thoughtcrime.securesms.util.navigation.safeNavigate
 import org.whispersystems.signalservice.api.subscriptions.PayPalCreatePaymentIntentResponse
 import org.whispersystems.signalservice.api.subscriptions.PayPalCreatePaymentMethodResponse
@@ -122,7 +123,7 @@ class PayPalPaymentInProgressFragment : DialogFragment(R.layout.donation_in_prog
   private fun routeToOneTimeConfirmation(createPaymentIntentResponse: PayPalCreatePaymentIntentResponse): Single<PayPalConfirmationResult> {
     return Single.create<PayPalConfirmationResult> { emitter ->
       val listener = FragmentResultListener { _, bundle ->
-        val result: PayPalConfirmationResult? = bundle.getParcelable(PayPalConfirmationDialogFragment.REQUEST_KEY)
+        val result: PayPalConfirmationResult? = bundle.getParcelableCompat(PayPalConfirmationDialogFragment.REQUEST_KEY, PayPalConfirmationResult::class.java)
         if (result != null) {
           emitter.onSuccess(result)
         } else {

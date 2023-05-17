@@ -439,7 +439,7 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
             SignalStore.donationsValues().subscriptionEndOfPeriodRedemptionStarted = 0L
             SignalStore.donationsValues().subscriptionEndOfPeriodConversionStarted = 0L
             SignalStore.donationsValues().setLastEndOfPeriod(0L)
-            Toast.makeText(context, "Cleared", Toast.LENGTH_SHORT)
+            Toast.makeText(context, "Cleared", Toast.LENGTH_SHORT).show()
           }
         )
       }
@@ -578,6 +578,13 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
         }
       )
 
+      clickPref(
+        title = DSLSettingsText.from("Clear Username education ui hint"),
+        onClick = {
+          SignalStore.uiHints().clearHasSeenUsernameEducation()
+        }
+      )
+
       if (FeatureFlags.chatFilters()) {
         dividerPref()
         sectionHeaderPref(DSLSettingsText.from("Chat Filters"))
@@ -588,6 +595,15 @@ class InternalSettingsFragment : DSLSettingsFragment(R.string.preferences__inter
           }
         )
       }
+
+      dividerPref()
+      switchPref(
+        title = DSLSettingsText.from("Use V2 ConversationFragment"),
+        isChecked = state.useConversationFragmentV2,
+        onClick = {
+          viewModel.setUseConversationFragmentV2(!state.useConversationFragmentV2)
+        }
+      )
     }
   }
 

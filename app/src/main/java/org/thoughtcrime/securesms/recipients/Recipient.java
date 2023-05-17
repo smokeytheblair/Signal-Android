@@ -115,6 +115,7 @@ public class Recipient {
   private final String                       profileAvatar;
   private final ProfileAvatarFileDetails     profileAvatarFileDetails;
   private final boolean                      profileSharing;
+  private final boolean                      isHidden;
   private final long                         lastProfileFetch;
   private final String                       notificationChannel;
   private final UnidentifiedAccessMode       unidentifiedAccessMode;
@@ -412,6 +413,7 @@ public class Recipient {
     this.profileAvatar                = null;
     this.profileAvatarFileDetails     = ProfileAvatarFileDetails.NO_DETAILS;
     this.profileSharing               = false;
+    this.isHidden                     = false;
     this.lastProfileFetch             = 0;
     this.notificationChannel          = null;
     this.unidentifiedAccessMode       = UnidentifiedAccessMode.DISABLED;
@@ -466,6 +468,7 @@ public class Recipient {
     this.profileAvatar                = details.profileAvatar;
     this.profileAvatarFileDetails     = details.profileAvatarFileDetails;
     this.profileSharing               = details.profileSharing;
+    this.isHidden                     = details.isHidden;
     this.lastProfileFetch             = details.lastProfileFetch;
     this.notificationChannel          = details.notificationChannel;
     this.unidentifiedAccessMode       = details.unidentifiedAccessMode;
@@ -833,6 +836,10 @@ public class Recipient {
     return profileSharing;
   }
 
+  public boolean isHidden() {
+    return isHidden;
+  }
+
   public long getLastProfileFetchTime() {
     return lastProfileFetch;
   }
@@ -1042,7 +1049,11 @@ public class Recipient {
   }
 
   public @NonNull UnidentifiedAccessMode getUnidentifiedAccessMode() {
-    return unidentifiedAccessMode;
+    if (getPni().isPresent() && getPni().equals(getServiceId())) {
+      return UnidentifiedAccessMode.DISABLED;
+    } else {
+      return unidentifiedAccessMode;
+    }
   }
 
   public @Nullable ChatWallpaper getWallpaper() {
@@ -1286,7 +1297,7 @@ public class Recipient {
            expireMessages == other.expireMessages &&
            Objects.equals(profileAvatarFileDetails, other.profileAvatarFileDetails) &&
            profileSharing == other.profileSharing &&
-           lastProfileFetch == other.lastProfileFetch &&
+           isHidden == other.isHidden &&
            forceSmsSelection == other.forceSmsSelection &&
            Objects.equals(serviceId, other.serviceId) &&
            Objects.equals(username, other.username) &&

@@ -14,6 +14,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import org.signal.core.util.Result
+import org.signal.core.util.concurrent.LifecycleDisposable
+import org.signal.core.util.getParcelableArrayListCompat
+import org.signal.core.util.getParcelableArrayListExtraCompat
+import org.signal.core.util.getParcelableExtraCompat
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.MainActivity
 import org.thoughtcrime.securesms.PassphraseRequiredActivity
@@ -32,7 +36,6 @@ import org.thoughtcrime.securesms.sharing.MultiShareSender.MultiShareSendResultC
 import org.thoughtcrime.securesms.sharing.interstitial.ShareInterstitialActivity
 import org.thoughtcrime.securesms.util.ConversationUtil
 import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme
-import org.thoughtcrime.securesms.util.LifecycleDisposable
 import java.util.Optional
 
 class ShareActivity : PassphraseRequiredActivity(), MultiselectForwardFragment.Callback {
@@ -84,6 +87,7 @@ class ShareActivity : PassphraseRequiredActivity(), MultiselectForwardFragment.C
       }
     }
 
+    lifecycleDisposable.bindTo(this)
     lifecycleDisposable += viewModel.events.subscribe { shareEvent ->
       when (shareEvent) {
         is ShareEvent.OpenConversation -> openConversation(shareEvent)
@@ -135,7 +139,7 @@ class ShareActivity : PassphraseRequiredActivity(), MultiselectForwardFragment.C
       throw AssertionError("Expected a recipient selection!")
     }
 
-    val contactSearchKeys: List<ContactSearchKey.RecipientSearchKey> = bundle.getParcelableArrayList(MultiselectForwardFragment.RESULT_SELECTION)!!
+    val contactSearchKeys: List<ContactSearchKey.RecipientSearchKey> = bundle.getParcelableArrayListCompat(MultiselectForwardFragment.RESULT_SELECTION, ContactSearchKey.RecipientSearchKey::class.java)!!
 
     viewModel.onContactSelectionConfirmed(contactSearchKeys)
   }
@@ -161,12 +165,12 @@ class ShareActivity : PassphraseRequiredActivity(), MultiselectForwardFragment.C
         } ?: Result.failure(IntentError.SEND_MULTIPLE_TEXT)
       }
       intent.action == Intent.ACTION_SEND_MULTIPLE && intent.hasExtra(Intent.EXTRA_STREAM) -> {
-        intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let {
+        intent.getParcelableArrayListExtraCompat(Intent.EXTRA_STREAM, Uri::class.java)?.let {
           Result.success(UnresolvedShareData.ExternalMultiShare(it))
         } ?: Result.failure(IntentError.SEND_MULTIPLE_STREAM)
       }
       intent.action == Intent.ACTION_SEND && intent.hasExtra(Intent.EXTRA_STREAM) -> {
-        intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let {
+        intent.getParcelableExtraCompat(Intent.EXTRA_STREAM, Uri::class.java)?.let {
           Result.success(UnresolvedShareData.ExternalSingleShare(it, intent.type))
         } ?: extractSingleExtraTextFromIntent(IntentError.SEND_STREAM)
       }
