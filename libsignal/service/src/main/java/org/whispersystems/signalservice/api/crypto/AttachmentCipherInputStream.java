@@ -8,7 +8,11 @@ package org.whispersystems.signalservice.api.crypto;
 
 import org.signal.libsignal.protocol.InvalidMacException;
 import org.signal.libsignal.protocol.InvalidMessageException;
+import org.signal.libsignal.protocol.incrementalmac.ChunkSizeChoice;
+import org.signal.libsignal.protocol.incrementalmac.IncrementalMacInputStream;
 import org.signal.libsignal.protocol.kdf.HKDFv3;
+import org.signal.libsignal.protocol.logging.Log;
+import org.whispersystems.signalservice.internal.crypto.PaddingInputStream;
 import org.whispersystems.signalservice.internal.util.ContentLengthInputStream;
 import org.whispersystems.signalservice.internal.util.Util;
 
@@ -51,7 +55,7 @@ public class AttachmentCipherInputStream extends FilterInputStream {
   private long    totalRead;
   private byte[]  overflowBuffer;
 
-  public static InputStream createForAttachment(File file, long plaintextLength, byte[] combinedKeyMaterial, byte[] digest)
+  public static InputStream createForAttachment(File file, long plaintextLength, byte[] combinedKeyMaterial, byte[] digest, byte[] incrementalDigest)
       throws InvalidMessageException, IOException
   {
     try {
@@ -67,11 +71,24 @@ public class AttachmentCipherInputStream extends FilterInputStream {
         throw new InvalidMacException("Missing digest!");
       }
 
-      try (FileInputStream fin = new FileInputStream(file)) {
-        verifyMac(fin, file.length(), mac, digest);
-      }
 
-      InputStream inputStream = new AttachmentCipherInputStream(new FileInputStream(file), parts[0], file.length() - BLOCK_SIZE - mac.getMacLength());
+      final InputStream wrappedStream;
+      boolean hasIncrementalMac = incrementalDigest != null && incrementalDigest.length > 0;
+      if (!hasIncrementalMac) {
+        try (FileInputStream macVerificationStream = new FileInputStream(file)) {
+          verifyMac(macVerificationStream, file.length(), mac, digest);
+        }
+        wrappedStream = new FileInputStream(file);
+      } else {
+        final int             dataSize   = Math.toIntExact(AttachmentCipherStreamUtil.getCiphertextLength(PaddingInputStream.getPaddedSize(plaintextLength)));
+        final ChunkSizeChoice sizeChoice = ChunkSizeChoice.inferChunkSize(dataSize);
+        wrappedStream = new IncrementalMacInputStream(
+            new FileInputStream(file),
+            parts[1],
+            sizeChoice,
+            incrementalDigest);
+      }
+      InputStream inputStream = new AttachmentCipherInputStream(wrappedStream, parts[0], file.length() - BLOCK_SIZE - mac.getMacLength());
 
       if (plaintextLength != 0) {
         inputStream = new ContentLengthInputStream(inputStream, plaintextLength);

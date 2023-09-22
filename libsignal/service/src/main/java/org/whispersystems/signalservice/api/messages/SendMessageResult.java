@@ -5,7 +5,7 @@ import org.signal.libsignal.protocol.IdentityKey;
 import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import org.whispersystems.signalservice.api.push.exceptions.ProofRequiredException;
 import org.whispersystems.signalservice.api.push.exceptions.RateLimitException;
-import org.whispersystems.signalservice.internal.push.SignalServiceProtos.Content;
+import org.whispersystems.signalservice.internal.push.Content;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,29 +19,34 @@ public class SendMessageResult {
   private final IdentityFailure        identityFailure;
   private final ProofRequiredException proofRequiredFailure;
   private final RateLimitException     rateLimitFailure;
+  private final boolean                invalidPreKeyFailure;
 
   public static SendMessageResult success(SignalServiceAddress address, List<Integer> devices, boolean unidentified, boolean needsSync, long duration, Optional<Content> content) {
-    return new SendMessageResult(address, new Success(unidentified, needsSync, duration, content, devices), false, false, null, null, null);
+    return new SendMessageResult(address, new Success(unidentified, needsSync, duration, content, devices), false, false, null, null, null, false);
   }
 
   public static SendMessageResult networkFailure(SignalServiceAddress address) {
-    return new SendMessageResult(address, null, true, false, null, null, null);
+    return new SendMessageResult(address, null, true, false, null, null, null, false);
   }
 
   public static SendMessageResult unregisteredFailure(SignalServiceAddress address) {
-    return new SendMessageResult(address, null, false, true, null, null, null);
+    return new SendMessageResult(address, null, false, true, null, null, null, false);
   }
 
   public static SendMessageResult identityFailure(SignalServiceAddress address, IdentityKey identityKey) {
-    return new SendMessageResult(address, null, false, false, new IdentityFailure(identityKey), null, null);
+    return new SendMessageResult(address, null, false, false, new IdentityFailure(identityKey), null, null, false);
   }
 
   public static SendMessageResult proofRequiredFailure(SignalServiceAddress address, ProofRequiredException proofRequiredException) {
-    return new SendMessageResult(address, null, false, false, null, proofRequiredException, null);
+    return new SendMessageResult(address, null, false, false, null, proofRequiredException, null, false);
   }
 
   public static SendMessageResult rateLimitFailure(SignalServiceAddress address, RateLimitException rateLimitException) {
-    return new SendMessageResult(address, null, false, false, null, null, rateLimitException);
+    return new SendMessageResult(address, null, false, false, null, null, rateLimitException, false);
+  }
+
+  public static SendMessageResult invalidPreKeyFailure(SignalServiceAddress address) {
+    return new SendMessageResult(address, null, false, false, null, null, null, true);
   }
 
   public SignalServiceAddress getAddress() {
@@ -76,13 +81,18 @@ public class SendMessageResult {
     return rateLimitFailure;
   }
 
+  public boolean isInvalidPreKeyFailure() {
+    return invalidPreKeyFailure;
+  }
+
   private SendMessageResult(SignalServiceAddress address,
                             Success success,
                             boolean networkFailure,
                             boolean unregisteredFailure,
                             IdentityFailure identityFailure,
                             ProofRequiredException proofRequiredFailure,
-                            RateLimitException rateLimitFailure)
+                            RateLimitException rateLimitFailure,
+                            boolean invalidPreKeyFailure)
   {
     this.address              = address;
     this.success              = success;
@@ -91,6 +101,7 @@ public class SendMessageResult {
     this.identityFailure      = identityFailure;
     this.proofRequiredFailure = proofRequiredFailure;
     this.rateLimitFailure     = rateLimitFailure;
+    this.invalidPreKeyFailure = invalidPreKeyFailure;
   }
 
   public static class Success {

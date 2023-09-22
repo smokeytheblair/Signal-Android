@@ -18,11 +18,17 @@ class ConversationUpdateTick(
   private val handler = Handler(Looper.getMainLooper())
   private var isResumed = false
 
+  constructor(onTickListener: () -> Unit) : this(object : OnTickListener {
+    override fun onTick() {
+      onTickListener()
+    }
+  })
+
   override fun onResume(owner: LifecycleOwner) {
     isResumed = true
 
     handler.removeCallbacksAndMessages(null)
-    onTick()
+    handler.postDelayed(this::onTick, TIMEOUT)
   }
 
   override fun onPause(owner: LifecycleOwner) {

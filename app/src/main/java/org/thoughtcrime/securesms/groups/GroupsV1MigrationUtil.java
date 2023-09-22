@@ -137,7 +137,7 @@ public final class GroupsV1MigrationUtil {
   public static void performLocalMigration(@NonNull Context context, @NonNull GroupId.V1 gv1Id) throws IOException
   {
     Log.i(TAG, "Beginning local migration! V1 ID: " + gv1Id, new Throwable());
-    try (Closeable ignored = GroupsV2ProcessingLock.acquireGroupProcessingLock()) {
+    try (Closeable ignored = GroupsV2ProcessingLock.acquireGroupProcessingLock(1000)) {
       if (SignalDatabase.groups().groupExists(gv1Id.deriveV2MigrationGroupId())) {
         Log.w(TAG, "Group was already migrated! Could have been waiting for the lock.", new Throwable());
         return;
@@ -173,10 +173,10 @@ public final class GroupsV1MigrationUtil {
         return null;
       }
 
-      Log.i(TAG, "[Local] Migrating group over to the version we were added to: V" + decryptedGroup.getRevision());
+      Log.i(TAG, "[Local] Migrating group over to the version we were added to: V" + decryptedGroup.revision);
       SignalDatabase.groups().migrateToV2(threadId, gv1Id, decryptedGroup);
 
-      Log.i(TAG, "[Local] Applying all changes since V" + decryptedGroup.getRevision());
+      Log.i(TAG, "[Local] Applying all changes since V" + decryptedGroup.revision);
       try {
         GroupManager.updateGroupFromServer(context, gv1Id.deriveV2MigrationMasterKey(), LATEST, System.currentTimeMillis(), null);
       } catch (GroupChangeBusyException | GroupNotAMemberException e) {

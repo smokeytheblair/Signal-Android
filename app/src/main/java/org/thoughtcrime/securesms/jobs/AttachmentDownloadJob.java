@@ -19,9 +19,9 @@ import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.events.PartProgressEvent;
-import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.JobLogger;
+import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.mms.MmsException;
 import org.thoughtcrime.securesms.notifications.v2.ConversationId;
@@ -30,8 +30,10 @@ import org.thoughtcrime.securesms.s3.S3;
 import org.thoughtcrime.securesms.transport.RetryLaterException;
 import org.thoughtcrime.securesms.util.AttachmentUtil;
 import org.thoughtcrime.securesms.util.Base64;
+import org.thoughtcrime.securesms.util.FeatureFlags;
 import org.thoughtcrime.securesms.util.Util;
 import org.whispersystems.signalservice.api.SignalServiceMessageReceiver;
+import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentPointer;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentRemoteId;
 import org.whispersystems.signalservice.api.push.exceptions.MissingConfigurationException;
@@ -54,8 +56,7 @@ public final class AttachmentDownloadJob extends BaseJob {
 
   public static final String KEY = "AttachmentDownloadJob";
 
-  private static final int    MAX_ATTACHMENT_SIZE = 150 * 1024  * 1024;
-  private static final String TAG                  = Log.tag(AttachmentDownloadJob.class);
+  private static final String TAG = Log.tag(AttachmentDownloadJob.class);
 
   private static final String KEY_MESSAGE_ID    = "message_id";
   private static final String KEY_PART_ROW_ID   = "part_row_id";
@@ -69,11 +70,11 @@ public final class AttachmentDownloadJob extends BaseJob {
 
   public AttachmentDownloadJob(long messageId, AttachmentId attachmentId, boolean manual) {
     this(new Job.Parameters.Builder()
-                           .setQueue("AttachmentDownloadJob" + attachmentId.getRowId() + "-" + attachmentId.getUniqueId())
-                           .addConstraint(NetworkConstraint.KEY)
-                           .setLifespan(TimeUnit.DAYS.toMillis(1))
-                           .setMaxAttempts(Parameters.UNLIMITED)
-                           .build(),
+             .setQueue(constructQueueString(attachmentId))
+             .addConstraint(NetworkConstraint.KEY)
+             .setLifespan(TimeUnit.DAYS.toMillis(1))
+             .setMaxAttempts(Parameters.UNLIMITED)
+             .build(),
          messageId,
          attachmentId,
          manual);
@@ -109,8 +110,8 @@ public final class AttachmentDownloadJob extends BaseJob {
     final AttachmentTable    database     = SignalDatabase.attachments();
     final AttachmentId       attachmentId = new AttachmentId(partRowId, partUniqueId);
     final DatabaseAttachment attachment   = database.getAttachment(attachmentId);
-    final boolean            pending      = attachment != null && attachment.getTransferState() != AttachmentTable.TRANSFER_PROGRESS_DONE
-                                                               && attachment.getTransferState() != AttachmentTable.TRANSFER_PROGRESS_PERMANENT_FAILURE;
+    final boolean pending = attachment != null && attachment.getTransferState() != AttachmentTable.TRANSFER_PROGRESS_DONE
+                            && attachment.getTransferState() != AttachmentTable.TRANSFER_PROGRESS_PERMANENT_FAILURE;
 
     if (pending && (manual || AttachmentUtil.isAutoDownloadPermitted(context, attachment))) {
       Log.i(TAG, "onAdded() Marking attachment progress as 'started'");
@@ -130,8 +131,8 @@ public final class AttachmentDownloadJob extends BaseJob {
   public void doWork() throws IOException, RetryLaterException {
     Log.i(TAG, "onRun() messageId: " + messageId + "  partRowId: " + partRowId + "  partUniqueId: " + partUniqueId + "  manual: " + manual);
 
-    final AttachmentTable database     = SignalDatabase.attachments();
-    final AttachmentId    attachmentId = new AttachmentId(partRowId, partUniqueId);
+    final AttachmentTable    database     = SignalDatabase.attachments();
+    final AttachmentId       attachmentId = new AttachmentId(partRowId, partUniqueId);
     final DatabaseAttachment attachment   = database.getAttachment(attachmentId);
 
     if (attachment == null) {
@@ -184,15 +185,31 @@ public final class AttachmentDownloadJob extends BaseJob {
                                   final Attachment attachment)
       throws IOException, RetryLaterException
   {
+    long maxReceiveSize = FeatureFlags.maxAttachmentReceiveSizeBytes();
 
     AttachmentTable database       = SignalDatabase.attachments();
     File            attachmentFile = database.getOrCreateTransferFile(attachmentId);
 
     try {
+      if (attachment.getSize() > maxReceiveSize) {
+        throw new MmsException("Attachment too large, failing download");
+      }
       SignalServiceMessageReceiver   messageReceiver = ApplicationDependencies.getSignalServiceMessageReceiver();
       SignalServiceAttachmentPointer pointer         = createAttachmentPointer(attachment);
-      InputStream                    stream          = messageReceiver.retrieveAttachment(pointer, attachmentFile, MAX_ATTACHMENT_SIZE, (total, progress) -> EventBus.getDefault().postSticky(new PartProgressEvent(attachment, PartProgressEvent.Type.NETWORK, total, progress)));
+      InputStream stream = messageReceiver.retrieveAttachment(pointer,
+                                                              attachmentFile,
+                                                              maxReceiveSize,
+                                                              new SignalServiceAttachment.ProgressListener() {
+                                                                @Override
+                                                                public void onAttachmentProgress(long total, long progress) {
+                                                                  EventBus.getDefault().postSticky(new PartProgressEvent(attachment, PartProgressEvent.Type.NETWORK, total, progress));
+                                                                }
 
+                                                                @Override
+                                                                public boolean shouldCancel() {
+                                                                  return isCanceled();
+                                                                }
+                                                              });
       database.insertAttachmentsForPlaceholder(messageId, attachmentId, stream);
     } catch (RangeException e) {
       Log.w(TAG, "Range exception, file size " + attachmentFile.length(), e);
@@ -240,6 +257,7 @@ public final class AttachmentDownloadJob extends BaseJob {
                                                 Optional.empty(),
                                                 0, 0,
                                                 Optional.ofNullable(attachment.getDigest()),
+                                                Optional.ofNullable(attachment.getIncrementalDigest()),
                                                 Optional.ofNullable(attachment.getFileName()),
                                                 attachment.isVoiceNote(),
                                                 attachment.isBorderless(),
@@ -261,6 +279,9 @@ public final class AttachmentDownloadJob extends BaseJob {
     try (Response response = S3.getObject(Objects.requireNonNull(attachment.getFileName()))) {
       ResponseBody body = response.body();
       if (body != null) {
+        if (body.contentLength() > FeatureFlags.maxAttachmentReceiveSizeBytes()) {
+          throw new MmsException("Attachment too large, failing download");
+        }
         SignalDatabase.attachments().insertAttachmentsForPlaceholder(messageId, attachmentId, Okio.buffer(body.source()).inputStream());
       }
     } catch (MmsException e) {
@@ -287,8 +308,13 @@ public final class AttachmentDownloadJob extends BaseJob {
     }
   }
 
+  public static String constructQueueString(AttachmentId attachmentId) {
+    return "AttachmentDownloadJob" + attachmentId.getRowId() + "-" + attachmentId.getUniqueId();
+  }
+
   @VisibleForTesting static class InvalidPartException extends Exception {
     InvalidPartException(String s) {super(s);}
+
     InvalidPartException(Exception e) {super(e);}
   }
 

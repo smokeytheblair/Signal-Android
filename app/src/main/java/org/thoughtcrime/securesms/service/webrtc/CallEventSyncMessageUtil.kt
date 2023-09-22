@@ -1,11 +1,11 @@
 package org.thoughtcrime.securesms.service.webrtc
 
-import com.google.protobuf.ByteString
-import org.thoughtcrime.securesms.database.model.toProtoByteString
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.ringrtc.RemotePeer
-import org.whispersystems.signalservice.internal.push.SignalServiceProtos.SyncMessage.CallEvent
+import org.whispersystems.signalservice.internal.push.SyncMessage.CallEvent
 
 /**
  * Helper for creating call event sync messages.
@@ -56,27 +56,26 @@ object CallEventSyncMessageUtil {
     event: CallEvent.Event
   ): CallEvent {
     val recipient = Recipient.resolved(recipientId)
-    val isGroupCall = recipient.isGroup
-    val conversationId: ByteString = if (isGroupCall) {
-      recipient.requireGroupId().decodedId.toProtoByteString()
-    } else {
-      recipient.requireServiceId().toByteString()
+    val callType = when {
+      recipient.isCallLink -> CallEvent.Type.AD_HOC_CALL
+      recipient.isGroup -> CallEvent.Type.GROUP_CALL
+      isVideoCall -> CallEvent.Type.VIDEO_CALL
+      else -> CallEvent.Type.AUDIO_CALL
     }
 
-    return CallEvent
-      .newBuilder()
-      .setConversationId(conversationId)
-      .setId(callId)
-      .setTimestamp(timestamp)
-      .setType(
-        when {
-          isGroupCall -> CallEvent.Type.GROUP_CALL
-          isVideoCall -> CallEvent.Type.VIDEO_CALL
-          else -> CallEvent.Type.AUDIO_CALL
-        }
-      )
-      .setDirection(if (isOutgoing) CallEvent.Direction.OUTGOING else CallEvent.Direction.INCOMING)
-      .setEvent(event)
-      .build()
+    val conversationId: ByteString = when {
+      recipient.isCallLink -> recipient.requireCallLinkRoomId().encodeForProto()
+      recipient.isGroup -> recipient.requireGroupId().decodedId.toByteString()
+      else -> recipient.requireServiceId().toByteString()
+    }
+
+    return CallEvent(
+      conversationId = conversationId,
+      id = callId,
+      timestamp = timestamp,
+      type = callType,
+      direction = if (isOutgoing) CallEvent.Direction.OUTGOING else CallEvent.Direction.INCOMING,
+      event = event
+    )
   }
 }

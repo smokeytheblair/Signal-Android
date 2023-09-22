@@ -2,6 +2,8 @@ package org.whispersystems.signalservice.internal.push.http;
 
 import org.junit.Test;
 import org.whispersystems.signalservice.api.crypto.AttachmentCipherOutputStream;
+import org.whispersystems.signalservice.api.crypto.AttachmentCipherStreamUtil;
+import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
 import org.whispersystems.signalservice.internal.util.Util;
 
 import java.io.ByteArrayInputStream;
@@ -14,7 +16,7 @@ import static org.junit.Assert.assertEquals;
 public class DigestingRequestBodyTest {
 
   private static int  CONTENT_LENGTH = 70000;
-  private static int  TOTAL_LENGTH   = (int) AttachmentCipherOutputStream.getCiphertextLength(CONTENT_LENGTH);
+  private static int  TOTAL_LENGTH   = (int) AttachmentCipherStreamUtil.getCiphertextLength(CONTENT_LENGTH);
 
   private final byte[] attachmentKey = Util.getSecretBytes(64);
   private final byte[] attachmentIV  = Util.getSecretBytes(16);
@@ -23,7 +25,7 @@ public class DigestingRequestBodyTest {
   private final OutputStreamFactory outputStreamFactory = new AttachmentCipherOutputStreamFactory(attachmentKey, attachmentIV);
 
   @Test
-  public void givenSameKeyAndIV_whenIWriteToBuffer_thenIExpectSameTransmittedDigest() throws Exception {
+  public void givenSameKeyAndIV_whenIWriteToBuffer_thenIExpectSameDigests() throws Exception {
     DigestingRequestBody fromStart  = getBody(0);
     DigestingRequestBody fromMiddle = getBody(CONTENT_LENGTH / 2);
 
@@ -36,6 +38,7 @@ public class DigestingRequestBodyTest {
     }
 
     assertArrayEquals(fromStart.getTransmittedDigest(), fromMiddle.getTransmittedDigest());
+    assertArrayEquals(fromStart.getIncrementalDigest(), fromMiddle.getIncrementalDigest());
   }
 
   @Test
@@ -68,6 +71,15 @@ public class DigestingRequestBodyTest {
   }
 
   private DigestingRequestBody getBody(long contentStart) {
-    return new DigestingRequestBody(new ByteArrayInputStream(input), outputStreamFactory, "application/octet", CONTENT_LENGTH, (a, b) -> {}, () -> false, contentStart);
+    return new DigestingRequestBody(new ByteArrayInputStream(input), outputStreamFactory, "application/octet", CONTENT_LENGTH, new SignalServiceAttachment.ProgressListener() {
+      @Override
+      public void onAttachmentProgress(long total, long progress) {
+        // no-op
+      }
+
+      @Override public boolean shouldCancel() {
+        return false;
+      }
+    }, () -> false, contentStart);
   }
 }

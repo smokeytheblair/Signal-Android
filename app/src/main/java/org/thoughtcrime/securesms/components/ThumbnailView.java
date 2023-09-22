@@ -28,8 +28,10 @@ import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
 
 import org.signal.core.util.logging.Log;
+import org.signal.glide.transforms.SignalDownsampleStrategy;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.blurhash.BlurHash;
+import org.thoughtcrime.securesms.components.transfercontrols.TransferControlView;
 import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader.DecryptableUri;
 import org.thoughtcrime.securesms.mms.GlideRequest;
@@ -46,6 +48,7 @@ import org.thoughtcrime.securesms.util.concurrent.ListenableFuture;
 import org.thoughtcrime.securesms.util.concurrent.SettableFuture;
 import org.thoughtcrime.securesms.util.views.Stub;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Objects;
@@ -77,11 +80,13 @@ public class ThumbnailView extends FrameLayout {
 
   private final CornerMask cornerMask;
 
-  private ThumbnailViewTransferControlsState transferControlsState  = new ThumbnailViewTransferControlsState();
+  private ThumbnailViewTransferControlsState transferControlsState       = new ThumbnailViewTransferControlsState();
   private Stub<TransferControlView>          transferControlViewStub;
-  private SlideClickListener                 thumbnailClickListener = null;
-  private SlidesClickedListener              downloadClickListener  = null;
-  private Slide                              slide                  = null;
+  private SlideClickListener                 thumbnailClickListener      = null;
+  private SlidesClickedListener              downloadClickListener       = null;
+  private SlidesClickedListener              cancelDownloadClickListener = null;
+  private SlideClickListener                 playVideoClickListener      = null;
+  private Slide                              slide                       = null;
 
 
   public ThumbnailView(Context context) {
@@ -363,7 +368,13 @@ public class ThumbnailView extends FrameLayout {
       }
 
       transferControlsState = transferControlsState.withSlide(slide)
-                                                   .withDownloadClickListener(new DownloadClickDispatcher());
+                                                   .withDownloadClickListener(new DownloadClickDispatcher())
+                                                   .withCancelDownloadClickListener(new CancelClickDispatcher());
+
+      if (MediaUtil.isInstantVideoSupported(slide)) {
+        transferControlsState = transferControlsState.withInstantPlaybackClickListener(new ProgressWheelClickDispatcher());
+      }
+
       transferControlsState.applyState(transferControlViewStub);
     } else {
       transferControlViewStub.setVisibility(View.GONE);
@@ -377,7 +388,7 @@ public class ThumbnailView extends FrameLayout {
       this.playOverlay.setVisibility(View.GONE);
     }
 
-    if (Util.equals(slide, this.slide)) {
+    if (hasSameContents(this.slide, slide)) {
       Log.i(TAG, "Not re-loading slide " + slide.asAttachment().getUri());
       return new SettableFuture<>(false);
     }
@@ -454,6 +465,7 @@ public class ThumbnailView extends FrameLayout {
 
     GlideRequest<Drawable> request = glideRequests.load(new DecryptableUri(uri))
                                                   .diskCacheStrategy(DiskCacheStrategy.NONE)
+                                                  .downsample(SignalDownsampleStrategy.CENTER_OUTSIDE_NO_UPSCALE)
                                                   .listener(listener);
 
     if (animate) {
@@ -486,6 +498,7 @@ public class ThumbnailView extends FrameLayout {
     GlideRequest<Drawable> request = glideRequests.load(model)
                                                   .diskCacheStrategy(DiskCacheStrategy.NONE)
                                                   .placeholder(model.getPlaceholder())
+                                                  .downsample(SignalDownsampleStrategy.CENTER_OUTSIDE_NO_UPSCALE)
                                                   .transition(withCrossFade());
 
     request = override(request, width, height);
@@ -512,6 +525,14 @@ public class ThumbnailView extends FrameLayout {
 
   public void setDownloadClickListener(SlidesClickedListener listener) {
     this.downloadClickListener = listener;
+  }
+
+  public void setCancelDownloadClickListener(SlidesClickedListener listener) {
+    this.cancelDownloadClickListener = listener;
+  }
+
+  public void setPlayVideoClickListener(SlideClickListener listener) {
+    this.playVideoClickListener = listener;
   }
 
   public void clear(GlideRequests glideRequests) {
@@ -553,8 +574,9 @@ public class ThumbnailView extends FrameLayout {
 
   private GlideRequest<Drawable> buildThumbnailGlideRequest(@NonNull GlideRequests glideRequests, @NonNull Slide slide) {
     GlideRequest<Drawable> request = applySizing(glideRequests.load(new DecryptableUri(Objects.requireNonNull(slide.getUri())))
-                                                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                                                    .transition(withCrossFade()));
+                                                              .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                                                              .downsample(SignalDownsampleStrategy.CENTER_OUTSIDE_NO_UPSCALE)
+                                                              .transition(withCrossFade()));
 
     boolean doNotShowMissingThumbnailImage = Build.VERSION.SDK_INT < 23;
 
@@ -605,6 +627,20 @@ public class ThumbnailView extends FrameLayout {
     return 0;
   }
 
+  private static boolean hasSameContents(@Nullable Slide slide, @Nullable Slide other) {
+    if (Util.equals(slide, other)) {
+
+      if (slide != null && other != null) {
+        byte[] digestLeft  = slide.asAttachment().getDigest();
+        byte[] digestRight = other.asAttachment().getDigest();
+
+        return Arrays.equals(digestLeft, digestRight);
+      }
+    }
+
+    return false;
+  }
+
   public interface ThumbnailRequestListener extends RequestListener<Drawable> {
     void onLoadCanceled();
 
@@ -636,6 +672,30 @@ public class ThumbnailView extends FrameLayout {
         downloadClickListener.onClick(view, Collections.singletonList(slide));
       } else {
         Log.w(TAG, "Received a download button click, but unable to execute it. slide: " + slide + "  downloadClickListener: " + downloadClickListener);
+      }
+    }
+  }
+
+  private class CancelClickDispatcher implements View.OnClickListener {
+    @Override
+    public void onClick(View view) {
+      Log.i(TAG, "onClick() for cancel button");
+      if (cancelDownloadClickListener != null && slide != null) {
+        cancelDownloadClickListener.onClick(view, Collections.singletonList(slide));
+      } else {
+        Log.w(TAG, "Received a cancel button click, but unable to execute it. slide: " + slide + "  cancelDownloadClickListener: " + cancelDownloadClickListener);
+      }
+    }
+  }
+
+  private class ProgressWheelClickDispatcher implements View.OnClickListener {
+    @Override
+    public void onClick(View view) {
+      Log.i(TAG, "onClick() for instant video playback");
+      if (playVideoClickListener != null && slide != null) {
+        playVideoClickListener.onClick(view, slide);
+      } else {
+        Log.w(TAG, "Received an instant video click, but unable to execute it. slide: " + slide + "  progressWheelClickListener: " + playVideoClickListener);
       }
     }
   }

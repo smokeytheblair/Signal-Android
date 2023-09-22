@@ -21,17 +21,17 @@ class LogDataSource(
   val logDatabase = LogDatabase.getInstance(application)
 
   override fun size(): Int {
-    return prefixLines.size + logDatabase.getLogCountBeforeTime(untilTime)
+    return prefixLines.size + logDatabase.logs.getLogCountBeforeTime(untilTime)
   }
 
-  override fun load(start: Int, length: Int, cancellationSignal: PagedDataSource.CancellationSignal): List<LogLine> {
+  override fun load(start: Int, length: Int, totalSize: Int, cancellationSignal: PagedDataSource.CancellationSignal): List<LogLine> {
     if (start + length < prefixLines.size) {
       return prefixLines.subList(start, start + length)
     } else if (start < prefixLines.size) {
       return prefixLines.subList(start, prefixLines.size) +
-        logDatabase.getRangeBeforeTime(0, length - (prefixLines.size - start), untilTime).map { convertToLogLine(it) }
+        logDatabase.logs.getRangeBeforeTime(0, length - (prefixLines.size - start), untilTime).map { convertToLogLine(it) }
     } else {
-      return logDatabase.getRangeBeforeTime(start - prefixLines.size, length, untilTime).map { convertToLogLine(it) }
+      return logDatabase.logs.getRangeBeforeTime(start - prefixLines.size, length, untilTime).map { convertToLogLine(it) }
     }
   }
 

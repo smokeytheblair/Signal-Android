@@ -8,6 +8,7 @@ import org.signal.core.util.requireLong
 import org.signal.core.util.requireNonNullString
 import org.thoughtcrime.securesms.attachments.DatabaseAttachment
 import org.thoughtcrime.securesms.recipients.RecipientId
+import org.thoughtcrime.securesms.util.FeatureFlags
 import org.thoughtcrime.securesms.util.MediaUtil
 import org.thoughtcrime.securesms.util.MediaUtil.SlideType
 
@@ -48,6 +49,7 @@ class MediaTable internal constructor(context: Context?, databaseHelper: SignalD
         ${AttachmentTable.TABLE_NAME}.${AttachmentTable.CAPTION}, 
         ${AttachmentTable.TABLE_NAME}.${AttachmentTable.NAME}, 
         ${AttachmentTable.TABLE_NAME}.${AttachmentTable.UPLOAD_TIMESTAMP}, 
+        ${AttachmentTable.TABLE_NAME}.${AttachmentTable.MAC_DIGEST}, 
         ${MessageTable.TABLE_NAME}.${MessageTable.TYPE}, 
         ${MessageTable.TABLE_NAME}.${MessageTable.DATE_SENT}, 
         ${MessageTable.TABLE_NAME}.${MessageTable.DATE_RECEIVED}, 
@@ -55,7 +57,7 @@ class MediaTable internal constructor(context: Context?, databaseHelper: SignalD
         ${MessageTable.TABLE_NAME}.${MessageTable.THREAD_ID}, 
         ${MessageTable.TABLE_NAME}.${MessageTable.FROM_RECIPIENT_ID}, 
         ${ThreadTable.TABLE_NAME}.${ThreadTable.RECIPIENT_ID} as $THREAD_RECIPIENT_ID 
-      FROM 
+   FROM 
         ${AttachmentTable.TABLE_NAME} 
         LEFT JOIN ${MessageTable.TABLE_NAME} ON ${AttachmentTable.TABLE_NAME}.${AttachmentTable.MMS_ID} = ${MessageTable.TABLE_NAME}.${MessageTable.ID} 
         LEFT JOIN ${ThreadTable.TABLE_NAME} ON ${ThreadTable.TABLE_NAME}.${ThreadTable.ID} = ${MessageTable.TABLE_NAME}.${MessageTable.THREAD_ID} 
@@ -67,8 +69,8 @@ class MediaTable internal constructor(context: Context?, databaseHelper: SignalD
         ) AND 
         (%s) AND 
         ${MessageTable.VIEW_ONCE} = 0 AND 
-        ${MessageTable.STORY_TYPE} = 0 AND 
-        ${AttachmentTable.DATA} IS NOT NULL AND 
+        ${MessageTable.STORY_TYPE} = 0 AND
+        ${MessageTable.LATEST_REVISION_ID} IS NULL AND 
         (
           ${AttachmentTable.QUOTE} = 0 OR 
           (
@@ -96,32 +98,54 @@ class MediaTable internal constructor(context: Context?, databaseHelper: SignalD
     private val GALLERY_MEDIA_QUERY = String.format(
       BASE_MEDIA_QUERY,
       """
+        ${AttachmentTable.DATA} IS NOT NULL AND
         ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'image/svg%' AND 
         (${AttachmentTable.CONTENT_TYPE} LIKE 'image/%' OR ${AttachmentTable.CONTENT_TYPE} LIKE 'video/%')
       """
     )
 
-    private val AUDIO_MEDIA_QUERY = String.format(BASE_MEDIA_QUERY, "${AttachmentTable.CONTENT_TYPE} LIKE 'audio/%'")
+    private val GALLERY_MEDIA_QUERY_INCLUDING_TEMP_VIDEOS = String.format(
+      BASE_MEDIA_QUERY,
+      """
+        (${AttachmentTable.DATA} IS NOT NULL OR (${AttachmentTable.CONTENT_TYPE} LIKE 'video/%' AND ${AttachmentTable.MAC_DIGEST} IS NOT NULL)) AND
+        ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'image/svg%' AND 
+        (${AttachmentTable.CONTENT_TYPE} LIKE 'image/%' OR ${AttachmentTable.CONTENT_TYPE} LIKE 'video/%')
+      """
+    )
+
+    private val AUDIO_MEDIA_QUERY = String.format(
+      BASE_MEDIA_QUERY,
+      """
+        ${AttachmentTable.DATA} IS NOT NULL AND
+        ${AttachmentTable.CONTENT_TYPE} LIKE 'audio/%'
+      """
+    )
     private val ALL_MEDIA_QUERY = String.format(BASE_MEDIA_QUERY, "${AttachmentTable.CONTENT_TYPE} NOT LIKE 'text/x-signal-plain'")
     private val DOCUMENT_MEDIA_QUERY = String.format(
       BASE_MEDIA_QUERY,
       """
-        ${AttachmentTable.CONTENT_TYPE} LIKE 'image/svg%' OR 
+        ${AttachmentTable.DATA} IS NOT NULL AND
         (
-          ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'image/%' AND 
-          ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'video/%' AND 
-          ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'audio/%' AND 
-          ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'text/x-signal-plain'
+          ${AttachmentTable.CONTENT_TYPE} LIKE 'image/svg%' OR 
+          (
+            ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'image/%' AND 
+            ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'video/%' AND 
+            ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'audio/%' AND 
+            ${AttachmentTable.CONTENT_TYPE} NOT LIKE 'text/x-signal-plain'
+          )
         )"""
     )
-
     private fun applyEqualityOperator(threadId: Long, query: String): String {
       return query.replace("__EQUALITY__", if (threadId == ALL_THREADS.toLong()) "!=" else "=")
     }
   }
 
   fun getGalleryMediaForThread(threadId: Long, sorting: Sorting): Cursor {
-    val query = sorting.applyToQuery(applyEqualityOperator(threadId, GALLERY_MEDIA_QUERY))
+    val query = if (FeatureFlags.instantVideoPlayback()) {
+      sorting.applyToQuery(applyEqualityOperator(threadId, GALLERY_MEDIA_QUERY_INCLUDING_TEMP_VIDEOS))
+    } else {
+      sorting.applyToQuery(applyEqualityOperator(threadId, GALLERY_MEDIA_QUERY))
+    }
     val args = arrayOf(threadId.toString() + "")
     return readableDatabase.rawQuery(query, args)
   }

@@ -9,6 +9,7 @@ import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord
 import org.signal.libsignal.protocol.state.IdentityKeyStore
+import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.PreKeyBundle
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.SessionRecord
@@ -30,7 +31,7 @@ import org.whispersystems.signalservice.api.crypto.UnidentifiedAccess
 import org.whispersystems.signalservice.api.push.DistributionId
 import org.whispersystems.signalservice.api.push.ServiceId
 import org.whispersystems.signalservice.api.push.SignalServiceAddress
-import org.whispersystems.signalservice.internal.push.SignalServiceProtos
+import org.whispersystems.signalservice.internal.push.Envelope
 import java.util.Optional
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
@@ -48,7 +49,7 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
   private val serviceAddress = SignalServiceAddress(serviceId, e164)
   private val registrationId = KeyHelper.generateRegistrationId(false)
   private val aciStore = BobSignalServiceAccountDataStore(registrationId, identityKeyPair)
-  private val senderCertificate = FakeClientHelpers.createCertificateFor(trustRoot, serviceId.uuid(), e164, 1, identityKeyPair.publicKey.publicKey, 31337)
+  private val senderCertificate = FakeClientHelpers.createCertificateFor(trustRoot, serviceId.rawUuid, e164, 1, identityKeyPair.publicKey.publicKey, 31337)
   private val sessionLock = object : SignalSessionLock {
     private val lock = ReentrantLock()
 
@@ -59,7 +60,7 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
   }
 
   /** Inspired by SignalServiceMessageSender#getEncryptedMessage */
-  fun encrypt(now: Long): SignalServiceProtos.Envelope {
+  fun encrypt(now: Long): Envelope {
     val envelopeContent = FakeClientHelpers.encryptedTextMessage(now)
 
     val cipher = SignalServiceCipher(serviceAddress, 1, aciStore, sessionLock, null)
@@ -70,10 +71,10 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
     }
 
     return cipher.encrypt(getAliceProtocolAddress(), getAliceUnidentifiedAccess(), envelopeContent)
-      .toEnvelope(envelopeContent.content.get().dataMessage.timestamp, getAliceServiceId())
+      .toEnvelope(envelopeContent.content.get().dataMessage!!.timestamp!!, getAliceServiceId())
   }
 
-  fun decrypt(envelope: SignalServiceProtos.Envelope, serverDeliveredTimestamp: Long) {
+  fun decrypt(envelope: Envelope, serverDeliveredTimestamp: Long) {
     val cipher = SignalServiceCipher(serviceAddress, 1, aciStore, sessionLock, UnidentifiedAccessUtil.getCertificateValidator())
     cipher.decrypt(envelope, serverDeliveredTimestamp)
   }
@@ -142,7 +143,6 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
     override fun getSubDeviceSessions(name: String?): List<Int> = emptyList()
     override fun containsSession(address: SignalProtocolAddress?): Boolean = aliceSessionRecord != null
     override fun getIdentity(address: SignalProtocolAddress?): IdentityKey = SignalStore.account().aciIdentityKey.publicKey
-
     override fun loadPreKey(preKeyId: Int): PreKeyRecord = throw UnsupportedOperationException()
     override fun storePreKey(preKeyId: Int, record: PreKeyRecord?) = throw UnsupportedOperationException()
     override fun containsPreKey(preKeyId: Int): Boolean = throw UnsupportedOperationException()
@@ -155,6 +155,13 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
     override fun storeSignedPreKey(signedPreKeyId: Int, record: SignedPreKeyRecord?) = throw UnsupportedOperationException()
     override fun containsSignedPreKey(signedPreKeyId: Int): Boolean = throw UnsupportedOperationException()
     override fun removeSignedPreKey(signedPreKeyId: Int) = throw UnsupportedOperationException()
+    override fun loadKyberPreKey(kyberPreKeyId: Int): KyberPreKeyRecord = throw UnsupportedOperationException()
+    override fun loadKyberPreKeys(): MutableList<KyberPreKeyRecord> = throw UnsupportedOperationException()
+    override fun storeKyberPreKey(kyberPreKeyId: Int, record: KyberPreKeyRecord?) = throw UnsupportedOperationException()
+    override fun containsKyberPreKey(kyberPreKeyId: Int): Boolean = throw UnsupportedOperationException()
+    override fun markKyberPreKeyUsed(kyberPreKeyId: Int) = throw UnsupportedOperationException()
+    override fun deleteAllStaleOneTimeEcPreKeys(threshold: Long, minCount: Int) = throw UnsupportedOperationException()
+    override fun markAllOneTimeEcPreKeysStaleIfNecessary(staleTime: Long) = throw UnsupportedOperationException()
     override fun storeSenderKey(sender: SignalProtocolAddress?, distributionId: UUID?, record: SenderKeyRecord?) = throw UnsupportedOperationException()
     override fun loadSenderKey(sender: SignalProtocolAddress?, distributionId: UUID?): SenderKeyRecord = throw UnsupportedOperationException()
     override fun archiveSession(address: SignalProtocolAddress?) = throw UnsupportedOperationException()
@@ -162,6 +169,11 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
     override fun getSenderKeySharedWith(distributionId: DistributionId?): MutableSet<SignalProtocolAddress> = throw UnsupportedOperationException()
     override fun markSenderKeySharedWith(distributionId: DistributionId?, addresses: MutableCollection<SignalProtocolAddress>?) = throw UnsupportedOperationException()
     override fun clearSenderKeySharedWith(addresses: MutableCollection<SignalProtocolAddress>?) = throw UnsupportedOperationException()
+    override fun storeLastResortKyberPreKey(kyberPreKeyId: Int, kyberPreKeyRecord: KyberPreKeyRecord) = throw UnsupportedOperationException()
+    override fun removeKyberPreKey(kyberPreKeyId: Int) = throw UnsupportedOperationException()
+    override fun markAllOneTimeKyberPreKeysStaleIfNecessary(staleTime: Long) = throw UnsupportedOperationException()
+    override fun deleteAllStaleOneTimeKyberPreKeys(threshold: Long, minCount: Int) = throw UnsupportedOperationException()
+    override fun loadLastResortKyberPreKeys(): List<KyberPreKeyRecord> = throw UnsupportedOperationException()
     override fun isMultiDevice(): Boolean = throw UnsupportedOperationException()
   }
 }

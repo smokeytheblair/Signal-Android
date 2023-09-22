@@ -6,7 +6,6 @@ import androidx.annotation.VisibleForTesting
 import net.zetetic.database.sqlcipher.SQLiteOpenHelper
 import org.signal.core.util.SqlUtil
 import org.signal.core.util.logging.Log
-import org.signal.core.util.withinTransaction
 import org.thoughtcrime.securesms.crypto.AttachmentSecret
 import org.thoughtcrime.securesms.crypto.DatabaseSecret
 import org.thoughtcrime.securesms.crypto.MasterSecret
@@ -45,7 +44,6 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
   val threadTable: ThreadTable = ThreadTable(context, this)
   val identityTable: IdentityTable = IdentityTable(context, this)
   val draftTable: DraftTable = DraftTable(context, this)
-  val pushTable: PushTable = PushTable(context, this)
   val groupTable: GroupTable = GroupTable(context, this)
   val recipientTable: RecipientTable = RecipientTable(context, this)
   val groupReceiptTable: GroupReceiptTable = GroupReceiptTable(context, this)
@@ -74,6 +72,8 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
   val remoteMegaphoneTable: RemoteMegaphoneTable = RemoteMegaphoneTable(context, this)
   val pendingPniSignatureMessageTable: PendingPniSignatureMessageTable = PendingPniSignatureMessageTable(context, this)
   val callTable: CallTable = CallTable(context, this)
+  val kyberPreKeyTable: KyberPreKeyTable = KyberPreKeyTable(context, this)
+  val callLinkTable: CallLinkTable = CallLinkTable(context, this)
 
   override fun onOpen(db: net.zetetic.database.sqlcipher.SQLiteDatabase) {
     db.setForeignKeyConstraintsEnabled(true)
@@ -85,7 +85,6 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     db.execSQL(ThreadTable.CREATE_TABLE)
     db.execSQL(IdentityTable.CREATE_TABLE)
     db.execSQL(DraftTable.CREATE_TABLE)
-    db.execSQL(PushTable.CREATE_TABLE)
     executeStatements(db, GroupTable.CREATE_TABLES)
     db.execSQL(RecipientTable.CREATE_TABLE)
     db.execSQL(GroupReceiptTable.CREATE_TABLE)
@@ -110,6 +109,7 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     db.execSQL(PendingPniSignatureMessageTable.CREATE_TABLE)
     db.execSQL(CallLinkTable.CREATE_TABLE)
     db.execSQL(CallTable.CREATE_TABLE)
+    db.execSQL(KyberPreKeyTable.CREATE_TABLE)
     executeStatements(db, SearchTable.CREATE_TABLE)
     executeStatements(db, RemappedRecordTables.CREATE_TABLE)
     executeStatements(db, MessageSendLogTables.CREATE_TABLE)
@@ -135,6 +135,7 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     executeStatements(db, PendingPniSignatureMessageTable.CREATE_INDEXES)
     executeStatements(db, CallTable.CREATE_INDEXES)
     executeStatements(db, ReactionTable.CREATE_INDEXES)
+    executeStatements(db, KyberPreKeyTable.CREATE_INDEXES)
 
     executeStatements(db, SearchTable.CREATE_TRIGGERS)
     executeStatements(db, MessageSendLogTables.CREATE_TRIGGERS)
@@ -253,12 +254,12 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
 
     @JvmStatic
     fun runPostSuccessfulTransaction(dedupeKey: String, task: Runnable) {
-      instance!!.signalReadableDatabase.runPostSuccessfulTransaction(dedupeKey, task)
+      instance!!.signalWritableDatabase.runPostSuccessfulTransaction(dedupeKey, task)
     }
 
     @JvmStatic
     fun runPostSuccessfulTransaction(task: Runnable) {
-      instance!!.signalReadableDatabase.runPostSuccessfulTransaction(task)
+      instance!!.signalWritableDatabase.runPostSuccessfulTransaction(task)
     }
 
     @JvmStatic
@@ -278,9 +279,11 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     @JvmStatic
     fun runPostBackupRestoreTasks(database: net.zetetic.database.sqlcipher.SQLiteDatabase) {
       synchronized(SignalDatabase::class.java) {
-        database.withinTransaction { db ->
-          instance!!.onUpgrade(db, db.getVersion(), -1)
-          instance!!.markCurrent(db)
+        database.setForeignKeyConstraintsEnabled(false)
+        database.beginTransaction()
+        try {
+          instance!!.onUpgrade(database, database.getVersion(), -1)
+          instance!!.markCurrent(database)
           instance!!.messageTable.deleteAbandonedMessages()
           instance!!.messageTable.trimEntriesForExpiredMessages()
           instance!!.reactionTable.deleteAbandonedReactions()
@@ -290,6 +293,10 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
           instance!!.rawWritableDatabase.execSQL("DROP TABLE IF EXISTS job_spec")
           instance!!.rawWritableDatabase.execSQL("DROP TABLE IF EXISTS constraint_spec")
           instance!!.rawWritableDatabase.execSQL("DROP TABLE IF EXISTS dependency_spec")
+          database.setTransactionSuccessful()
+        } finally {
+          database.endTransaction()
+          database.setForeignKeyConstraintsEnabled(true)
         }
 
         instance!!.rawWritableDatabase.close()
@@ -404,6 +411,11 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
       get() = instance!!.identityTable
 
     @get:JvmStatic
+    @get:JvmName("kyberPreKeys")
+    val kyberPreKeys: KyberPreKeyTable
+      get() = instance!!.kyberPreKeyTable
+
+    @get:JvmStatic
     @get:JvmName("media")
     val media: MediaTable
       get() = instance!!.mediaTable
@@ -452,12 +464,6 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     @get:JvmName("pendingPniSignatureMessages")
     val pendingPniSignatureMessages: PendingPniSignatureMessageTable
       get() = instance!!.pendingPniSignatureMessageTable
-
-    @get:Deprecated("This only exists to migrate from legacy storage. There shouldn't be any new usages.")
-    @get:JvmStatic
-    @get:JvmName("push")
-    val push: PushTable
-      get() = instance!!.pushTable
 
     @get:JvmStatic
     @get:JvmName("recipients")
@@ -523,5 +529,10 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     @get:JvmName("calls")
     val calls: CallTable
       get() = instance!!.callTable
+
+    @get:JvmStatic
+    @get:JvmName("callLinks")
+    val callLinks: CallLinkTable
+      get() = instance!!.callLinkTable
   }
 }

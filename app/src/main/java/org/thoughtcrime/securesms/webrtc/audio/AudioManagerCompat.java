@@ -1,6 +1,8 @@
 package org.thoughtcrime.securesms.webrtc.audio;
 
 import android.annotation.SuppressLint;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothHeadset;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
@@ -52,17 +54,26 @@ public abstract class AudioManagerCompat {
     audioManager.stopBluetoothSco();
   }
 
-  public boolean isBluetoothAvailable() {
+  public boolean isBluetoothHeadsetAvailable() {
     if (Build.VERSION.SDK_INT >= 31) {
       return audioManager.getAvailableCommunicationDevices().stream().anyMatch(it -> AudioDeviceMapping.fromPlatformType(it.getType()) == SignalAudioManager.AudioDevice.BLUETOOTH);
     } else {
-      return isBluetoothScoAvailableOffCall();
+      BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+      return mBluetoothAdapter != null &&
+             mBluetoothAdapter.isEnabled() &&
+             // noinspection MissingPermission
+             mBluetoothAdapter.getProfileConnectionState(BluetoothHeadset.HEADSET) == BluetoothAdapter.STATE_CONNECTED &&
+             isBluetoothScoAvailableOffCall();
     }
   }
 
   public boolean isBluetoothConnected() {
     if (Build.VERSION.SDK_INT >= 31) {
-      final SignalAudioManager.AudioDevice audioDevice = AudioDeviceMapping.fromPlatformType(audioManager.getCommunicationDevice().getType());
+      final AudioDeviceInfo communicationDevice = audioManager.getCommunicationDevice();
+      if (communicationDevice == null) {
+        return false;
+      }
+      final SignalAudioManager.AudioDevice audioDevice = AudioDeviceMapping.fromPlatformType(communicationDevice.getType());
       return SignalAudioManager.AudioDevice.BLUETOOTH == audioDevice;
     } else {
       return isBluetoothScoOn();
@@ -123,7 +134,12 @@ public abstract class AudioManagerCompat {
 
   @RequiresApi(31)
   public boolean setCommunicationDevice(@NonNull AudioDeviceInfo device) {
-    return audioManager.setCommunicationDevice(device);
+    try {
+      return audioManager.setCommunicationDevice(device);
+    } catch (IllegalArgumentException e) {
+      Log.w(TAG, "Invalid device chosen.", e);
+      return false;
+    }
   }
 
   @RequiresApi(31)

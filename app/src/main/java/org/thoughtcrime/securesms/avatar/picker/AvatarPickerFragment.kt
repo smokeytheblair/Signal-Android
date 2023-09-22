@@ -30,6 +30,7 @@ import org.thoughtcrime.securesms.components.recyclerview.GridDividerDecoration
 import org.thoughtcrime.securesms.groups.ParcelableGroupId
 import org.thoughtcrime.securesms.mediasend.AvatarSelectionActivity
 import org.thoughtcrime.securesms.mediasend.Media
+import org.thoughtcrime.securesms.permissions.PermissionCompat
 import org.thoughtcrime.securesms.permissions.Permissions
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
@@ -140,7 +141,7 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
       viewModel.onAvatarEditCompleted(vector)
     }
 
-    setFragmentResultListener(PhotoEditorFragment.REQUEST_KEY_EDIT) { _, bundle ->
+    setFragmentResultListener(PhotoEditorFragment.REQUEST_KEY_EDIT) { _, _ ->
     }
 
     photoEditorLauncher = registerForActivityResult(PhotoEditorActivity.Contract()) { photo ->
@@ -155,6 +156,7 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
     ViewUtil.hideKeyboard(requireContext(), requireView())
   }
 
+  @Deprecated("Deprecated in Java")
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     if (requestCode == REQUEST_CODE_SELECT_IMAGE && resultCode == Activity.RESULT_OK && data != null) {
       val media: Media = requireNotNull(data.getParcelableExtraCompat(AvatarSelectionActivity.EXTRA_MEDIA, Media::class.java))
@@ -194,7 +196,7 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
     return true
   }
 
-  fun openEditor(avatar: Avatar) {
+  private fun openEditor(avatar: Avatar) {
     when (avatar) {
       is Avatar.Photo -> openPhotoEditor(avatar)
       is Avatar.Resource -> throw UnsupportedOperationException()
@@ -237,7 +239,7 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
   @Suppress("DEPRECATION")
   private fun openGallery() {
     Permissions.with(this)
-      .request(Manifest.permission.READ_EXTERNAL_STORAGE)
+      .request(*PermissionCompat.forImages())
       .ifNecessary()
       .onAllGranted {
         val intent = AvatarSelectionActivity.getIntentForGallery(requireContext())
@@ -250,6 +252,7 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
       .execute()
   }
 
+  @Deprecated("Deprecated in Java")
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     Permissions.onRequestPermissionsResult(this, requestCode, permissions, grantResults)
   }

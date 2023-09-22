@@ -17,7 +17,8 @@ import org.thoughtcrime.securesms.conversation.ConversationAdapter
 class ConversationItemAnimator(
   private val isInMultiSelectMode: () -> Boolean,
   private val shouldPlayMessageAnimations: () -> Boolean,
-  private val isParentFilled: () -> Boolean
+  private val isParentFilled: () -> Boolean,
+  private val shouldUseSlideAnimation: (RecyclerView.ViewHolder) -> Boolean
 ) : RecyclerView.ItemAnimator() {
 
   private data class TweeningInfo(
@@ -54,7 +55,7 @@ class ConversationItemAnimator(
   }
 
   override fun animateAppearance(viewHolder: RecyclerView.ViewHolder, preLayoutInfo: ItemHolderInfo?, postLayoutInfo: ItemHolderInfo): Boolean {
-    if (viewHolder.absoluteAdapterPosition > 1) {
+    if (viewHolder.absoluteAdapterPosition > 1 || !shouldUseSlideAnimation(viewHolder)) {
       dispatchAnimationFinished(viewHolder)
       return false
     }
@@ -64,7 +65,6 @@ class ConversationItemAnimator(
 
   private fun animateSlide(viewHolder: RecyclerView.ViewHolder, preLayoutInfo: ItemHolderInfo?, postLayoutInfo: ItemHolderInfo): Boolean {
     if (isInMultiSelectMode() || !shouldPlayMessageAnimations()) {
-      Log.d(TAG, "Dropping slide animation: (${isInMultiSelectMode()}, ${shouldPlayMessageAnimations()}) :: ${viewHolder.absoluteAdapterPosition}")
       dispatchAnimationFinished(viewHolder)
       return false
     }
@@ -90,19 +90,20 @@ class ConversationItemAnimator(
 
     pendingSlideAnimations[viewHolder] = TweeningInfo(translationY, 0f)
     dispatchAnimationStarted(viewHolder)
+
+    Log.d(TAG, "Dispatched slide animation for view at ${viewHolder.absoluteAdapterPosition}")
     return true
   }
 
   override fun animatePersistence(viewHolder: RecyclerView.ViewHolder, preLayoutInfo: ItemHolderInfo, postLayoutInfo: ItemHolderInfo): Boolean {
     return if (!isInMultiSelectMode() && shouldPlayMessageAnimations() && isParentFilled()) {
-      if (pendingSlideAnimations.contains(viewHolder) || slideAnimations.containsKey(viewHolder)) {
+      if (pendingSlideAnimations.contains(viewHolder) || slideAnimations.containsKey(viewHolder) || !shouldUseSlideAnimation(viewHolder)) {
         dispatchAnimationFinished(viewHolder)
         false
       } else {
         animateSlide(viewHolder, preLayoutInfo, postLayoutInfo)
       }
     } else {
-      Log.d(TAG, "Dropping persistence animation: (${isInMultiSelectMode()}, ${shouldPlayMessageAnimations()}, ${isParentFilled()}) :: ${viewHolder.absoluteAdapterPosition}")
       dispatchAnimationFinished(viewHolder)
       false
     }

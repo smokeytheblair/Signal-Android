@@ -123,6 +123,37 @@ class GroupTableTest {
   }
 
   @Test
+  fun givenAGroup_whenIRemapRecipientsThatHaveAConflict_thenIExpectDeletion() {
+    val v2Group = insertPushGroupWithSelfAndOthers(
+      listOf(
+        harness.others[0],
+        harness.others[1]
+      )
+    )
+
+    insertThread(v2Group)
+
+    groupTable.remapRecipient(harness.others[0], harness.others[1])
+
+    val groupRecord = groupTable.getGroup(v2Group).get()
+
+    assertEquals(setOf(harness.self.id, harness.others[1]), groupRecord.members.toSet())
+  }
+
+  @Test
+  fun givenAGroup_whenIRemapRecipients_thenIExpectRemap() {
+    val v2Group = insertPushGroup()
+    insertThread(v2Group)
+
+    val newId = harness.others[1]
+    groupTable.remapRecipient(harness.others[0], newId)
+
+    val groupRecord = groupTable.getGroup(v2Group).get()
+
+    assertEquals(setOf(harness.self.id, newId), groupRecord.members.toSet())
+  }
+
+  @Test
   fun givenAGroupAndMember_whenIIsCurrentMember_thenIExpectTrue() {
     val v2Group = insertPushGroup()
 
@@ -262,24 +293,49 @@ class GroupTableTest {
 
   private fun insertPushGroup(
     members: List<DecryptedMember> = listOf(
-      DecryptedMember.newBuilder()
-        .setUuid(harness.self.requireServiceId().toByteString())
-        .setJoinedAtRevision(0)
-        .setRole(Member.Role.DEFAULT)
+      DecryptedMember.Builder()
+        .aciBytes(harness.self.requireAci().toByteString())
+        .joinedAtRevision(0)
+        .role(Member.Role.DEFAULT)
         .build(),
-      DecryptedMember.newBuilder()
-        .setUuid(Recipient.resolved(harness.others[0]).requireServiceId().toByteString())
-        .setJoinedAtRevision(0)
-        .setRole(Member.Role.DEFAULT)
+      DecryptedMember.Builder()
+        .aciBytes(Recipient.resolved(harness.others[0]).requireAci().toByteString())
+        .joinedAtRevision(0)
+        .role(Member.Role.DEFAULT)
         .build()
     )
   ): GroupId {
     val groupMasterKey = GroupMasterKey(Random.nextBytes(GroupMasterKey.SIZE))
-    val decryptedGroupState = DecryptedGroup.newBuilder()
-      .addAllMembers(members)
-      .setRevision(0)
+    val decryptedGroupState = DecryptedGroup.Builder()
+      .members(members)
+      .revision(0)
       .build()
 
-    return groupTable.create(groupMasterKey, decryptedGroupState)
+    return groupTable.create(groupMasterKey, decryptedGroupState)!!
+  }
+
+  private fun insertPushGroupWithSelfAndOthers(others: List<RecipientId>): GroupId {
+    val groupMasterKey = GroupMasterKey(Random.nextBytes(GroupMasterKey.SIZE))
+
+    val selfMember: DecryptedMember = DecryptedMember.Builder()
+      .aciBytes(harness.self.requireAci().toByteString())
+      .joinedAtRevision(0)
+      .role(Member.Role.DEFAULT)
+      .build()
+
+    val otherMembers: List<DecryptedMember> = others.map { id ->
+      DecryptedMember.Builder()
+        .aciBytes(Recipient.resolved(id).requireAci().toByteString())
+        .joinedAtRevision(0)
+        .role(Member.Role.DEFAULT)
+        .build()
+    }
+
+    val decryptedGroupState = DecryptedGroup.Builder()
+      .members(listOf(selfMember) + otherMembers)
+      .revision(0)
+      .build()
+
+    return groupTable.create(groupMasterKey, decryptedGroupState)!!
   }
 }
