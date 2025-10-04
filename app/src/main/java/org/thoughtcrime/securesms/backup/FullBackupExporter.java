@@ -32,11 +32,14 @@ import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.database.EmojiSearchTable;
 import org.thoughtcrime.securesms.database.GroupReceiptTable;
 import org.thoughtcrime.securesms.database.KeyValueDatabase;
+import org.thoughtcrime.securesms.database.KyberPreKeyTable;
 import org.thoughtcrime.securesms.database.MentionTable;
 import org.thoughtcrime.securesms.database.MessageTable;
 import org.thoughtcrime.securesms.database.OneTimePreKeyTable;
 import org.thoughtcrime.securesms.database.PendingRetryReceiptTable;
 import org.thoughtcrime.securesms.database.ReactionTable;
+import org.thoughtcrime.securesms.database.RemappedRecordTables;
+import org.thoughtcrime.securesms.database.RemoteMegaphoneTable;
 import org.thoughtcrime.securesms.database.SearchTable;
 import org.thoughtcrime.securesms.database.SenderKeyTable;
 import org.thoughtcrime.securesms.database.SenderKeySharedTable;
@@ -44,8 +47,7 @@ import org.thoughtcrime.securesms.database.SessionTable;
 import org.thoughtcrime.securesms.database.SignedPreKeyTable;
 import org.thoughtcrime.securesms.database.StickerTable;
 import org.thoughtcrime.securesms.database.model.AvatarPickerDatabase;
-import org.thoughtcrime.securesms.database.model.MessageId;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.keyvalue.KeyValueDataSet;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
@@ -65,6 +67,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import okio.ByteString;
@@ -77,6 +80,7 @@ public class FullBackupExporter extends FullBackupBase {
   private static final long TABLE_RECORD_COUNT_MULTIPLIER    = 3L;
   private static final long IDENTITY_KEY_BACKUP_RECORD_COUNT = 2L;
   private static final long FINAL_MESSAGE_COUNT              = 1L;
+  private static final long EXPIRATION_BACKUP_THRESHOLD      = TimeUnit.DAYS.toMillis(1);
 
   /**
    * Tables in list will still have their *schema* exported (so the tables will be created),
@@ -85,13 +89,17 @@ public class FullBackupExporter extends FullBackupBase {
   private static final Set<String> TABLE_CONTENT_BLOCKLIST = SetUtil.newHashSet(
       SignedPreKeyTable.TABLE_NAME,
       OneTimePreKeyTable.TABLE_NAME,
+      KyberPreKeyTable.TABLE_NAME,
       SessionTable.TABLE_NAME,
       SearchTable.FTS_TABLE_NAME,
       EmojiSearchTable.TABLE_NAME,
       SenderKeyTable.TABLE_NAME,
       SenderKeySharedTable.TABLE_NAME,
       PendingRetryReceiptTable.TABLE_NAME,
-      AvatarPickerDatabase.TABLE_NAME
+      AvatarPickerDatabase.TABLE_NAME,
+      RemappedRecordTables.Recipients.TABLE_NAME,
+      RemappedRecordTables.Threads.TABLE_NAME,
+      RemoteMegaphoneTable.TABLE_NAME
   );
 
   public static BackupEvent export(@NonNull Context context,
@@ -159,15 +167,15 @@ public class FullBackupExporter extends FullBackupBase {
       for (String table : tables) {
         throwIfCanceled(cancellationSignal);
         if (table.equals(MessageTable.TABLE_NAME)) {
-          count = exportTable(table, input, outputStream, FullBackupExporter::isNonExpiringMmsMessage, null, count, estimatedCount, cancellationSignal);
+          count = exportTable(table, input, outputStream, cursor -> isNonExpiringMessage(input, cursor), null, count, estimatedCount, cancellationSignal);
         } else if (table.equals(ReactionTable.TABLE_NAME)) {
-          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMessage(input, new MessageId(CursorUtil.requireLong(cursor, ReactionTable.MESSAGE_ID))), null, count, estimatedCount, cancellationSignal);
+          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMessage(input, CursorUtil.requireLong(cursor, ReactionTable.MESSAGE_ID)), null, count, estimatedCount, cancellationSignal);
         } else if (table.equals(MentionTable.TABLE_NAME)) {
-          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMmsMessage(input, CursorUtil.requireLong(cursor, MentionTable.MESSAGE_ID)), null, count, estimatedCount, cancellationSignal);
+          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMessage(input, CursorUtil.requireLong(cursor, MentionTable.MESSAGE_ID)), null, count, estimatedCount, cancellationSignal);
         } else if (table.equals(GroupReceiptTable.TABLE_NAME)) {
-          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMmsMessage(input, cursor.getLong(cursor.getColumnIndexOrThrow(GroupReceiptTable.MMS_ID))), null, count, estimatedCount, cancellationSignal);
+          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMessage(input, cursor.getLong(cursor.getColumnIndexOrThrow(GroupReceiptTable.MMS_ID))), null, count, estimatedCount, cancellationSignal);
         } else if (table.equals(AttachmentTable.TABLE_NAME)) {
-          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMmsMessage(input, cursor.getLong(cursor.getColumnIndexOrThrow(AttachmentTable.MMS_ID))), (cursor, innerCount) -> exportAttachment(attachmentSecret, cursor, outputStream, innerCount, estimatedCount), count, estimatedCount, cancellationSignal);
+          count = exportTable(table, input, outputStream, cursor -> isForNonExpiringMessage(input, cursor.getLong(cursor.getColumnIndexOrThrow(AttachmentTable.MESSAGE_ID))), (cursor, innerCount) -> exportAttachment(attachmentSecret, cursor, outputStream, innerCount, estimatedCount), count, estimatedCount, cancellationSignal);
         } else if (table.equals(StickerTable.TABLE_NAME)) {
           count = exportTable(table, input, outputStream, cursor -> true, (cursor, innerCount) -> exportSticker(attachmentSecret, cursor, outputStream, innerCount, estimatedCount), count, estimatedCount, cancellationSignal);
         } else if (!TABLE_CONTENT_BLOCKLIST.contains(table)) {
@@ -231,7 +239,7 @@ public class FullBackupExporter extends FullBackupBase {
 
     count += TextSecurePreferences.getPreferencesToSaveToBackupCount(context);
 
-    KeyValueDataSet dataSet = KeyValueDatabase.getInstance(ApplicationDependencies.getApplication())
+    KeyValueDataSet dataSet = KeyValueDatabase.getInstance(AppDependencies.getApplication())
                                               .getDataSet();
     for (String key : SignalStore.getKeysToIncludeInBackup()) {
       if (dataSet.containsKey(key)) {
@@ -444,11 +452,10 @@ public class FullBackupExporter extends FullBackupBase {
                                       long estimatedCount)
       throws IOException
   {
-    long rowId    = cursor.getLong(cursor.getColumnIndexOrThrow(AttachmentTable.ROW_ID));
-    long uniqueId = cursor.getLong(cursor.getColumnIndexOrThrow(AttachmentTable.UNIQUE_ID));
-    long size     = cursor.getLong(cursor.getColumnIndexOrThrow(AttachmentTable.SIZE));
+    long rowId = cursor.getLong(cursor.getColumnIndexOrThrow(AttachmentTable.ID));
+    long size  = cursor.getLong(cursor.getColumnIndexOrThrow(AttachmentTable.DATA_SIZE));
 
-    String data   = cursor.getString(cursor.getColumnIndexOrThrow(AttachmentTable.DATA));
+    String data   = cursor.getString(cursor.getColumnIndexOrThrow(AttachmentTable.DATA_FILE));
     byte[] random = cursor.getBlob(cursor.getColumnIndexOrThrow(AttachmentTable.DATA_RANDOM));
 
     if (!TextUtils.isEmpty(data)) {
@@ -457,14 +464,14 @@ public class FullBackupExporter extends FullBackupBase {
 
       if (size <= 0 || fileLength != dbLength) {
         size = calculateVeryOldStreamLength(attachmentSecret, random, data);
-        Log.w(TAG, "Needed size calculation! Manual: " + size + " File: " + fileLength + "  DB: " + dbLength + " ID: " + new AttachmentId(rowId, uniqueId));
+        Log.w(TAG, "Needed size calculation! Manual: " + size + " File: " + fileLength + "  DB: " + dbLength + " ID: " + new AttachmentId(rowId));
       }
     }
 
     EventBus.getDefault().post(new BackupEvent(BackupEvent.Type.PROGRESS, ++count, estimatedCount));
     if (!TextUtils.isEmpty(data) && size > 0) {
       try (InputStream inputStream = openAttachmentStream(attachmentSecret, random, data)) {
-        outputStream.write(new AttachmentId(rowId, uniqueId), inputStream, size);
+        outputStream.write(new AttachmentId(rowId), inputStream, size);
       } catch (FileNotFoundException e) {
         Log.w(TAG, "Missing attachment", e);
       }
@@ -480,7 +487,7 @@ public class FullBackupExporter extends FullBackupBase {
                                    long estimatedCount)
       throws IOException
   {
-    long rowId = cursor.getLong(cursor.getColumnIndexOrThrow(StickerTable._ID));
+    long rowId = cursor.getLong(cursor.getColumnIndexOrThrow(StickerTable.ID));
     long size  = cursor.getLong(cursor.getColumnIndexOrThrow(StickerTable.FILE_LENGTH));
 
     String data   = cursor.getString(cursor.getColumnIndexOrThrow(StickerTable.FILE_PATH));
@@ -533,7 +540,7 @@ public class FullBackupExporter extends FullBackupBase {
                                      long estimatedCount,
                                      BackupCancellationSignal cancellationSignal) throws IOException
   {
-    KeyValueDataSet dataSet = KeyValueDatabase.getInstance(ApplicationDependencies.getApplication())
+    KeyValueDataSet dataSet = KeyValueDatabase.getInstance(AppDependencies.getApplication())
                                               .getDataSet();
 
     for (String key : keysToIncludeInBackup) {
@@ -579,27 +586,34 @@ public class FullBackupExporter extends FullBackupBase {
     return count;
   }
 
-  private static boolean isNonExpiringMmsMessage(@NonNull Cursor cursor) {
-    return cursor.getLong(cursor.getColumnIndexOrThrow(MessageTable.EXPIRES_IN)) <= 0 &&
-           cursor.getLong(cursor.getColumnIndexOrThrow(MessageTable.VIEW_ONCE)) <= 0;
+  private static boolean isNonExpiringMessage(@NonNull SQLiteDatabase db, @NonNull Cursor cursor) {
+    long id                = CursorUtil.requireLong(cursor, MessageTable.ID);
+    long expireStarted     = CursorUtil.requireLong(cursor, MessageTable.EXPIRE_STARTED);
+    long expiresIn         = CursorUtil.requireLong(cursor, MessageTable.EXPIRES_IN);
+    long latestRevisionId  = CursorUtil.requireLong(cursor, MessageTable.LATEST_REVISION_ID);
+
+    long expiresAt     = expireStarted + expiresIn;
+    long timeRemaining = expiresAt - System.currentTimeMillis();
+
+    if (latestRevisionId > 0 && latestRevisionId != id ) {
+      return isForNonExpiringMessage(db, latestRevisionId);
+    }
+
+    if (expireStarted > 0 && timeRemaining <= EXPIRATION_BACKUP_THRESHOLD) {
+      return false;
+    }
+
+    return true;
   }
 
-  private static boolean isNonExpiringSmsMessage(@NonNull Cursor cursor) {
-    return cursor.getLong(cursor.getColumnIndexOrThrow(MessageTable.EXPIRES_IN)) <= 0;
-  }
-
-  private static boolean isForNonExpiringMessage(@NonNull SQLiteDatabase db, @NonNull MessageId messageId) {
-    return isForNonExpiringMmsMessage(db, messageId.getId());
-  }
-
-  private static boolean isForNonExpiringMmsMessage(@NonNull SQLiteDatabase db, long mmsId) {
-    String[] columns = new String[] { MessageTable.EXPIRES_IN, MessageTable.VIEW_ONCE };
+  private static boolean isForNonExpiringMessage(@NonNull SQLiteDatabase db, long messageId) {
+    String[] columns = new String[] { MessageTable.ID, MessageTable.EXPIRE_STARTED, MessageTable.EXPIRES_IN, MessageTable.LATEST_REVISION_ID };
     String   where   = MessageTable.ID + " = ?";
-    String[] args    = new String[] { String.valueOf(mmsId) };
+    String[] args    = SqlUtil.buildArgs(messageId);
 
     try (Cursor mmsCursor = db.query(MessageTable.TABLE_NAME, columns, where, args, null, null, null)) {
       if (mmsCursor != null && mmsCursor.moveToFirst()) {
-        return isNonExpiringMmsMessage(mmsCursor);
+        return isNonExpiringMessage(db, mmsCursor);
       }
     }
 

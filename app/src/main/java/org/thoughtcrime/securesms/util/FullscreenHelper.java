@@ -12,9 +12,6 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.DisplayCutoutCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
-
-import org.signal.core.util.logging.Log;
 
 /**
  * Encapsulates logic to properly show/hide system UI/chrome in a full screen setting. Also
@@ -97,6 +94,10 @@ public final class FullscreenHelper {
       boolean hide = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) != 0;
 
       for (View view : views) {
+        if (view == null) {
+          continue;
+        }
+
         view.animate()
             .alpha(hide ? 0 : 1)
             .withStartAction(() -> {

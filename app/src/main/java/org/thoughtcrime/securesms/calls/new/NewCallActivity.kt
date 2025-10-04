@@ -13,19 +13,19 @@ import org.signal.core.util.concurrent.SimpleTask
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.ContactSelectionActivity
 import org.thoughtcrime.securesms.ContactSelectionListFragment
-import org.thoughtcrime.securesms.InviteActivity
 import org.thoughtcrime.securesms.R
+import org.thoughtcrime.securesms.calls.YouAreAlreadyInACallSnackbar
+import org.thoughtcrime.securesms.components.settings.app.AppSettingsActivity
 import org.thoughtcrime.securesms.contacts.ContactSelectionDisplayMode
-import org.thoughtcrime.securesms.contacts.sync.ContactDiscovery.refresh
+import org.thoughtcrime.securesms.contacts.paged.ChatType
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
+import org.thoughtcrime.securesms.recipients.RecipientRepository
 import org.thoughtcrime.securesms.util.CommunicationActions
 import org.thoughtcrime.securesms.util.views.SimpleProgressDialog
-import java.io.IOException
 import java.util.Optional
 import java.util.function.Consumer
-import kotlin.time.Duration.Companion.seconds
 
 class NewCallActivity : ContactSelectionActivity(), ContactSelectionListFragment.NewCallCallback {
 
@@ -39,43 +39,43 @@ class NewCallActivity : ContactSelectionActivity(), ContactSelectionListFragment
 
   override fun onSelectionChanged() = Unit
 
-  override fun onBeforeContactSelected(isFromUnknownSearchKey: Boolean, recipientId: Optional<RecipientId?>, number: String?, callback: Consumer<Boolean?>) {
-    if (isFromUnknownSearchKey) {
+  override fun onBeforeContactSelected(isFromUnknownSearchKey: Boolean, recipientId: Optional<RecipientId?>, number: String?, chatType: Optional<ChatType>, callback: Consumer<Boolean?>) {
+    if (recipientId.isPresent) {
+      launch(Recipient.resolved(recipientId.get()))
+    } else {
       Log.i(TAG, "[onContactSelected] Maybe creating a new recipient.")
-      if (SignalStore.account().isRegistered) {
+      if (SignalStore.account.isRegistered) {
         Log.i(TAG, "[onContactSelected] Doing contact refresh.")
+
         val progress = SimpleProgressDialog.show(this)
-        SimpleTask.run<Recipient>(lifecycle, {
-          var resolved = Recipient.external(this, number!!)
-          if (!resolved.isRegistered || !resolved.hasServiceId()) {
-            Log.i(TAG, "[onContactSelected] Not registered or no UUID. Doing a directory refresh.")
-            resolved = try {
-              refresh(this, resolved, false, 10.seconds.inWholeMilliseconds)
-              Recipient.resolved(resolved.id)
-            } catch (e: IOException) {
-              Log.w(TAG, "[onContactSelected] Failed to refresh directory for new contact.")
-              return@run null
-            }
-          }
-          resolved
-        }) { resolved: Recipient? ->
+
+        SimpleTask.run(lifecycle, { RecipientRepository.lookupNewE164(number!!) }, { result ->
           progress.dismiss()
-          if (resolved != null) {
-            if (resolved.isRegistered && resolved.hasServiceId()) {
-              launch(resolved)
-            } else {
+
+          when (result) {
+            is RecipientRepository.LookupResult.Success -> {
+              val resolved = Recipient.resolved(result.recipientId)
+              if (resolved.isRegistered && resolved.hasServiceId) {
+                launch(resolved)
+              }
+            }
+
+            is RecipientRepository.LookupResult.NotFound,
+            is RecipientRepository.LookupResult.InvalidEntry -> {
               MaterialAlertDialogBuilder(this)
-                .setMessage(getString(R.string.NewConversationActivity__s_is_not_a_signal_user, resolved.getDisplayName(this)))
+                .setMessage(getString(R.string.NewConversationActivity__s_is_not_a_signal_user, number))
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
             }
-          } else {
-            MaterialAlertDialogBuilder(this)
-              .setMessage(R.string.NetworkFailure__network_error_check_your_connection_and_try_again)
-              .setPositiveButton(android.R.string.ok, null)
-              .show()
+
+            else -> {
+              MaterialAlertDialogBuilder(this)
+                .setMessage(R.string.NetworkFailure__network_error_check_your_connection_and_try_again)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+            }
           }
-        }
+        })
       }
     }
     callback.accept(true)
@@ -83,9 +83,13 @@ class NewCallActivity : ContactSelectionActivity(), ContactSelectionListFragment
 
   private fun launch(recipient: Recipient) {
     if (recipient.isGroup) {
-      CommunicationActions.startVideoCall(this, recipient)
+      CommunicationActions.startVideoCall(this, recipient) {
+        YouAreAlreadyInACallSnackbar.show(findViewById(android.R.id.content))
+      }
     } else {
-      CommunicationActions.startVoiceCall(this, recipient)
+      CommunicationActions.startVoiceCall(this, recipient) {
+        YouAreAlreadyInACallSnackbar.show(findViewById(android.R.id.content))
+      }
     }
   }
 
@@ -107,7 +111,14 @@ class NewCallActivity : ContactSelectionActivity(), ContactSelectionListFragment
   }
 
   override fun onInvite() {
-    startActivity(Intent(this, InviteActivity::class.java))
+    startActivity(AppSettingsActivity.invite(this))
+  }
+
+  private fun handleManualRefresh() {
+    if (!contactsFragment.isRefreshing) {
+      contactsFragment.isRefreshing = true
+      onRefresh()
+    }
   }
 
   private inner class NewCallMenuProvider : MenuProvider {
@@ -118,8 +129,8 @@ class NewCallActivity : ContactSelectionActivity(), ContactSelectionListFragment
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
       when (menuItem.itemId) {
         android.R.id.home -> ActivityCompat.finishAfterTransition(this@NewCallActivity)
-        R.id.menu_refresh -> onRefresh()
-        R.id.menu_invite -> startActivity(Intent(this@NewCallActivity, InviteActivity::class.java))
+        R.id.menu_refresh -> handleManualRefresh()
+        R.id.menu_invite -> startActivity(AppSettingsActivity.invite(this@NewCallActivity))
       }
 
       return true

@@ -15,11 +15,10 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
-import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.content.res.AppCompatResources;
 import androidx.constraintlayout.widget.ConstraintLayout;
-import androidx.constraintlayout.widget.ConstraintSet;
 
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.LottieProperty;
@@ -29,11 +28,11 @@ import org.signal.core.util.concurrent.SignalExecutors;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.animation.AnimationCompleteListener;
 import org.thoughtcrime.securesms.conversation.ConversationItemDisplayMode;
+import org.thoughtcrime.securesms.conversation.v2.computed.FormattedDate;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.permissions.Permissions;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.util.DateUtils;
@@ -60,7 +59,6 @@ public class ConversationItemFooter extends ConstraintLayout {
   private TextView                    audioDuration;
   private LottieAnimationView         revealDot;
   private PlaybackSpeedToggleTextView playbackSpeedToggleTextView;
-  private boolean                     isOutgoing;
   private boolean                     hasShrunkDate;
 
   private OnTouchDelegateChangedListener onTouchDelegateChangedListener;
@@ -93,22 +91,7 @@ public class ConversationItemFooter extends ConstraintLayout {
       typedArray = null;
     }
 
-    final @LayoutRes int contentId;
-    if (typedArray != null) {
-      int mode = typedArray.getInt(R.styleable.ConversationItemFooter_footer_mode, 0);
-      isOutgoing = mode == 0;
-
-      if (isOutgoing) {
-        contentId = R.layout.conversation_item_footer_outgoing;
-      } else {
-        contentId = R.layout.conversation_item_footer_incoming;
-      }
-    } else {
-      contentId  = R.layout.conversation_item_footer_outgoing;
-      isOutgoing = true;
-    }
-
-    inflate(getContext(), contentId, this);
+    inflate(getContext(), R.layout.conversation_item_footer, this);
 
     dateView                    = findViewById(R.id.footer_date);
     simView                     = findViewById(R.id.footer_sim_info);
@@ -120,6 +103,16 @@ public class ConversationItemFooter extends ConstraintLayout {
     playbackSpeedToggleTextView = findViewById(R.id.footer_audio_playback_speed_toggle);
 
     if (typedArray != null) {
+      int     mode       = typedArray.getInt(R.styleable.ConversationItemFooter_footer_mode, 0);
+      boolean isOutgoing = mode == 0;
+      if (isOutgoing) {
+        playbackSpeedToggleTextView.setTextColor(getResources().getColor(R.color.core_white));
+        playbackSpeedToggleTextView.setBackgroundTintList(AppCompatResources.getColorStateList(getContext(), R.color.transparent_white_20));
+      } else {
+        playbackSpeedToggleTextView.setTextColor(getResources().getColor(R.color.signal_text_secondary));
+        playbackSpeedToggleTextView.setBackgroundTintList(AppCompatResources.getColorStateList(getContext(), R.color.transparent_black_08));
+      }
+
       setTextColor(typedArray.getInt(R.styleable.ConversationItemFooter_footer_text_color, getResources().getColor(R.color.core_white)));
       setIconColor(typedArray.getInt(R.styleable.ConversationItemFooter_footer_icon_color, getResources().getColor(R.color.core_white)));
       setRevealDotColor(typedArray.getInt(R.styleable.ConversationItemFooter_footer_reveal_dot_color, getResources().getColor(R.color.core_white)));
@@ -247,14 +240,7 @@ public class ConversationItemFooter extends ConstraintLayout {
                                  }
                                });
 
-    if (isOutgoing) {
       dateView.setMaxWidth(ViewUtil.dpToPx(32));
-    } else {
-      ConstraintSet constraintSet = new ConstraintSet();
-      constraintSet.clone(this);
-      constraintSet.constrainMaxWidth(R.id.date_and_expiry_wrapper, ViewUtil.dpToPx(40));
-      constraintSet.applyTo(this);
-    }
   }
 
   private void hidePlaybackSpeedToggle() {
@@ -276,14 +262,7 @@ public class ConversationItemFooter extends ConstraintLayout {
                                  }
                                });
 
-    if (isOutgoing) {
       dateView.setMaxWidth(Integer.MAX_VALUE);
-    } else {
-      ConstraintSet constraintSet = new ConstraintSet();
-      constraintSet.clone(this);
-      constraintSet.constrainMaxWidth(R.id.date_and_expiry_wrapper, -1);
-      constraintSet.applyTo(this);
-    }
   }
 
   private @NonNull Rect getPlaybackSpeedToggleTouchDelegateRect() {
@@ -302,7 +281,11 @@ public class ConversationItemFooter extends ConstraintLayout {
 
   private void presentDate(@NonNull MessageRecord messageRecord, @NonNull Locale locale, @NonNull ConversationItemDisplayMode displayMode) {
     dateView.forceLayout();
-    if (messageRecord.isFailed()) {
+    if (MessageRecordUtil.isScheduled(messageRecord)) {
+      dateView.setText(DateUtils.getOnlyTimeString(getContext(), ((MmsMessageRecord) messageRecord).getScheduledDate()));
+    } else if (messageRecord.isMediaPending() && messageRecord.isOutgoing() && !messageRecord.isSent()) {
+      dateView.setText(null);
+    } else if (messageRecord.isFailed()) {
       int errorMsg;
       if (messageRecord.hasFailedWithNetworkFailures()) {
         errorMsg = R.string.ConversationItem_error_network_not_delivered;
@@ -313,24 +296,22 @@ public class ConversationItemFooter extends ConstraintLayout {
       }
 
       dateView.setText(errorMsg);
-    } else if (messageRecord.isPendingInsecureSmsFallback()) {
-      dateView.setText(R.string.ConversationItem_click_to_approve_unencrypted);
     } else if (messageRecord.isRateLimited()) {
       dateView.setText(R.string.ConversationItem_send_paused);
-    } else if (MessageRecordUtil.isScheduled(messageRecord)) {
-      dateView.setText(DateUtils.getOnlyTimeString(getContext(), locale, ((MediaMmsMessageRecord) messageRecord).getScheduledDate()));
     } else {
-      long timestamp = messageRecord.getTimestamp();
-      if (messageRecord.isEditMessage()) {
-        if (displayMode == ConversationItemDisplayMode.EditHistory.INSTANCE) {
-          timestamp = messageRecord.getDateSent();
+      long timestamp = (displayMode == ConversationItemDisplayMode.EditHistory.INSTANCE) ? messageRecord.getDateSent() : messageRecord.getTimestamp();
+      FormattedDate date = DateUtils.getDatelessRelativeTimeSpanFormattedDate(getContext(), locale, timestamp);
+      String dateLabel = date.getValue();
+      if (displayMode != ConversationItemDisplayMode.Detailed.INSTANCE && messageRecord.isEditMessage() && messageRecord.isLatestRevision()) {
+        if (date.isNow()) {
+          dateLabel = getContext().getString(R.string.ConversationItem_edited_now_timestamp_footer);
+        } else if (date.isRelative()) {
+          dateLabel = getContext().getString(R.string.ConversationItem_edited_relative_timestamp_footer, date.getValue());
+        } else {
+          dateLabel = getContext().getString(R.string.ConversationItem_edited_absolute_timestamp_footer, date.getValue());
         }
       }
-      String date = DateUtils.getDatelessRelativeTimeSpanString(getContext(), locale, timestamp);
-      if (displayMode != ConversationItemDisplayMode.Detailed.INSTANCE && messageRecord.isEditMessage() && messageRecord.isLatestRevision()) {
-        date = getContext().getString(R.string.ConversationItem_edited_timestamp_footer, date);
-      }
-      dateView.setText(date);
+      dateView.setText(dateLabel);
     }
   }
 
@@ -366,7 +347,7 @@ public class ConversationItemFooter extends ConstraintLayout {
         this.timerView.startAnimation();
 
         if (messageRecord.getExpireStarted() + messageRecord.getExpiresIn() <= System.currentTimeMillis()) {
-          ApplicationDependencies.getExpiringMessageManager().checkSchedule();
+          AppDependencies.getExpiringMessageManager().checkSchedule();
         }
       } else if (!messageRecord.isOutgoing() && !messageRecord.isMediaPending()) {
         SignalExecutors.BOUNDED.execute(() -> {
@@ -375,7 +356,7 @@ public class ConversationItemFooter extends ConstraintLayout {
           long    now = System.currentTimeMillis();
 
           SignalDatabase.messages().markExpireStarted(id, now);
-          ApplicationDependencies.getExpiringMessageManager().scheduleDeletion(id, mms, now, messageRecord.getExpiresIn());
+          AppDependencies.getExpiringMessageManager().scheduleDeletion(id, mms, now, messageRecord.getExpiresIn());
         });
       }
     } else {
@@ -401,7 +382,7 @@ public class ConversationItemFooter extends ConstraintLayout {
     previousMessageId = newMessageId;
 
 
-    if (messageRecord.isFailed() || messageRecord.isPendingInsecureSmsFallback() || MessageRecordUtil.isScheduled(messageRecord)) {
+    if (messageRecord.isFailed() || MessageRecordUtil.isScheduled(messageRecord)) {
       deliveryStatusView.setNone();
       return;
     }
@@ -417,7 +398,7 @@ public class ConversationItemFooter extends ConstraintLayout {
         deliveryStatusView.setNone();
       } else if (messageRecord.isPending()) {
         deliveryStatusView.setPending();
-      } else if (messageRecord.isRemoteRead()) {
+      } else if (messageRecord.hasReadReceipt()) {
         deliveryStatusView.setRead();
       } else if (messageRecord.isDelivered()) {
         deliveryStatusView.setDelivered();
@@ -434,7 +415,7 @@ public class ConversationItemFooter extends ConstraintLayout {
       if (mmsMessageRecord.getSlideDeck().getAudioSlide() != null) {
         showAudioDurationViews();
 
-        if (messageRecord.getViewedReceiptCount() > 0 || (messageRecord.isOutgoing() && Objects.equals(messageRecord.getToRecipient(), Recipient.self()))) {
+        if (messageRecord.isViewed() || (messageRecord.isOutgoing() && Objects.equals(messageRecord.getToRecipient(), Recipient.self()))) {
           revealDot.setProgress(1f);
         } else {
           revealDot.setProgress(0f);

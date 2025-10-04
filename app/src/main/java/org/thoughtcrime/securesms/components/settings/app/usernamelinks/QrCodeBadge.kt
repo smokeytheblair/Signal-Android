@@ -24,17 +24,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -43,10 +37,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.signal.core.ui.theme.SignalTheme
+import org.signal.core.ui.compose.theme.SignalTheme
 import org.thoughtcrime.securesms.R
-import org.thoughtcrime.securesms.compose.ScreenshotController
-import org.thoughtcrime.securesms.compose.getScreenshotBounds
 
 /**
  * Renders a QR code and username as a badge.
@@ -57,23 +49,16 @@ fun QrCodeBadge(
   colorScheme: UsernameQrCodeColorScheme,
   username: String,
   modifier: Modifier = Modifier,
-  screenshotController: ScreenshotController? = null,
   usernameCopyable: Boolean = false,
-  onClick: (() -> Unit) = {}
+  onClick: ((String) -> Unit) = {}
 ) {
   val borderColor by animateColorAsState(targetValue = colorScheme.borderColor, label = "border")
   val foregroundColor by animateColorAsState(targetValue = colorScheme.foregroundColor, label = "foreground")
   val elevation by animateFloatAsState(targetValue = if (colorScheme == UsernameQrCodeColorScheme.White) 10f else 0f, label = "elevation")
-  val textColor by animateColorAsState(targetValue = if (colorScheme == UsernameQrCodeColorScheme.White) Color.Black else Color.White, label = "textColor")
-  var badgeBounds by remember {
-    mutableStateOf<Rect?>(null)
-  }
-  screenshotController?.bind(LocalView.current, badgeBounds)
+  val textColor by animateColorAsState(targetValue = colorScheme.textColor, label = "textColor")
+
   Surface(
-    modifier = modifier
-      .onGloballyPositioned {
-        badgeBounds = it.getScreenshotBounds()
-      },
+    modifier = modifier,
     color = borderColor,
     shape = RoundedCornerShape(24.dp),
     shadowElevation = elevation.dp
@@ -99,8 +84,8 @@ fun QrCodeBadge(
             data = data.data,
             modifier = Modifier
               .border(
-                width = if (colorScheme == UsernameQrCodeColorScheme.White) 2.dp else 0.dp,
-                color = Color(0xFFE9E9E9),
+                width = 2.dp,
+                color = colorScheme.outlineColor,
                 shape = RoundedCornerShape(size = 12.dp)
               )
               .padding(16.dp),
@@ -146,7 +131,7 @@ fun QrCodeBadge(
           .clip(RoundedCornerShape(8.dp))
           .clickable(
             enabled = usernameCopyable,
-            onClick = onClick
+            onClick = { onClick(username) }
           )
           .padding(8.dp)
       ) {
@@ -184,13 +169,13 @@ private fun PreviewWithCodeShort() {
     Surface {
       Column {
         QrCodeBadge(
-          data = QrCodeState.Present(QrCodeData.forData("https://signal.org", 64)),
+          data = QrCodeState.Present(QrCodeData.forData("https://signal.org")),
           colorScheme = UsernameQrCodeColorScheme.Blue,
           username = "parker.42",
           usernameCopyable = false
         )
         QrCodeBadge(
-          data = QrCodeState.Present(QrCodeData.forData("https://signal.org", 64)),
+          data = QrCodeState.Present(QrCodeData.forData("https://signal.org")),
           colorScheme = UsernameQrCodeColorScheme.Blue,
           username = "parker.42",
           usernameCopyable = true
@@ -207,14 +192,14 @@ private fun PreviewWithCodeLong() {
     Surface {
       Column {
         QrCodeBadge(
-          data = QrCodeState.Present(QrCodeData.forData("https://signal.org", 64)),
+          data = QrCodeState.Present(QrCodeData.forData("https://signal.org")),
           colorScheme = UsernameQrCodeColorScheme.Blue,
           username = "TheAmazingSpiderMan.42",
           usernameCopyable = false
         )
         Spacer(modifier = Modifier.height(8.dp))
         QrCodeBadge(
-          data = QrCodeState.Present(QrCodeData.forData("https://signal.org", 64)),
+          data = QrCodeState.Present(QrCodeData.forData("https://signal.org")),
           colorScheme = UsernameQrCodeColorScheme.Blue,
           username = "TheAmazingSpiderMan.42",
           usernameCopyable = true
@@ -263,7 +248,7 @@ private fun PreviewAllColorsP2() {
 @Composable
 private fun SampleCode(colorScheme: UsernameQrCodeColorScheme) {
   QrCodeBadge(
-    data = QrCodeState.Present(QrCodeData.forData("https://signal.me/#eu/asdfasdfasdfasdfasdfasdfasdfasdfasdf", 64)),
+    data = QrCodeState.Present(QrCodeData.forData("https://signal.me/#eu/asdfasdfasdfasdfasdfasdfasdfasdfasdf")),
     colorScheme = colorScheme,
     username = "parker.42"
   )

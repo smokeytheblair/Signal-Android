@@ -15,7 +15,7 @@ import org.thoughtcrime.securesms.notifications.profiles.NotificationProfiles;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.ringrtc.RemotePeer;
 import org.thoughtcrime.securesms.service.webrtc.state.WebRtcServiceState;
-import org.thoughtcrime.securesms.util.FeatureFlags;
+import org.thoughtcrime.securesms.util.RemoteConfig;
 import org.whispersystems.signalservice.api.messages.calls.OfferMessage;
 import org.whispersystems.signalservice.api.push.ServiceId.ACI;
 
@@ -102,8 +102,8 @@ public class IdleActionProcessor extends WebRtcActionProcessor {
     Log.i(TAG, "handleGroupCallRingUpdate(): recipient: " + remotePeerGroup.getId() + " ring: " + ringId + " update: " + ringUpdate);
 
     int groupSize = remotePeerGroup.getRecipient().getParticipantIds().size();
-    if (groupSize > FeatureFlags.maxGroupCallRingSize()) {
-      Log.w(TAG, "Received ring request for large group, dropping. size: " + groupSize + " max: " + FeatureFlags.maxGroupCallRingSize());
+    if (groupSize > RemoteConfig.maxGroupCallRingSize()) {
+      Log.w(TAG, "Received ring request for large group, dropping. size: " + groupSize + " max: " + RemoteConfig.maxGroupCallRingSize());
       return currentState;
     }
 
@@ -124,7 +124,7 @@ public class IdleActionProcessor extends WebRtcActionProcessor {
     if (activeProfile != null && !(activeProfile.isRecipientAllowed(remotePeerGroup.getId()) || activeProfile.getAllowAllCalls())) {
       try {
         Log.i(TAG, "Incoming ring request for profile restricted recipient");
-        SignalDatabase.calls().insertOrUpdateGroupCallFromRingState(ringId, remotePeerGroup.getId(), sender, System.currentTimeMillis(), CallManager.RingUpdate.EXPIRED_REQUEST);
+        SignalDatabase.calls().insertOrUpdateGroupCallFromRingState(ringId, remotePeerGroup.getId(), sender, System.currentTimeMillis(), CallManager.RingUpdate.EXPIRED_REQUEST, true);
         webRtcInteractor.getCallManager().cancelGroupRing(groupId.getDecodedId(), ringId, CallManager.RingCancelReason.DeclinedByUser);
       } catch (CallException e) {
         Log.w(TAG, "Error while trying to cancel ring: " + ringId, e);

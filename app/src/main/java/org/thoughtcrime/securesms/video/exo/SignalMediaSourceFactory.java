@@ -25,7 +25,7 @@ public final class SignalMediaSourceFactory implements MediaSource.Factory {
   private final ProgressiveMediaSource.Factory progressiveMediaSourceFactory;
 
   public SignalMediaSourceFactory(@NonNull Context context) {
-    DataSource.Factory attachmentDataSourceFactory = new SignalDataSource.Factory(context, null, null);
+    DataSource.Factory attachmentDataSourceFactory = new SignalDataSource.Factory(context, null, ExoPlayerPool.DataSourceTransferListener.INSTANCE);
     ExtractorsFactory  extractorsFactory           = new DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true);
 
     progressiveMediaSourceFactory = new ProgressiveMediaSource.Factory(attachmentDataSourceFactory, extractorsFactory);

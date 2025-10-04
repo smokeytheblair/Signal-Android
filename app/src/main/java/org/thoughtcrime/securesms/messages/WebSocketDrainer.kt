@@ -5,7 +5,7 @@ import androidx.annotation.AnyThread
 import androidx.annotation.WorkerThread
 import org.signal.core.util.Stopwatch
 import org.signal.core.util.logging.Log
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.jobmanager.Job
 import org.thoughtcrime.securesms.jobmanager.JobTracker
 import org.thoughtcrime.securesms.jobmanager.JobTracker.JobListener
@@ -50,8 +50,7 @@ object WebSocketDrainer {
 
     var websocketDrainTimeout = requestedWebsocketDrainTimeoutMs
 
-    val context = ApplicationDependencies.getApplication()
-    val incomingMessageObserver = ApplicationDependencies.getIncomingMessageObserver()
+    val context = AppDependencies.application
     val powerManager = ServiceUtil.getPowerManager(context)
 
     val doze = PowerManagerCompat.isDeviceIdleMode(powerManager)
@@ -67,10 +66,10 @@ object WebSocketDrainer {
     }
 
     val wakeLockTag = WAKELOCK_PREFIX + System.currentTimeMillis()
-    val wakeLock = WakeLockUtil.acquire(ApplicationDependencies.getApplication(), PowerManager.PARTIAL_WAKE_LOCK, websocketDrainTimeout + QUEUE_TIMEOUT, wakeLockTag)
+    val wakeLock = WakeLockUtil.acquire(AppDependencies.application, PowerManager.PARTIAL_WAKE_LOCK, websocketDrainTimeout + QUEUE_TIMEOUT, wakeLockTag)
 
     return try {
-      drainAndProcess(websocketDrainTimeout, incomingMessageObserver, keepAliveToken)
+      drainAndProcess(websocketDrainTimeout, keepAliveToken)
     } finally {
       WakeLockUtil.release(wakeLock, wakeLockTag)
     }
@@ -83,10 +82,10 @@ object WebSocketDrainer {
    * so that we know the queue has been drained.
    */
   @WorkerThread
-  private fun drainAndProcess(timeout: Long, incomingMessageObserver: IncomingMessageObserver, keepAliveToken: String): Boolean {
+  private fun drainAndProcess(timeout: Long, keepAliveToken: String): Boolean {
     val stopwatch = Stopwatch("websocket-strategy")
 
-    val jobManager = ApplicationDependencies.getJobManager()
+    val jobManager = AppDependencies.jobManager
     val queueListener = QueueFindingJobListener()
 
     jobManager.addListener(
@@ -94,7 +93,7 @@ object WebSocketDrainer {
       queueListener
     )
 
-    val successfullyDrained = blockUntilWebsocketDrained(incomingMessageObserver, timeout, keepAliveToken)
+    val successfullyDrained = blockUntilWebsocketDrained(timeout, keepAliveToken)
     if (!successfullyDrained) {
       return false
     }
@@ -116,19 +115,17 @@ object WebSocketDrainer {
     return true
   }
 
-  private fun blockUntilWebsocketDrained(incomingMessageObserver: IncomingMessageObserver, timeoutMs: Long, keepAliveToken: String): Boolean {
+  private fun blockUntilWebsocketDrained(timeoutMs: Long, keepAliveToken: String): Boolean {
     try {
       val latch = CountDownLatch(1)
       var success = false
-      incomingMessageObserver.registerKeepAliveToken(keepAliveToken) {
-        Log.w(TAG, "Keep alive token purged")
-        latch.countDown()
-      }
-      incomingMessageObserver.addDecryptionDrainedListener(object : Runnable {
+      AppDependencies.authWebSocket.registerKeepAliveToken(keepAliveToken)
+
+      AppDependencies.incomingMessageObserver.addDecryptionDrainedListener(object : Runnable {
         override fun run() {
           success = true
           latch.countDown()
-          incomingMessageObserver.removeDecryptionDrainedListener(this)
+          AppDependencies.incomingMessageObserver.removeDecryptionDrainedListener(this)
         }
       })
 
@@ -142,13 +139,13 @@ object WebSocketDrainer {
         false
       }
     } finally {
-      incomingMessageObserver.removeKeepAliveToken(keepAliveToken)
+      AppDependencies.authWebSocket.removeKeepAliveToken(keepAliveToken)
     }
   }
 
   private fun blockUntilJobQueueDrained(queue: String, timeoutMs: Long): Boolean {
     val startTime = System.currentTimeMillis()
-    val jobManager = ApplicationDependencies.getJobManager()
+    val jobManager = AppDependencies.jobManager
     val markerJob = MarkerJob(queue)
     val jobState = jobManager.runSynchronously(markerJob, timeoutMs)
 

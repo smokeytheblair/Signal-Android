@@ -19,7 +19,7 @@ import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.identity.IdentityRecordList;
 import org.thoughtcrime.securesms.database.model.IdentityRecord;
 import org.thoughtcrime.securesms.database.model.IdentityStoreRecord;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
@@ -63,8 +63,12 @@ public class SignalBaseIdentityKeyStore {
     return SignalStore.account().getRegistrationId();
   }
 
-  public boolean saveIdentity(SignalProtocolAddress address, IdentityKey identityKey) {
-    return saveIdentity(address, identityKey, false) == SaveResult.UPDATE;
+  public IdentityKeyStore.IdentityChange saveIdentity(SignalProtocolAddress address, IdentityKey identityKey) {
+    switch (saveIdentity(address, identityKey, false)) {
+      case NEW, NO_CHANGE, NON_BLOCKING_APPROVAL_REQUIRED -> { return IdentityKeyStore.IdentityChange.NEW_OR_UNCHANGED; }
+      case UPDATE -> { return IdentityKeyStore.IdentityChange.REPLACED_EXISTING; }
+    }
+    throw new AssertionError("unhandled save result");
   }
 
   public @NonNull SaveResult saveIdentity(SignalProtocolAddress address, IdentityKey identityKey, boolean nonBlockingApproval) {
@@ -96,7 +100,7 @@ public class SignalBaseIdentityKeyStore {
 
         cache.save(address.getName(), recipientId, identityKey, verifiedStatus, false, System.currentTimeMillis(), nonBlockingApproval);
         IdentityUtil.markIdentityUpdate(context, recipientId);
-        ApplicationDependencies.getProtocolStore().aci().sessions().archiveSiblingSessions(address);
+        AppDependencies.getProtocolStore().aci().sessions().archiveSiblingSessions(address);
         SignalDatabase.senderKeyShared().deleteAllFor(recipientId);
         return SaveResult.UPDATE;
       }
@@ -154,7 +158,7 @@ public class SignalBaseIdentityKeyStore {
   }
 
   public @NonNull Optional<IdentityRecord> getIdentityRecord(@NonNull Recipient recipient) {
-    if (recipient.hasServiceId()) {
+    if (recipient.getHasServiceId()) {
       IdentityStoreRecord record = cache.get(recipient.requireServiceId().toString());
       return Optional.ofNullable(record).map(r -> r.toIdentityRecord(recipient.getId()));
     } else {
@@ -169,7 +173,7 @@ public class SignalBaseIdentityKeyStore {
 
   public @NonNull IdentityRecordList getIdentityRecords(@NonNull List<Recipient> recipients) {
     List<String> addressNames = recipients.stream()
-                                          .filter(Recipient::hasServiceId)
+                                          .filter(Recipient::getHasServiceId)
                                           .map(Recipient::requireServiceId)
                                           .map(ServiceId::toString)
                                           .collect(Collectors.toList());
@@ -181,7 +185,7 @@ public class SignalBaseIdentityKeyStore {
     List<IdentityRecord> records = new ArrayList<>(recipients.size());
 
     for (Recipient recipient : recipients) {
-      if (recipient.hasServiceId()) {
+      if (recipient.getHasServiceId()) {
         IdentityStoreRecord record = cache.get(recipient.requireServiceId().toString());
 
         if (record != null) {
@@ -202,7 +206,7 @@ public class SignalBaseIdentityKeyStore {
   public void setApproval(@NonNull RecipientId recipientId, boolean nonBlockingApproval) {
     Recipient recipient = Recipient.resolved(recipientId);
 
-    if (recipient.hasServiceId()) {
+    if (recipient.getHasServiceId()) {
       cache.setApproval(recipient.requireServiceId().toString(), recipientId, nonBlockingApproval);
     } else {
       Log.w(TAG, "[setApproval] No serviceId for " + recipient.getId(), new Throwable());
@@ -212,7 +216,7 @@ public class SignalBaseIdentityKeyStore {
   public void setVerified(@NonNull RecipientId recipientId, IdentityKey identityKey, VerifiedStatus verifiedStatus) {
     Recipient recipient = Recipient.resolved(recipientId);
 
-    if (recipient.hasServiceId()) {
+    if (recipient.getHasServiceId()) {
       cache.setVerified(recipient.requireServiceId().toString(), recipientId, identityKey, verifiedStatus);
     } else {
       Log.w(TAG, "[setVerified] No serviceId for " + recipient.getId(), new Throwable());
@@ -234,7 +238,7 @@ public class SignalBaseIdentityKeyStore {
     }
 
     if (!identityKey.equals(identityRecord.getIdentityKey())) {
-      Log.w(TAG, "Identity keys don't match... service: " + identityKey.hashCode() + " database: " + identityRecord.getIdentityKey().hashCode());
+      Log.w(TAG, "Identity keys don't match... service: ***" + (identityKey.hashCode() % 100) + " database: ***" + (identityRecord.getIdentityKey().hashCode() % 100));
       return false;
     }
 
@@ -264,7 +268,7 @@ public class SignalBaseIdentityKeyStore {
 
     Cache(@NonNull IdentityTable identityDatabase) {
       this.identityDatabase = identityDatabase;
-      this.cache            = new LRUCache<>(200);
+      this.cache            = new LRUCache<>(1000);
     }
 
     public @Nullable IdentityStoreRecord get(@NonNull String addressName) {

@@ -20,7 +20,6 @@ import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.util.CommunicationActions;
 import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme;
 import org.thoughtcrime.securesms.util.DynamicTheme;
-import org.thoughtcrime.securesms.util.FeatureFlags;
 
 /**
  * Activity for verifying identity keys.
@@ -56,16 +55,9 @@ public class VerifyIdentityActivity extends PassphraseRequiredActivity {
                                                          boolean verified) {
     Recipient recipient = Recipient.live(recipientId).resolve();
 
-    if (FeatureFlags.showAciSafetyNumberAsDefault()) {
-      if (!recipient.hasServiceId()) {
-        showExchangeMessagesDialog(context);
-        return;
-      }
-    } else {
-      if (!recipient.hasServiceId() || !recipient.hasE164()) {
-        showExchangeMessagesDialog(context);
-        return;
-      }
+    if (!recipient.getHasServiceId()) {
+      showExchangeMessagesDialog(context);
+      return;
     }
 
     context.startActivity(newIntent(context, recipientId, identityKey, verified));

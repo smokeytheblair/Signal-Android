@@ -4,9 +4,9 @@ import androidx.annotation.MainThread
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
 import org.signal.core.util.ThreadUtil
-import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.stickers.StickerSearchRepository
 import org.thoughtcrime.securesms.util.DefaultValueLiveData
+import org.thoughtcrime.securesms.util.RemoteConfig
 
 class KeyboardPagerViewModel : ViewModel() {
 
@@ -14,10 +14,12 @@ class KeyboardPagerViewModel : ViewModel() {
   private val pages: DefaultValueLiveData<Set<KeyboardPage>>
 
   init {
-    val startingPages: MutableSet<KeyboardPage> = KeyboardPage.values().toMutableSet()
-    if (SignalStore.settings().isPreferSystemEmoji) {
-      startingPages.remove(KeyboardPage.EMOJI)
+    val startingPages: MutableSet<KeyboardPage> = KeyboardPage.entries.toMutableSet()
+
+    if (!RemoteConfig.gifSearchAvailable) {
+      startingPages.remove(KeyboardPage.GIF)
     }
+
     pages = DefaultValueLiveData(startingPages)
     page = DefaultValueLiveData(startingPages.first())
 

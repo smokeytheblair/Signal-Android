@@ -17,7 +17,7 @@ import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.stories.Stories
 import org.thoughtcrime.securesms.stories.StoryViewerArgs
-import org.thoughtcrime.securesms.util.FeatureFlags
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.rx.RxStore
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
@@ -89,6 +89,10 @@ class StoryViewerViewModel(
   fun addHiddenAndRefresh(hidden: Set<RecipientId>) {
     this.hidden.addAll(hidden)
     refresh()
+  }
+
+  fun getInitialRecipientId(): RecipientId {
+    return storyViewerArgs.recipientId
   }
 
   fun setIsDisplayingFirstTimeNavigation(isDisplayingFirstTimeNavigation: Boolean) {
@@ -172,7 +176,7 @@ class StoryViewerViewModel(
       .filter { it != RecipientId.UNKNOWN }
       .distinctUntilChanged()
       .subscribe {
-        Stories.enqueueNextStoriesForDownload(it, true, FeatureFlags.storiesAutoDownloadMaximum())
+        Stories.enqueueNextStoriesForDownload(it, true, RemoteConfig.storiesAutoDownloadMaximum)
       }
   }
 

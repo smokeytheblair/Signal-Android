@@ -62,7 +62,7 @@ class EmojiSearchTable(context: Context, databaseHelper: SignalDatabase) : Datab
     readableDatabase
       .select(LABEL, EMOJI, RANK)
       .from(TABLE_NAME)
-      .where("$LABEL LIKE ?", "%$query%")
+      .where("$LABEL LIKE ? OR $EMOJI = ?", "%$query%", query)
       .orderBy("$RANK ASC")
       .limit(limit)
       .run()
@@ -93,21 +93,26 @@ class EmojiSearchTable(context: Context, databaseHelper: SignalDatabase) : Datab
   /**
    * Deletes the content of the current search index and replaces it with the new one.
    */
-  fun setSearchIndex(searchIndex: List<EmojiSearchData>) {
-    val db = databaseHelper.signalReadableDatabase
-
-    db.withinTransaction {
+  fun setSearchIndex(
+    localizedSearchIndex: List<EmojiSearchData>,
+    englishSearchIndex: List<EmojiSearchData>
+  ) {
+    databaseHelper.signalReadableDatabase.withinTransaction { db ->
       db.delete(TABLE_NAME, null, null)
+      db.insert(localizedSearchIndex)
+      db.insert(englishSearchIndex)
+    }
+  }
 
-      for (searchData in searchIndex) {
-        for (label in searchData.tags) {
-          val values = contentValuesOf(
-            LABEL to label,
-            EMOJI to searchData.emoji,
-            RANK to if (searchData.rank == 0) Int.MAX_VALUE else searchData.rank
-          )
-          db.insert(TABLE_NAME, null, values)
-        }
+  private fun SQLiteDatabase.insert(searchIndex: List<EmojiSearchData>) {
+    for (searchData in searchIndex) {
+      for (label in searchData.tags) {
+        val values = contentValuesOf(
+          LABEL to label,
+          EMOJI to searchData.emoji,
+          RANK to if (searchData.rank == 0) Int.MAX_VALUE else searchData.rank
+        )
+        insert(TABLE_NAME, null, values)
       }
     }
   }
@@ -123,7 +128,7 @@ class EmojiSearchTable(context: Context, databaseHelper: SignalDatabase) : Datab
   private fun similarityScore(searchTerm: String, entry: Entry, maxRank: Int): Float {
     val match: String = entry.label
 
-    if (searchTerm == match) {
+    if (searchTerm == entry.emoji || searchTerm == match) {
       return entry.scaledRank(maxRank)
     }
 

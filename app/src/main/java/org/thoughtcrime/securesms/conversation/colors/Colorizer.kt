@@ -66,11 +66,12 @@ class Colorizer {
     }
   }
 
+  @Suppress("DEPRECATION")
   @ColorInt
   fun getIncomingGroupSenderColor(context: Context, recipient: Recipient): Int {
     return if (groupMembers.isEmpty()) {
       groupSenderColors[recipient.id]?.getColor(context) ?: getDefaultColor(context, recipient)
-    } else {
+    } else if (recipient.hasServiceId) {
       val memberPosition = groupMembers.indexOf(recipient.requireServiceId())
 
       if (memberPosition >= 0) {
@@ -79,6 +80,8 @@ class Colorizer {
       } else {
         getDefaultColor(context, recipient)
       }
+    } else {
+      getDefaultColor(context, recipient)
     }
   }
 
@@ -86,6 +89,7 @@ class Colorizer {
     groupMembers.addAll(serviceIds.sortedBy { it.toString() })
   }
 
+  @Suppress("DEPRECATION")
   @Deprecated("Not needed for CFv2", ReplaceWith("onGroupMembershipChanged"))
   fun onNameColorsChanged(nameColorMap: Map<RecipientId, NameColor>) {
     groupSenderColors.clear()
@@ -93,6 +97,7 @@ class Colorizer {
     colorsHaveBeenSet = true
   }
 
+  @Suppress("DEPRECATION")
   @ColorInt
   private fun getDefaultColor(context: Context, recipient: Recipient): Int {
     return if (colorsHaveBeenSet) {
@@ -100,7 +105,7 @@ class Colorizer {
       groupSenderColors[recipient.id] = color
       return color.getColor(context)
     } else {
-      getIncomingBodyTextColor(context, recipient.hasWallpaper())
+      getIncomingBodyTextColor(context, recipient.hasWallpaper)
     }
   }
 }

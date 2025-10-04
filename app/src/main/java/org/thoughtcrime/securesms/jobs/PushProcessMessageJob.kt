@@ -4,9 +4,8 @@ import okio.ByteString
 import okio.ByteString.Companion.toByteString
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.database.SignalDatabase.Companion.groups
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.groups.GroupChangeBusyException
-import org.thoughtcrime.securesms.groups.GroupsV1MigratedCache
 import org.thoughtcrime.securesms.jobmanager.Job
 import org.thoughtcrime.securesms.jobmanager.impl.ChangeNumberConstraint
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint
@@ -114,27 +113,24 @@ class PushProcessMessageJob private constructor(
     }
 
     fun processOrDefer(messageProcessor: MessageContentProcessor, result: MessageDecryptor.Result.Success, localReceiveMetric: SignalLocalMetrics.MessageReceive): PushProcessMessageJob? {
-      val queueName: String
-
       val groupContext = GroupUtil.getGroupContextIfPresent(result.content)
       val groupId = groupContext?.groupId
       var requireNetwork = false
 
-      if (groupId != null) {
-        queueName = getQueueName(RecipientId.from(groupId))
-
+      val queueName: String = if (groupId != null) {
         if (groupId.isV2) {
           val localRevision = groups.getGroupV2Revision(groupId.requireV2())
 
-          if (groupContext.revision!! > localRevision || GroupsV1MigratedCache.hasV1Group(groupId)) {
+          if (groupContext.revision!! > localRevision) {
             Log.i(TAG, "Adding network constraint to group-related job.")
             requireNetwork = true
           }
         }
+        getQueueName(RecipientId.from(groupId))
       } else if (result.content.syncMessage != null && result.content.syncMessage!!.sent != null && result.content.syncMessage!!.sent!!.destinationServiceId != null) {
-        queueName = getQueueName(RecipientId.from(ServiceId.parseOrThrow(result.content.syncMessage!!.sent!!.destinationServiceId!!)))
+        getQueueName(RecipientId.from(ServiceId.parseOrThrow(result.content.syncMessage!!.sent!!.destinationServiceId!!)))
       } else {
-        queueName = getQueueName(RecipientId.from(result.metadata.sourceServiceId))
+        getQueueName(RecipientId.from(result.metadata.sourceServiceId))
       }
 
       return if (requireNetwork || !isQueueEmpty(queueName = queueName, isGroup = groupId != null)) {
@@ -160,7 +156,7 @@ class PushProcessMessageJob private constructor(
       if (!isGroup && empty1to1QueueCache.contains(queueName)) {
         return true
       }
-      val queueEmpty = ApplicationDependencies.getJobManager().isQueueEmpty(queueName)
+      val queueEmpty = AppDependencies.jobManager.isQueueEmpty(queueName)
       if (!isGroup && queueEmpty) {
         empty1to1QueueCache.add(queueName)
       }

@@ -18,7 +18,7 @@ package org.thoughtcrime.securesms.database;
 
 import android.content.Context;
 
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -48,46 +48,38 @@ public abstract class DatabaseTable {
   }
 
   protected void notifyConversationListeners(Set<Long> threadIds) {
-    ApplicationDependencies.getDatabaseObserver().notifyConversationListeners(threadIds);
-
-    for (long threadId : threadIds) {
-      notifyConversationListeners(threadId);
-    }
+    AppDependencies.getDatabaseObserver().notifyConversationListeners(threadIds);
   }
 
   protected void notifyConversationListeners(long threadId) {
-    ApplicationDependencies.getDatabaseObserver().notifyConversationListeners(threadId);
+    AppDependencies.getDatabaseObserver().notifyConversationListeners(threadId);
   }
 
   protected void notifyVerboseConversationListeners(Set<Long> threadIds) {
-    ApplicationDependencies.getDatabaseObserver().notifyVerboseConversationListeners(threadIds);
+    AppDependencies.getDatabaseObserver().notifyVerboseConversationListeners(threadIds);
   }
 
   protected void notifyConversationListListeners() {
-    ApplicationDependencies.getDatabaseObserver().notifyConversationListListeners();
+    AppDependencies.getDatabaseObserver().notifyConversationListListeners();
   }
 
   protected void notifyStickerPackListeners() {
-    ApplicationDependencies.getDatabaseObserver().notifyStickerPackObservers();
+    AppDependencies.getDatabaseObserver().notifyStickerPackObservers();
   }
 
   protected void notifyStickerListeners() {
-    ApplicationDependencies.getDatabaseObserver().notifyStickerObservers();
-  }
-
-  protected void notifyAttachmentListeners() {
-    ApplicationDependencies.getDatabaseObserver().notifyAttachmentObservers();
+    AppDependencies.getDatabaseObserver().notifyStickerObservers();
   }
 
   public void reset(SignalDatabase databaseHelper) {
     this.databaseHelper = databaseHelper;
   }
 
-  protected SQLiteDatabase getReadableDatabase() {
+  public SQLiteDatabase getReadableDatabase() {
     return databaseHelper.getSignalReadableDatabase();
   }
 
-  protected SQLiteDatabase getWritableDatabase() {
+  public SQLiteDatabase getWritableDatabase() {
     return databaseHelper.getSignalWritableDatabase();
   }
 }

@@ -10,7 +10,7 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/container_zero"
-        style="@style/Widget.Signal.TextInputLayout.Registration"
+        style="@style/Widget.Signal.TextInputLayout"
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:errorEnabled="false"
@@ -33,13 +33,14 @@
             android:inputType="none"
             android:padding="0dp"
             android:textAppearance="@style/Signal.Text.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
             tools:text="0" />
 
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/container_one"
-        style="@style/Widget.Signal.TextInputLayout.Registration"
+        style="@style/Widget.Signal.TextInputLayout"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="4dp"
@@ -63,13 +64,14 @@
             android:inputType="none"
             android:padding="0dp"
             android:textAppearance="@style/Signal.Text.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
             tools:text="1" />
 
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/container_two"
-        style="@style/Widget.Signal.TextInputLayout.Registration"
+        style="@style/Widget.Signal.TextInputLayout"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="4dp"
@@ -93,6 +95,7 @@
             android:inputType="none"
             android:padding="0dp"
             android:textAppearance="@style/Signal.Text.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
             tools:text="2" />
 
     </com.google.android.material.textfield.TextInputLayout>
@@ -116,7 +119,7 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/container_three"
-        style="@style/Widget.Signal.TextInputLayout.Registration"
+        style="@style/Widget.Signal.TextInputLayout"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="4dp"
@@ -140,13 +143,14 @@
             android:inputType="none"
             android:padding="0dp"
             android:textAppearance="@style/Signal.Text.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
             tools:text="3" />
 
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/container_four"
-        style="@style/Widget.Signal.TextInputLayout.Registration"
+        style="@style/Widget.Signal.TextInputLayout"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="4dp"
@@ -170,13 +174,14 @@
             android:inputType="none"
             android:padding="0dp"
             android:textAppearance="@style/Signal.Text.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
             tools:text="4" />
 
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/container_five"
-        style="@style/Widget.Signal.TextInputLayout.Registration"
+        style="@style/Widget.Signal.TextInputLayout"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="4dp"
@@ -200,6 +205,7 @@
             android:inputType="none"
             android:padding="0dp"
             android:textAppearance="@style/Signal.Text.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
             tools:text="5" />
 
     </com.google.android.material.textfield.TextInputLayout>

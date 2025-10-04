@@ -12,6 +12,7 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
+import org.signal.core.util.concurrent.ListenableFuture
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.ClippedCardView
 import org.thoughtcrime.securesms.conversation.MessageStyler
@@ -21,11 +22,11 @@ import org.thoughtcrime.securesms.database.model.databaseprotos.StoryTextPost
 import org.thoughtcrime.securesms.fonts.TextFont
 import org.thoughtcrime.securesms.linkpreview.LinkPreview
 import org.thoughtcrime.securesms.linkpreview.LinkPreviewState
+import org.thoughtcrime.securesms.mediasend.v2.text.TextStoryBackgroundColors
 import org.thoughtcrime.securesms.mediasend.v2.text.TextStoryPostCreationState
 import org.thoughtcrime.securesms.mediasend.v2.text.TextStoryScale
 import org.thoughtcrime.securesms.mediasend.v2.text.TextStoryTextWatcher
 import org.thoughtcrime.securesms.util.LongClickMovementMethod
-import org.thoughtcrime.securesms.util.concurrent.ListenableFuture
 import org.thoughtcrime.securesms.util.visible
 import java.util.Locale
 
@@ -131,7 +132,7 @@ class StoryTextPostView @JvmOverloads constructor(
     linkPreviewView.visible = false
 
     val font: TextFont = TextFont.fromStyle(storyTextPost.style)
-    setPostBackground(ChatColors.forChatColor(ChatColors.Id.NotSet, storyTextPost.background!!).chatBubbleMask)
+    setPostBackground(ChatColors.forChatColor(ChatColors.Id.NotSet, storyTextPost.background ?: TextStoryBackgroundColors.getInitialBackgroundColor().serialize()).chatBubbleMask)
 
     if (font.isAllCaps) {
       setText(storyTextPost.body.uppercase(Locale.getDefault()), false)

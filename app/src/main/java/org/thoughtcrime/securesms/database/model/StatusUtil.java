@@ -6,9 +6,9 @@ import org.thoughtcrime.securesms.database.MessageTypes;
 final class StatusUtil {
   private StatusUtil() {}
 
-  static boolean isDelivered(long deliveryStatus, int deliveryReceiptCount) {
+  static boolean isDelivered(long deliveryStatus, boolean hasDeliveryReceipt) {
     return (deliveryStatus >= MessageTable.Status.STATUS_COMPLETE &&
-            deliveryStatus < MessageTable.Status.STATUS_PENDING) || deliveryReceiptCount > 0;
+            deliveryStatus < MessageTable.Status.STATUS_PENDING) || hasDeliveryReceipt;
   }
 
   static boolean isPending(long type) {
@@ -20,6 +20,7 @@ final class StatusUtil {
   static boolean isFailed(long type, long deliveryStatus) {
     return MessageTypes.isFailedMessageType(type) ||
            MessageTypes.isPendingSecureSmsFallbackType(type) ||
+           MessageTypes.isPendingInsecureSmsFallbackType(type) ||
            deliveryStatus >= MessageTable.Status.STATUS_FAILED;
   }
 

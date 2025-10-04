@@ -24,6 +24,10 @@ class StoryViewerPagerAdapter(
     DiffUtil.calculateDiff(callback).dispatchUpdatesTo(this)
   }
 
+  fun getRecipientId(position: Int): RecipientId {
+    return pages[position]
+  }
+
   override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
     super.onAttachedToRecyclerView(recyclerView)
     recyclerView.overScrollMode = RecyclerView.OVER_SCROLL_NEVER
@@ -33,6 +37,10 @@ class StoryViewerPagerAdapter(
 
   override fun getItemId(position: Int): Long {
     return pages[position].toLong()
+  }
+
+  override fun containsItem(itemId: Long): Boolean {
+    return pages.find { it.toLong() == itemId } != null
   }
 
   override fun createFragment(position: Int): Fragment {

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.core.Maybe
+import org.signal.core.util.Base64
 import org.thoughtcrime.securesms.components.location.SignalPlace
 import org.thoughtcrime.securesms.database.DraftTable.Draft
 import org.thoughtcrime.securesms.database.MentionUtil
@@ -12,7 +13,6 @@ import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.database.model.databaseprotos.BodyRangeList
 import org.thoughtcrime.securesms.mms.QuoteId
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.thoughtcrime.securesms.util.Base64
 import org.thoughtcrime.securesms.util.rx.RxStore
 
 /**
@@ -38,7 +38,7 @@ class DraftViewModel @JvmOverloads constructor(
 
   fun saveEphemeralVoiceNoteDraft(draft: Draft) {
     store.update { draftState ->
-      saveDrafts(draftState.copy(voiceNoteDraft = draft))
+      saveDraftsIfChanged(draftState, draftState.copy(voiceNoteDraft = draft))
     }
   }
 
@@ -49,7 +49,7 @@ class DraftViewModel @JvmOverloads constructor(
   fun deleteVoiceNoteDraft() {
     store.update {
       repository.deleteVoiceNoteDraftData(it.voiceNoteDraft)
-      saveDrafts(it.copy(voiceNoteDraft = null))
+      saveDraftsIfChanged(it, it.copy(voiceNoteDraft = null))
     }
   }
 
@@ -65,13 +65,13 @@ class DraftViewModel @JvmOverloads constructor(
         styleBodyRanges.newBuilder().apply { ranges += mentionRanges.ranges }.build()
       }
 
-      saveDrafts(it.copy(textDraft = text.toTextDraft(), bodyRangesDraft = bodyRanges?.toDraft(), messageEditDraft = Draft(Draft.MESSAGE_EDIT, messageId.serialize())))
+      saveDraftsIfChanged(it, it.copy(textDraft = text.toTextDraft(), bodyRangesDraft = bodyRanges?.toDraft(), messageEditDraft = Draft(Draft.MESSAGE_EDIT, messageId.serialize())))
     }
   }
 
   fun deleteMessageEditDraft() {
     store.update {
-      saveDrafts(it.copy(textDraft = null, bodyRangesDraft = null, messageEditDraft = null))
+      saveDraftsIfChanged(it, it.copy(textDraft = null, bodyRangesDraft = null, messageEditDraft = null))
     }
   }
 
@@ -87,49 +87,53 @@ class DraftViewModel @JvmOverloads constructor(
         styleBodyRanges.newBuilder().apply { ranges += mentionRanges.ranges }.build()
       }
 
-      saveDrafts(it.copy(textDraft = text.toTextDraft(), bodyRangesDraft = bodyRanges?.toDraft()))
+      saveDraftsIfChanged(it, it.copy(textDraft = text.toTextDraft(), bodyRangesDraft = bodyRanges?.toDraft()))
     }
   }
 
   fun setLocationDraft(place: SignalPlace) {
     store.update {
-      saveDrafts(it.copy(locationDraft = Draft(Draft.LOCATION, place.serialize() ?: "")))
+      saveDraftsIfChanged(it, it.copy(locationDraft = Draft(Draft.LOCATION, place.serialize() ?: "")))
     }
   }
 
   fun clearLocationDraft() {
     store.update {
-      saveDrafts(it.copy(locationDraft = null))
+      saveDraftsIfChanged(it, it.copy(locationDraft = null))
     }
   }
 
   fun setQuoteDraft(id: Long, author: RecipientId) {
     store.update {
-      saveDrafts(it.copy(quoteDraft = Draft(Draft.QUOTE, QuoteId(id, author).serialize())))
+      saveDraftsIfChanged(it, it.copy(quoteDraft = Draft(Draft.QUOTE, QuoteId(id, author).serialize())))
     }
   }
 
   fun clearQuoteDraft() {
     store.update {
-      saveDrafts(it.copy(quoteDraft = null))
+      saveDraftsIfChanged(it, it.copy(quoteDraft = null))
     }
   }
 
-  fun onSendComplete(threadId: Long = store.state.threadId) {
+  fun clearDraft() {
     repository.deleteVoiceNoteDraftData(store.state.voiceNoteDraft)
-    store.update { saveDrafts(it.copyAndClearDrafts(threadId)) }
+    store.update { saveDraftsIfChanged(it, it.copyAndClearDrafts(store.state.threadId)) }
   }
 
-  private fun saveDrafts(state: DraftState): DraftState {
-    repository.saveDrafts(state.threadId, state.toDrafts())
-    return state
+  private fun saveDraftsIfChanged(oldState: DraftState, newState: DraftState): DraftState {
+    if (oldState == newState) {
+      return oldState
+    }
+
+    repository.saveDrafts(newState.threadId, newState.toDrafts())
+    return newState
   }
 
   fun loadShareOrDraftData(lastShareDataTimestamp: Long): Maybe<DraftRepository.ShareOrDraftData> {
     return repository.getShareOrDraftData(lastShareDataTimestamp)
       .doOnSuccess { (_, drafts) ->
         if (drafts != null) {
-          store.update { saveDrafts(it.copyAndSetDrafts(drafts = drafts)) }
+          store.update { saveDraftsIfChanged(it, it.copyAndSetDrafts(drafts = drafts)) }
         }
       }
       .flatMap { (data, _) ->
@@ -148,5 +152,5 @@ private fun String.toTextDraft(): Draft? {
 }
 
 private fun BodyRangeList.toDraft(): Draft {
-  return Draft(Draft.BODY_RANGES, Base64.encodeBytes(encode()))
+  return Draft(Draft.BODY_RANGES, Base64.encodeWithPadding(encode()))
 }

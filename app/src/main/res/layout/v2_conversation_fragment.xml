@@ -5,7 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:clipChildren="false"
-    app:animateKeyboardChanges="true">
+    app:animateKeyboardChanges="true"
+    app:applyRootInsets="false">
 
     <include layout="@layout/system_ui_guidelines" />
 
@@ -83,11 +84,11 @@
     <View
         android:id="@+id/toolbar_background"
         android:layout_width="0dp"
-        android:layout_height="@dimen/signal_m3_toolbar_height"
-        android:minHeight="@dimen/signal_m3_toolbar_height"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="@id/toolbar"
         app:layout_constraintEnd_toEndOf="@id/parent_end_guideline"
         app:layout_constraintStart_toStartOf="@id/parent_start_guideline"
-        app:layout_constraintTop_toTopOf="@id/status_bar_guideline" />
+        app:layout_constraintTop_toTopOf="parent" />
 
     <org.thoughtcrime.securesms.util.views.DarkOverflowToolbar
         android:id="@+id/toolbar"
@@ -167,18 +168,18 @@
                 android:layout="@layout/conversation_activity_unverified_banner_stub" />
 
             <ViewStub
-                android:id="@+id/reminder_stub"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inflatedId="@+id/reminder"
-                android:layout="@layout/conversation_activity_reminderview_stub" />
-
-            <ViewStub
                 android:id="@+id/review_banner_stub"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inflatedId="@+id/review_banner"
                 android:layout="@layout/review_banner_view" />
+
+            <ViewStub
+                android:id="@+id/banner_stub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inflatedId="@+id/banner_compose_view"
+                android:layout="@layout/conversation_list_banner_view" />
 
         </org.thoughtcrime.securesms.conversation.v2.ConversationBannerView>
 
@@ -314,10 +315,25 @@
         app:layout_constraintStart_toStartOf="@id/parent_start_guideline"
         app:layout_constraintTop_toTopOf="@id/keyboard_guideline" />
 
+    <View
+        android:id="@+id/nav_bar"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="@id/navigation_bar_guideline"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/emoji_search_container"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="@id/keyboard_guideline"
+        app:layout_constraintEnd_toEndOf="@id/parent_end_guideline"
+        app:layout_constraintStart_toStartOf="@id/parent_start_guideline" />
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/polls_create"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
         app:layout_constraintBottom_toBottomOf="@id/keyboard_guideline"
         app:layout_constraintEnd_toEndOf="@id/parent_end_guideline"
         app:layout_constraintStart_toStartOf="@id/parent_start_guideline" />

@@ -8,10 +8,11 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.RequestManager;
+
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.components.ThumbnailView;
 import org.thoughtcrime.securesms.mediasend.Media;
-import org.thoughtcrime.securesms.mms.GlideRequests;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.adapter.StableIdGenerator;
 
@@ -19,18 +20,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-class AttachmentKeyboardMediaAdapter extends RecyclerView.Adapter<AttachmentKeyboardMediaAdapter.MediaViewHolder> {
+class AttachmentKeyboardMediaAdapter extends RecyclerView.Adapter<AttachmentKeyboardMediaAdapter.ViewHolder> {
 
-  private final List<Media>              media;
-  private final GlideRequests            glideRequests;
-  private final Listener                 listener;
-  private final StableIdGenerator<Media> idGenerator;
+  private static final int VIEW_TYPE_MEDIA       = 0;
+  private static final int VIEW_TYPE_PLACEHOLDER = 1;
 
-  AttachmentKeyboardMediaAdapter(@NonNull GlideRequests glideRequests, @NonNull Listener listener) {
-    this.glideRequests = glideRequests;
-    this.listener      = listener;
-    this.media         = new ArrayList<>();
-    this.idGenerator   = new StableIdGenerator<>();
+  private final List<MediaContent>              media;
+  private final RequestManager                  requestManager;
+  private final Listener                        listener;
+  private final StableIdGenerator<MediaContent> idGenerator;
+
+  AttachmentKeyboardMediaAdapter(@NonNull RequestManager requestManager, @NonNull Listener listener) {
+    this.requestManager = requestManager;
+    this.listener       = listener;
+    this.media          = new ArrayList<>();
+    this.idGenerator    = new StableIdGenerator<>();
 
     setHasStableIds(true);
   }
@@ -41,17 +45,21 @@ class AttachmentKeyboardMediaAdapter extends RecyclerView.Adapter<AttachmentKeyb
   }
 
   @Override
-  public @NonNull MediaViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-    return new MediaViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.attachment_keyboad_media_item, parent, false));
+  public @NonNull ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+    return switch (viewType) {
+      case VIEW_TYPE_MEDIA -> new MediaViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.attachment_keyboad_media_item, parent, false));
+      case VIEW_TYPE_PLACEHOLDER -> new PlaceholderViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.attachment_keyboad_media_placeholder_item, parent, false));
+      default -> throw new IllegalArgumentException("Unsupported viewType: " + viewType);
+    };
   }
 
   @Override
-  public void onBindViewHolder(@NonNull MediaViewHolder holder, int position) {
-    holder.bind(media.get(position), glideRequests, listener);
+  public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+    holder.bind(media.get(position), requestManager, listener);
   }
 
   @Override
-  public void onViewRecycled(@NonNull MediaViewHolder holder) {
+  public void onViewRecycled(@NonNull ViewHolder holder) {
     holder.recycle();
   }
 
@@ -60,9 +68,17 @@ class AttachmentKeyboardMediaAdapter extends RecyclerView.Adapter<AttachmentKeyb
     return media.size();
   }
 
-  public void setMedia(@NonNull List<Media> media) {
+  @Override
+  public int getItemViewType(int position) {
+    return media.get(position).isPlaceholder ? VIEW_TYPE_PLACEHOLDER : VIEW_TYPE_MEDIA;
+  }
+
+  public void setMedia(@NonNull List<Media> media, boolean addFooter) {
     this.media.clear();
-    this.media.addAll(media);
+    this.media.addAll(media.stream().map(MediaContent::new).collect(java.util.stream.Collectors.toList()));
+    if (addFooter) {
+      this.media.add(new MediaContent(true));
+    }
     notifyDataSetChanged();
   }
 
@@ -70,7 +86,36 @@ class AttachmentKeyboardMediaAdapter extends RecyclerView.Adapter<AttachmentKeyb
     void onMediaClicked(@NonNull Media media);
   }
 
-  static class MediaViewHolder extends RecyclerView.ViewHolder {
+  private class MediaContent {
+    private Media   media;
+    private boolean isPlaceholder;
+
+    public MediaContent(Media media) {
+      this.media = media;
+    }
+
+    public MediaContent(boolean isPlaceholder) {
+      this.isPlaceholder = isPlaceholder;
+    }
+  }
+
+  static abstract class ViewHolder extends RecyclerView.ViewHolder {
+    public ViewHolder(@NonNull View itemView) {
+      super(itemView);
+    }
+
+    void bind(@NonNull MediaContent media, @NonNull RequestManager requestManager, @NonNull Listener listener) {}
+
+    void recycle() {}
+  }
+
+  static class PlaceholderViewHolder extends ViewHolder {
+    public PlaceholderViewHolder(@NonNull View itemView) {
+      super(itemView);
+    }
+  }
+
+  static class MediaViewHolder extends ViewHolder {
 
     private final ThumbnailView image;
     private final TextView      duration;
@@ -83,8 +128,10 @@ class AttachmentKeyboardMediaAdapter extends RecyclerView.Adapter<AttachmentKeyb
       videoIcon = itemView.findViewById(R.id.attachment_keyboard_item_video_icon);
     }
 
-    void bind(@NonNull Media media, @NonNull GlideRequests glideRequests, @NonNull Listener listener) {
-      image.setImageResource(glideRequests, media.getUri(), 400, 400);
+    @Override
+    void bind(@NonNull MediaContent mediaContent, @NonNull RequestManager requestManager, @NonNull Listener listener) {
+      Media media = mediaContent.media;
+      image.setImageResource(requestManager, media.getUri(), 400, 400);
       image.setOnClickListener(v -> listener.onMediaClicked(media));
 
       duration.setVisibility(View.GONE);
@@ -93,11 +140,12 @@ class AttachmentKeyboardMediaAdapter extends RecyclerView.Adapter<AttachmentKeyb
       if (media.getDuration() > 0) {
         duration.setVisibility(View.VISIBLE);
         duration.setText(formatTime(media.getDuration()));
-      } else if (MediaUtil.isVideoType(media.getMimeType())) {
+      } else if (MediaUtil.isVideoType(media.getContentType())) {
         videoIcon.setVisibility(View.VISIBLE);
       }
     }
 
+    @Override
     void recycle() {
       image.setOnClickListener(null);
     }

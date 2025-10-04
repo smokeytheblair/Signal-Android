@@ -15,6 +15,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
+import com.bumptech.glide.RequestManager;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.google.android.material.shape.CornerFamily;
@@ -31,8 +32,7 @@ import org.thoughtcrime.securesms.components.quotes.QuoteViewColorTheme;
 import org.thoughtcrime.securesms.conversation.MessageStyler;
 import org.thoughtcrime.securesms.database.model.Mention;
 import org.thoughtcrime.securesms.database.model.databaseprotos.BodyRangeList;
-import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader.DecryptableUri;
-import org.thoughtcrime.securesms.mms.GlideRequests;
+import org.thoughtcrime.securesms.mms.DecryptableUri;
 import org.thoughtcrime.securesms.mms.QuoteModel;
 import org.thoughtcrime.securesms.mms.Slide;
 import org.thoughtcrime.securesms.mms.SlideDeck;
@@ -47,6 +47,7 @@ import org.thoughtcrime.securesms.util.views.Stub;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 public class QuoteView extends ConstraintLayout implements RecipientForeverObserver {
 
@@ -193,14 +194,15 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
     }
   }
 
-  public void setQuote(GlideRequests glideRequests,
+  public void setQuote(RequestManager requestManager,
                        long id,
                        @NonNull Recipient author,
                        @Nullable CharSequence body,
                        boolean originalMissing,
                        @NonNull SlideDeck attachments,
                        @Nullable String storyReaction,
-                       @NonNull QuoteModel.Type quoteType)
+                       @NonNull QuoteModel.Type quoteType,
+                       boolean composeMode)
   {
     if (this.author != null) this.author.removeForeverObserver(this);
 
@@ -211,9 +213,19 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
     this.quoteType   = quoteType;
 
     this.author.observeForever(this);
+
+    Slide slide = attachments.getFirstSlide();
+
+    String quoteTargetContentType;
+    if (composeMode) {
+      quoteTargetContentType = Optional.ofNullable(slide).map(Slide::getContentType).orElse(null);
+    } else {
+      quoteTargetContentType = Optional.ofNullable(slide).map(Slide::getQuoteTargetContentType).orElse(null);
+    }
+
     setQuoteAuthor(author);
-    setQuoteText(resolveBody(body, quoteType), attachments, originalMissing, storyReaction);
-    setQuoteAttachment(glideRequests, body, attachments, originalMissing);
+    setQuoteText(resolveBody(body, quoteType), slide, originalMissing, storyReaction, quoteTargetContentType);
+    setQuoteAttachment(requestManager, body, slide, originalMissing, quoteTargetContentType);
     setQuoteMissingFooter(originalMissing);
     applyColorTheme();
   }
@@ -267,9 +279,10 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
   }
 
   private void setQuoteText(@Nullable CharSequence body,
-                            @NonNull SlideDeck attachments,
+                            @Nullable Slide slide,
                             boolean originalMissing,
-                            @Nullable String storyReaction)
+                            @Nullable String storyReaction,
+                            @Nullable String quoteTargetContentType)
   {
     if (originalMissing && isStoryReply()) {
       bodyView.setVisibility(GONE);
@@ -316,40 +329,46 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
     bodyView.setVisibility(GONE);
     mediaDescriptionText.setVisibility(VISIBLE);
 
-    Slide audioSlide    = attachments.getSlides().stream().filter(Slide::hasAudio).findFirst().orElse(null);
-    Slide documentSlide = attachments.getSlides().stream().filter(Slide::hasDocument).findFirst().orElse(null);
-    Slide imageSlide    = attachments.getSlides().stream().filter(Slide::hasImage).findFirst().orElse(null);
-    Slide videoSlide    = attachments.getSlides().stream().filter(Slide::hasVideo).findFirst().orElse(null);
-    Slide stickerSlide  = attachments.getSlides().stream().filter(Slide::hasSticker).findFirst().orElse(null);
-    Slide viewOnceSlide = attachments.getSlides().stream().filter(Slide::hasViewOnce).findFirst().orElse(null);
-
-    // Given that most types have images, we specifically check images last
-    if (viewOnceSlide != null) {
+    if (MediaUtil.isViewOnceType(quoteTargetContentType)) {
+      mediaDescriptionText.setPadding(0, mediaDescriptionText.getPaddingTop(), 0, (int) DimensionUnit.DP.toPixels(8));
       mediaDescriptionText.setText(R.string.QuoteView_view_once_media);
-    } else if (audioSlide != null) {
+    } else if (MediaUtil.isAudioType(quoteTargetContentType)) {
+      mediaDescriptionText.setPadding(0, mediaDescriptionText.getPaddingTop(), 0, (int) DimensionUnit.DP.toPixels(8));
       mediaDescriptionText.setText(R.string.QuoteView_audio);
-    } else if (documentSlide != null) {
-      mediaDescriptionText.setVisibility(GONE);
-    } else if (videoSlide != null) {
-      if (videoSlide.isVideoGif()) {
+    } else if (MediaUtil.isVideoType(quoteTargetContentType)) {
+      if (slide != null && slide.isVideoGif()) {
         mediaDescriptionText.setText(R.string.QuoteView_gif);
       } else {
         mediaDescriptionText.setText(R.string.QuoteView_video);
       }
-    } else if (stickerSlide != null) {
+    } else if (slide != null && slide.hasSticker()) {
       mediaDescriptionText.setText(R.string.QuoteView_sticker);
-    } else if (imageSlide != null) {
-      if (MediaUtil.isGif(imageSlide.getContentType())) {
+    } else if (MediaUtil.isImageType(quoteTargetContentType)) {
+      if (MediaUtil.isGif(quoteTargetContentType)) {
         mediaDescriptionText.setText(R.string.QuoteView_gif);
       } else {
         mediaDescriptionText.setText(R.string.QuoteView_photo);
       }
+    } else {
+      mediaDescriptionText.setVisibility(GONE);
     }
   }
 
-  private void setQuoteAttachment(@NonNull GlideRequests glideRequests, @NonNull CharSequence body, @NonNull SlideDeck slideDeck, boolean originalMissing) {
+  private void setQuoteAttachment(@NonNull RequestManager requestManager,
+                                  @NonNull CharSequence body,
+                                  @NonNull Slide slide,
+                                  boolean originalMissing,
+                                  @Nullable String quoteTargetContentType)
+  {
     boolean outgoing = messageType != MessageType.INCOMING && messageType != MessageType.STORY_REPLY_INCOMING;
     boolean preview  = messageType == MessageType.PREVIEW || messageType == MessageType.STORY_REPLY_PREVIEW;
+
+    if (isStoryReply() && originalMissing) {
+      thumbnailView.setVisibility(GONE);
+      attachmentVideoOVerlayStub.setVisibility(GONE);
+      attachmentNameViewStub.setVisibility(GONE);
+      return;
+    }
 
     // TODO [alex] -- do we need this? mainView.setMinimumHeight(isStoryReply() && originalMissing ? 0 : thumbHeight);
     thumbnailView.setPadding(0, 0, 0, 0);
@@ -359,7 +378,7 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
       attachmentVideoOVerlayStub.setVisibility(GONE);
       attachmentNameViewStub.setVisibility(GONE);
       thumbnailView.setVisibility(VISIBLE);
-      glideRequests.load(model)
+      requestManager.load(model)
                    .centerCrop()
                    .override(thumbWidth, thumbHeight)
                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
@@ -377,7 +396,7 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
       attachmentVideoOVerlayStub.setVisibility(GONE);
       attachmentNameViewStub.setVisibility(GONE);
       thumbnailView.setVisibility(VISIBLE);
-      glideRequests.load(R.drawable.ic_gift_thumbnail)
+      requestManager.load(R.drawable.ic_gift_thumbnail)
                    .centerCrop()
                    .override(thumbWidth, thumbHeight)
                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
@@ -385,41 +404,49 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
       return;
     }
 
-    Slide imageVideoSlide = slideDeck.getSlides().stream().filter(s -> s.hasImage() || s.hasVideo() || s.hasSticker()).findFirst().orElse(null);
-    Slide documentSlide   = slideDeck.getSlides().stream().filter(Slide::hasDocument).findFirst().orElse(null);
-    Slide viewOnceSlide   = slideDeck.getSlides().stream().filter(Slide::hasViewOnce).findFirst().orElse(null);
-
-    attachmentVideoOVerlayStub.setVisibility(GONE);
-
-    if (viewOnceSlide != null) {
-      thumbnailView.setVisibility(GONE);
-      attachmentNameViewStub.setVisibility(GONE);
-    } else if (imageVideoSlide != null && imageVideoSlide.getUri() != null) {
-      thumbnailView.setVisibility(VISIBLE);
-      attachmentNameViewStub.setVisibility(GONE);
-
-      if (dismissStub.resolved()) {
-        dismissStub.get().setBackgroundResource(R.drawable.dismiss_background);
-      }
-      if (imageVideoSlide.hasVideo() && !imageVideoSlide.isVideoGif()) {
-        attachmentVideoOVerlayStub.setVisibility(VISIBLE);
-      }
-      glideRequests.load(new DecryptableUri(imageVideoSlide.getUri()))
-                   .centerCrop()
-                   .override(thumbWidth, thumbHeight)
-                   .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                   .into(thumbnailView);
-    } else if (documentSlide != null){
-      thumbnailView.setVisibility(GONE);
-      attachmentNameViewStub.setVisibility(VISIBLE);
-      attachmentNameViewStub.get().setText(documentSlide.getFileName().orElse(""));
-    } else {
+    if (TextUtils.isEmpty(quoteTargetContentType) || slide == null || slide.getUri() == null) {
       thumbnailView.setVisibility(GONE);
       attachmentNameViewStub.setVisibility(GONE);
 
       if (dismissStub.resolved()) {
         dismissStub.get().setBackground(null);
       }
+      return;
+    }
+
+    attachmentVideoOVerlayStub.setVisibility(GONE);
+
+    if (MediaUtil.isViewOnceType(quoteTargetContentType)) {
+      thumbnailView.setVisibility(GONE);
+      attachmentNameViewStub.setVisibility(GONE);
+    } else if (MediaUtil.isImageOrVideoType(quoteTargetContentType)) {
+      thumbnailView.setVisibility(VISIBLE);
+      attachmentNameViewStub.setVisibility(GONE);
+
+      if (dismissStub.resolved()) {
+        dismissStub.get().setBackgroundResource(R.drawable.dismiss_background);
+      }
+
+      if (MediaUtil.isVideoType(quoteTargetContentType) && !slide.isVideoGif()) {
+        attachmentVideoOVerlayStub.setVisibility(VISIBLE);
+      }
+
+      requestManager.load(new DecryptableUri(slide.getUri()))
+                    .centerCrop()
+                    .override(thumbWidth, thumbHeight)
+                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                    .into(thumbnailView);
+    } else if (MediaUtil.isAudioType(quoteTargetContentType)) {
+      thumbnailView.setVisibility(GONE);
+      attachmentNameViewStub.setVisibility(GONE);
+
+      if (dismissStub.resolved()) {
+        dismissStub.get().setBackground(null);
+      }
+    } else {
+      thumbnailView.setVisibility(GONE);
+      attachmentNameViewStub.setVisibility(VISIBLE);
+      attachmentNameViewStub.get().setText(slide.getFileName().orElse(""));
     }
   }
 
@@ -455,8 +482,13 @@ public class QuoteView extends ConstraintLayout implements RecipientForeverObser
     return body;
   }
 
-  public List<Attachment> getAttachments() {
-    return attachments.asAttachments();
+  public @Nullable Attachment getAttachment() {
+    List<Attachment> converted = attachments.asAttachments();
+    if (converted.size() > 0) {
+      return converted.get(0);
+    } else {
+      return null;
+    }
   }
 
   public @NonNull QuoteModel.Type getQuoteType() {

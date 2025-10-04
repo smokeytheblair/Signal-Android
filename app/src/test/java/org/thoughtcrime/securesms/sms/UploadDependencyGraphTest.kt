@@ -1,14 +1,12 @@
 package org.thoughtcrime.securesms.sms
 
 import android.app.Application
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.kotlin.any
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.thoughtcrime.securesms.attachments.Attachment
@@ -21,7 +19,7 @@ import org.thoughtcrime.securesms.jobmanager.JsonJobData
 import org.thoughtcrime.securesms.jobs.AttachmentCompressionJob
 import org.thoughtcrime.securesms.jobs.AttachmentCopyJob
 import org.thoughtcrime.securesms.jobs.AttachmentUploadJob
-import org.thoughtcrime.securesms.jobs.ResumableUploadSpecJob
+import org.thoughtcrime.securesms.jobs.protos.AttachmentUploadJobData
 import org.thoughtcrime.securesms.mms.OutgoingMessage
 import org.thoughtcrime.securesms.mms.SentMediaQuality
 import org.thoughtcrime.securesms.recipients.Recipient
@@ -36,17 +34,14 @@ import java.util.concurrent.atomic.AtomicLong
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class UploadDependencyGraphTest {
-
-  private val jobManager: JobManager = mock()
-
-  private var uniqueLong = AtomicLong(0)
-
-  @Before
-  fun setUp() {
-    whenever(jobManager.startChain(any<Job>())).then {
-      JobManager.Chain(jobManager, listOf(it.getArgument(0)))
+  private val jobManager = mockk<JobManager> {
+    every { startChain(any<Job>()) } answers {
+      val job = args.first() as Job
+      JobManager.Chain(this@mockk, listOf(job))
     }
   }
+
+  private var uniqueLong = AtomicLong(0)
 
   @Test
   fun `Given a list of Uri attachments and a list of Messages, when I get the dependencyMap, then I expect a times m results`() {
@@ -85,7 +80,7 @@ class UploadDependencyGraphTest {
       UriAttachmentBuilder.build(
         id = 10,
         contentType = MediaUtil.IMAGE_JPEG,
-        transformProperties = AttachmentTable.TransformProperties(false, true, increment, increment + 1, SentMediaQuality.STANDARD.code)
+        transformProperties = AttachmentTable.TransformProperties(false, true, increment, increment + 1, SentMediaQuality.STANDARD.code, false)
       )
     }
 
@@ -127,7 +122,7 @@ class UploadDependencyGraphTest {
       UriAttachmentBuilder.build(
         id = 10,
         contentType = MediaUtil.IMAGE_JPEG,
-        transformProperties = if (it != 1) AttachmentTable.TransformProperties(false, true, 1, 2, SentMediaQuality.STANDARD.code) else null
+        transformProperties = if (it != 1) AttachmentTable.TransformProperties(false, true, 1, 2, SentMediaQuality.STANDARD.code, false) else null
       )
     }
 
@@ -206,16 +201,15 @@ class UploadDependencyGraphTest {
 
     assertTrue(steps.all { it.size == 1 })
     assertTrue(steps[0][0] is AttachmentCompressionJob)
-    assertTrue(steps[1][0] is ResumableUploadSpecJob)
-    assertTrue(steps[2][0] is AttachmentUploadJob)
+    assertTrue(steps[1][0] is AttachmentUploadJob)
 
     if (expectedCopyDestinationCount > 0) {
-      assertTrue(steps[3][0] is AttachmentCopyJob)
+      assertTrue(steps[2][0] is AttachmentCopyJob)
 
-      val uploadData = JsonJobData.deserialize(steps[2][0].serialize())
-      val copyData = JsonJobData.deserialize(steps[3][0].serialize())
+      val uploadData = AttachmentUploadJobData.ADAPTER.decode(steps[1][0].serialize()!!)
+      val copyData = JsonJobData.deserialize(steps[2][0].serialize())
 
-      val uploadAttachmentId = AttachmentId(uploadData.getLong("row_id"), uploadData.getLong("unique_id"))
+      val uploadAttachmentId = AttachmentId(uploadData.attachmentId)
       val copySourceAttachmentId = JsonUtils.fromJson(copyData.getString("source_id"), AttachmentId::class.java)
 
       assertEquals(uploadAttachmentId, copySourceAttachmentId)
@@ -223,40 +217,46 @@ class UploadDependencyGraphTest {
       val copyDestinations = copyData.getStringArray("destination_ids")
       assertEquals(expectedCopyDestinationCount, copyDestinations.size)
     } else {
-      assertEquals(3, steps.size)
+      assertEquals(2, steps.size)
     }
   }
 
   private fun getAttachmentForPreUpload(id: Long, attachment: Attachment): DatabaseAttachment {
     return DatabaseAttachment(
-      AttachmentId(id, id),
-      AttachmentTable.PREUPLOAD_MESSAGE_ID,
-      false,
-      false,
-      attachment.contentType,
-      AttachmentTable.TRANSFER_PROGRESS_PENDING,
-      attachment.size,
-      attachment.fileName,
-      attachment.cdnNumber,
-      attachment.location,
-      attachment.key,
-      attachment.relay,
-      attachment.digest,
-      attachment.incrementalDigest,
-      attachment.fastPreflightId,
-      attachment.isVoiceNote,
-      attachment.isBorderless,
-      attachment.isVideoGif,
-      attachment.width,
-      attachment.height,
-      attachment.isQuote,
-      attachment.caption,
-      attachment.sticker,
-      attachment.blurHash,
-      attachment.audioHash,
-      attachment.transformProperties,
-      0,
-      attachment.uploadTimestamp
+      attachmentId = AttachmentId(id),
+      mmsId = AttachmentTable.PREUPLOAD_MESSAGE_ID,
+      hasData = false,
+      hasThumbnail = false,
+      contentType = attachment.contentType,
+      transferProgress = AttachmentTable.TRANSFER_PROGRESS_PENDING,
+      size = attachment.size,
+      fileName = attachment.fileName,
+      cdn = attachment.cdn,
+      location = attachment.remoteLocation,
+      key = attachment.remoteKey,
+      digest = attachment.remoteDigest,
+      incrementalDigest = attachment.incrementalDigest,
+      incrementalMacChunkSize = attachment.incrementalMacChunkSize,
+      fastPreflightId = attachment.fastPreflightId,
+      voiceNote = attachment.voiceNote,
+      borderless = attachment.borderless,
+      videoGif = attachment.videoGif,
+      width = attachment.width,
+      height = attachment.height,
+      quote = attachment.quote,
+      caption = attachment.caption,
+      stickerLocator = attachment.stickerLocator,
+      blurHash = attachment.blurHash,
+      audioHash = attachment.audioHash,
+      transformProperties = attachment.transformProperties,
+      displayOrder = 0,
+      uploadTimestamp = attachment.uploadTimestamp,
+      dataHash = null,
+      archiveCdn = 0,
+      thumbnailRestoreState = AttachmentTable.ThumbnailRestoreState.NONE,
+      archiveTransferState = AttachmentTable.ArchiveTransferState.NONE,
+      uuid = null,
+      quoteTargetContentType = null
     )
   }
 

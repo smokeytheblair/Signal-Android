@@ -2,9 +2,9 @@ package org.thoughtcrime.securesms.database
 
 import android.app.Application
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import junit.framework.TestCase.assertTrue
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import net.zetetic.database.sqlcipher.SQLiteOpenHelper
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,8 +15,9 @@ import org.signal.core.util.getIndexes
 import org.signal.core.util.readToList
 import org.signal.core.util.requireNonNullString
 import org.thoughtcrime.securesms.database.helpers.SignalDatabaseMigrations
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.testing.SignalActivityRule
+import org.thoughtcrime.securesms.database.SQLiteDatabase as SignalSQLiteDatabase
 
 /**
  * A test that guarantees that a freshly-created database looks the same as one that went through the upgrade path.
@@ -30,7 +31,7 @@ class DatabaseConsistencyTest {
   @Test
   fun testUpgradeConsistency() {
     val currentVersionStatements = SignalDatabase.rawDatabase.getAllCreateStatements()
-    val testHelper = InMemoryTestHelper(ApplicationDependencies.getApplication()).also {
+    val testHelper = InMemoryTestHelper(AppDependencies.application).also {
       it.onUpgrade(it.writableDatabase, 181, SignalDatabaseMigrations.DATABASE_VERSION)
     }
 
@@ -112,6 +113,7 @@ class DatabaseConsistencyTest {
       .map { it.trim() }
       .joinToString(separator = " ")
       .replace(Regex.fromLiteral(" ,"), ",")
+      .replace(",([^\\s])".toRegex(), ", $1")
       .replace(Regex("\\s+"), " ")
       .replace(Regex.fromLiteral("( "), "(")
       .replace(Regex.fromLiteral(" )"), ")")
@@ -127,7 +129,7 @@ class DatabaseConsistencyTest {
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-      SignalDatabaseMigrations.migrate(application, db, 181, SignalDatabaseMigrations.DATABASE_VERSION)
+      SignalDatabaseMigrations.migrate(application, SignalSQLiteDatabase(db), 181, SignalDatabaseMigrations.DATABASE_VERSION)
     }
 
     /**

@@ -14,15 +14,16 @@ import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
+import io.reactivex.rxjava3.core.Flowable
+import io.reactivex.rxjava3.kotlin.subscribeBy
 import org.signal.core.util.concurrent.LifecycleDisposable
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.contacts.paged.ContactSearchKey
 import org.thoughtcrime.securesms.conversation.mutiselect.forward.MultiselectForwardFragmentArgs
 import org.thoughtcrime.securesms.databinding.StoriesTextPostCreationFragmentBinding
 import org.thoughtcrime.securesms.linkpreview.LinkPreview
-import org.thoughtcrime.securesms.linkpreview.LinkPreviewRepository
 import org.thoughtcrime.securesms.linkpreview.LinkPreviewState
-import org.thoughtcrime.securesms.linkpreview.LinkPreviewViewModel
+import org.thoughtcrime.securesms.linkpreview.LinkPreviewViewModelV2
 import org.thoughtcrime.securesms.mediasend.CameraDisplay
 import org.thoughtcrime.securesms.mediasend.v2.HudCommand
 import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionViewModel
@@ -31,7 +32,7 @@ import org.thoughtcrime.securesms.mediasend.v2.text.send.TextStoryPostSendReposi
 import org.thoughtcrime.securesms.mediasend.v2.text.send.TextStoryPostSendResult
 import org.thoughtcrime.securesms.safety.SafetyNumberBottomSheet
 import org.thoughtcrime.securesms.stories.Stories
-import org.thoughtcrime.securesms.util.livedata.LiveDataUtil
+import org.thoughtcrime.securesms.util.activitySavedStateViewModel
 import org.thoughtcrime.securesms.util.visible
 import java.util.Optional
 
@@ -55,14 +56,9 @@ class TextStoryPostCreationFragment : Fragment(R.layout.stories_text_post_creati
     }
   )
 
-  private val linkPreviewViewModel: LinkPreviewViewModel by viewModels(
-    ownerProducer = {
-      requireActivity()
-    },
-    factoryProducer = {
-      LinkPreviewViewModel.Factory(LinkPreviewRepository(), true)
-    }
-  )
+  private val linkPreviewViewModel: LinkPreviewViewModelV2 by activitySavedStateViewModel { handle ->
+    LinkPreviewViewModelV2(handle, enablePlaceholder = true)
+  }
 
   private val lifecycleDisposable = LifecycleDisposable()
 
@@ -80,28 +76,28 @@ class TextStoryPostCreationFragment : Fragment(R.layout.stories_text_post_creati
       }
     }
 
-    viewModel.typeface.observe(viewLifecycleOwner) { typeface ->
+    lifecycleDisposable += viewModel.typeface.subscribeBy { typeface ->
       binding.storyTextPost.setTypeface(typeface)
     }
 
-    viewModel.state.observe(viewLifecycleOwner) { state ->
+    lifecycleDisposable += viewModel.state.subscribeBy { state ->
       binding.backgroundSelector.background = state.backgroundColor.chatBubbleMask
       binding.storyTextPost.bindFromCreationState(state)
 
       if (state.linkPreviewUri != null) {
-        linkPreviewViewModel.onTextChanged(requireContext(), state.linkPreviewUri, 0, state.linkPreviewUri.lastIndex)
+        linkPreviewViewModel.onTextChanged(state.linkPreviewUri, 0, state.linkPreviewUri.lastIndex)
       } else {
         linkPreviewViewModel.onSend()
       }
 
-      val canSend = state.body.isNotEmpty() || !state.linkPreviewUri.isNullOrEmpty()
+      val canSend = state.body.isNotBlank() || !state.linkPreviewUri.isNullOrEmpty()
       binding.send.alpha = if (canSend) 1f else 0.5f
       binding.send.isEnabled = canSend
     }
 
-    LiveDataUtil.combineLatest(viewModel.state, linkPreviewViewModel.linkPreviewState) { viewState, linkState ->
+    lifecycleDisposable += Flowable.combineLatest(viewModel.state, linkPreviewViewModel.linkPreviewState) { viewState, linkState ->
       Pair(viewState.body.isBlank(), linkState)
-    }.observe(viewLifecycleOwner) { (useLargeThumb, linkState) ->
+    }.subscribeBy { (useLargeThumb, linkState) ->
       binding.storyTextPost.bindLinkPreviewState(linkState, View.GONE, useLargeThumb)
       binding.storyTextPost.postAdjustLinkPreviewTranslationY()
     }
@@ -122,6 +118,10 @@ class TextStoryPostCreationFragment : Fragment(R.layout.stories_text_post_creati
 
     binding.storyTextPost.setLinkPreviewCloseListener {
       viewModel.setLinkPreview("")
+    }
+
+    binding.storyTextPost.setLinkPreviewClickListener {
+      TextStoryPostLinkEntryFragment(true).show(childFragmentManager, null)
     }
 
     val launcher = registerForActivityResult(StoriesMultiselectForwardActivity.SelectionContract()) {
@@ -145,12 +145,11 @@ class TextStoryPostCreationFragment : Fragment(R.layout.stories_text_post_creati
 
       if (contacts.isEmpty()) {
         val bitmap = binding.storyTextPost.drawToBitmap()
-        viewModel.compressToBlob(bitmap).observeOn(AndroidSchedulers.mainThread()).subscribe { uri ->
+        lifecycleDisposable += viewModel.compressToBlob(bitmap).observeOn(AndroidSchedulers.mainThread()).subscribe { uri ->
           launcher.launch(
             StoriesMultiselectForwardActivity.Args(
               MultiselectForwardFragmentArgs(
                 title = R.string.MediaReviewFragment__send_to,
-                canSendToNonPush = false,
                 storySendRequirements = Stories.MediaTransform.SendRequirements.VALID_DURATION,
                 isSearchEnabled = false
               ),
@@ -162,7 +161,9 @@ class TextStoryPostCreationFragment : Fragment(R.layout.stories_text_post_creati
         MaterialAlertDialogBuilder(requireContext())
           .setMessage(getString(R.string.MediaReviewFragment__add_to_the_group_story, sharedViewModel.state.value!!.recipient!!.getDisplayName(requireContext())))
           .setPositiveButton(R.string.MediaReviewFragment__add_to_story) { _, _ -> performSend(contacts) }
-          .setNegativeButton(android.R.string.cancel) { _, _ -> }
+          .setNegativeButton(android.R.string.cancel) { _, _ ->
+            binding.sendInProgressIndicator.visible = false
+          }
           .show()
       } else {
         performSend(contacts)
@@ -246,12 +247,12 @@ class TextStoryPostCreationFragment : Fragment(R.layout.stories_text_post_creati
   }
 
   private fun getLinkPreview(): LinkPreview? {
-    val linkPreviewState: LinkPreviewState = linkPreviewViewModel.linkPreviewState.value ?: return null
+    val linkPreviewState: LinkPreviewState = linkPreviewViewModel.linkPreviewStateSnapshot
 
     return if (linkPreviewState.linkPreview.isPresent) {
       linkPreviewState.linkPreview.get()
     } else if (!linkPreviewState.activeUrlForError.isNullOrEmpty()) {
-      LinkPreview(linkPreviewState.activeUrlForError!!, linkPreviewState.activeUrlForError!!, "", 0L, Optional.empty())
+      LinkPreview(linkPreviewState.activeUrlForError, linkPreviewState.activeUrlForError, "", 0L, Optional.empty())
     } else {
       null
     }

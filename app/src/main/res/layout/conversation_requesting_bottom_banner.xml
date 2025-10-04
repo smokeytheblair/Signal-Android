@@ -10,7 +10,6 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/signal_background_tertiary"
         android:gravity="center"
         android:paddingStart="16dp"
         android:paddingTop="8dp"
@@ -26,6 +25,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
         android:text="@string/ConversationActivity_cancel_request" />
 
 </LinearLayout>

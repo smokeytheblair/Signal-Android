@@ -1,47 +1,47 @@
 package org.thoughtcrime.securesms.components.settings.app.subscription.donate.gateway
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import io.reactivex.rxjava3.kotlin.subscribeBy
 import org.signal.donations.PaymentSourceType
+import org.thoughtcrime.securesms.components.settings.app.subscription.GooglePayRepository
 import org.thoughtcrime.securesms.components.settings.app.subscription.InAppDonations
-import org.thoughtcrime.securesms.components.settings.app.subscription.StripeRepository
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.components.settings.app.subscription.InAppPaymentsRepository
+import org.thoughtcrime.securesms.database.InAppPaymentTable
+import org.thoughtcrime.securesms.database.model.databaseprotos.InAppPaymentData
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.util.rx.RxStore
 
 class GatewaySelectorViewModel(
   args: GatewaySelectorBottomSheetArgs,
-  repository: StripeRepository,
-  gatewaySelectorRepository: GatewaySelectorRepository
+  repository: GooglePayRepository
 ) : ViewModel() {
 
-  private val store = RxStore(
-    GatewaySelectorState(
-      badge = args.request.badge,
-      isGooglePayAvailable = InAppDonations.isPaymentSourceAvailable(PaymentSourceType.Stripe.GooglePay, args.request.donateToSignalType),
-      isCreditCardAvailable = InAppDonations.isPaymentSourceAvailable(PaymentSourceType.Stripe.CreditCard, args.request.donateToSignalType),
-      isPayPalAvailable = InAppDonations.isPaymentSourceAvailable(PaymentSourceType.PayPal, args.request.donateToSignalType)
-    )
-  )
+  private val store = RxStore<GatewaySelectorState>(GatewaySelectorState.Loading)
   private val disposables = CompositeDisposable()
 
   val state = store.stateFlowable
 
   init {
+    val inAppPayment = InAppPaymentsRepository.requireInAppPayment(args.inAppPaymentId)
     val isGooglePayAvailable = repository.isGooglePayAvailable().toSingleDefault(true).onErrorReturnItem(false)
-    val availabilitySet = gatewaySelectorRepository.getAvailableGateways(currencyCode = args.request.currencyCode)
-    disposables += Single.zip(isGooglePayAvailable, availabilitySet, ::Pair).subscribeBy { (googlePayAvailable, gatewaysAvailable) ->
-      SignalStore.donationsValues().isGooglePayReady = googlePayAvailable
+    val gatewayConfiguration = inAppPayment.flatMap { GatewaySelectorRepository.getAvailableGatewayConfiguration(currencyCode = it.data.amount!!.currencyCode) }
+
+    disposables += Single.zip(inAppPayment, isGooglePayAvailable, gatewayConfiguration, ::Triple).subscribeBy { (inAppPayment, googlePayAvailable, gatewayConfiguration) ->
+      SignalStore.inAppPayments.isGooglePayReady = googlePayAvailable
       store.update {
-        it.copy(
-          loading = false,
-          isCreditCardAvailable = it.isCreditCardAvailable && gatewaysAvailable.contains(GatewayResponse.Gateway.CREDIT_CARD),
-          isGooglePayAvailable = it.isGooglePayAvailable && googlePayAvailable && gatewaysAvailable.contains(GatewayResponse.Gateway.GOOGLE_PAY),
-          isPayPalAvailable = it.isPayPalAvailable && gatewaysAvailable.contains(GatewayResponse.Gateway.PAYPAL)
+        GatewaySelectorState.Ready(
+          gatewayOrderStrategy = GatewayOrderStrategy.getStrategy(),
+          inAppPayment = inAppPayment,
+          isCreditCardAvailable = InAppDonations.isDonationsPaymentSourceAvailable(PaymentSourceType.Stripe.CreditCard, inAppPayment.type) && gatewayConfiguration.availableGateways.contains(InAppPaymentData.PaymentMethodType.CARD),
+          isGooglePayAvailable = InAppDonations.isDonationsPaymentSourceAvailable(PaymentSourceType.Stripe.GooglePay, inAppPayment.type) && googlePayAvailable && gatewayConfiguration.availableGateways.contains(InAppPaymentData.PaymentMethodType.GOOGLE_PAY),
+          isPayPalAvailable = InAppDonations.isDonationsPaymentSourceAvailable(PaymentSourceType.PayPal, inAppPayment.type) && gatewayConfiguration.availableGateways.contains(InAppPaymentData.PaymentMethodType.PAYPAL),
+          isSEPADebitAvailable = InAppDonations.isDonationsPaymentSourceAvailable(PaymentSourceType.Stripe.SEPADebit, inAppPayment.type) && gatewayConfiguration.availableGateways.contains(InAppPaymentData.PaymentMethodType.SEPA_DEBIT),
+          isIDEALAvailable = InAppDonations.isDonationsPaymentSourceAvailable(PaymentSourceType.Stripe.IDEAL, inAppPayment.type) && gatewayConfiguration.availableGateways.contains(InAppPaymentData.PaymentMethodType.IDEAL),
+          sepaEuroMaximum = gatewayConfiguration.sepaEuroMaximum
         )
       }
     }
@@ -52,13 +52,9 @@ class GatewaySelectorViewModel(
     disposables.clear()
   }
 
-  class Factory(
-    private val args: GatewaySelectorBottomSheetArgs,
-    private val repository: StripeRepository,
-    private val gatewaySelectorRepository: GatewaySelectorRepository = GatewaySelectorRepository(ApplicationDependencies.getDonationsService())
-  ) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-      return modelClass.cast(GatewaySelectorViewModel(args, repository, gatewaySelectorRepository)) as T
-    }
+  fun updateInAppPaymentMethod(inAppPaymentMethodType: InAppPaymentData.PaymentMethodType): Single<InAppPaymentTable.InAppPayment> {
+    val state = store.state as GatewaySelectorState.Ready
+
+    return GatewaySelectorRepository.setInAppPaymentMethodType(state.inAppPayment, inAppPaymentMethodType).observeOn(AndroidSchedulers.mainThread())
   }
 }

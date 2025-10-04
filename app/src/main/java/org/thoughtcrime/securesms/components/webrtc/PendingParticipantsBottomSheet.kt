@@ -16,17 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rxjava3.subscribeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,18 +34,20 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.os.bundleOf
 import androidx.fragment.app.setFragmentResult
-import org.signal.core.ui.BottomSheets
-import org.signal.core.ui.Buttons
-import org.signal.core.ui.theme.SignalTheme
+import kotlinx.coroutines.flow.map
+import org.signal.core.ui.compose.BottomSheets
+import org.signal.core.ui.compose.Buttons
+import org.signal.core.ui.compose.NightPreview
+import org.signal.core.ui.compose.Previews
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.AvatarImageView
+import org.thoughtcrime.securesms.components.webrtc.v2.WebRtcCallViewModel
 import org.thoughtcrime.securesms.compose.ComposeBottomSheetDialogFragment
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.service.webrtc.PendingParticipantCollection
 import org.thoughtcrime.securesms.util.activityViewModel
@@ -66,7 +65,7 @@ class PendingParticipantsBottomSheet : ComposeBottomSheetDialogFragment() {
     @JvmStatic
     fun getAction(bundle: Bundle): Action {
       val code = bundle.getInt(ACTION, 0)
-      return Action.values().first { it.code == code }
+      return Action.entries.first { it.code == code }
     }
   }
 
@@ -82,12 +81,13 @@ class PendingParticipantsBottomSheet : ComposeBottomSheetDialogFragment() {
       System.currentTimeMillis().milliseconds
     }
 
-    val participants = viewModel.pendingParticipants
-      .map { it.getAllPendingParticipants(launchTime).toList() }
-      .subscribeAsState(initial = emptyList())
+    val participants by remember {
+      viewModel.getPendingParticipants()
+        .map { it.pendingParticipantCollection.getAllPendingParticipants(launchTime).toList() }
+    }.collectAsState(initial = emptyList())
 
     PendingParticipantsSheet(
-      pendingParticipants = participants.value,
+      pendingParticipants = participants,
       onApproveAll = this::onApproveAll,
       onDenyAll = this::onDenyAll,
       onApprove = this::onApprove,
@@ -96,11 +96,11 @@ class PendingParticipantsBottomSheet : ComposeBottomSheetDialogFragment() {
   }
 
   private fun onApprove(recipient: Recipient) {
-    ApplicationDependencies.getSignalCallManager().setCallLinkJoinRequestAccepted(recipient.id)
+    AppDependencies.signalCallManager.setCallLinkJoinRequestAccepted(recipient.id)
   }
 
   private fun onDeny(recipient: Recipient) {
-    ApplicationDependencies.getSignalCallManager().setCallLinkJoinRequestRejected(recipient.id)
+    AppDependencies.signalCallManager.setCallLinkJoinRequestRejected(recipient.id)
   }
 
   private fun onApproveAll() {
@@ -132,29 +132,27 @@ class PendingParticipantsBottomSheet : ComposeBottomSheetDialogFragment() {
   }
 }
 
-@Preview(showSystemUi = true)
+@NightPreview
 @Composable
 private fun PendingParticipantsSheetPreview() {
-  SignalTheme(isDarkMode = true) {
-    Surface(shape = RoundedCornerShape(18.dp, 18.dp)) {
-      PendingParticipantsSheet(
-        pendingParticipants = listOf(
-          PendingParticipantCollection.State.PENDING,
-          PendingParticipantCollection.State.APPROVED,
-          PendingParticipantCollection.State.DENIED
-        ).map {
-          PendingParticipantCollection.Entry(
-            recipient = Recipient.UNKNOWN,
-            state = it,
-            stateChangeAt = System.currentTimeMillis().milliseconds
-          )
-        },
-        onApproveAll = {},
-        onDenyAll = {},
-        onApprove = {},
-        onDeny = {}
-      )
-    }
+  Previews.BottomSheetPreview {
+    PendingParticipantsSheet(
+      pendingParticipants = listOf(
+        PendingParticipantCollection.State.PENDING,
+        PendingParticipantCollection.State.APPROVED,
+        PendingParticipantCollection.State.DENIED
+      ).map {
+        PendingParticipantCollection.Entry(
+          recipient = Recipient(systemContactName = "Test User"),
+          state = it,
+          stateChangeAt = System.currentTimeMillis().milliseconds
+        )
+      },
+      onApproveAll = {},
+      onDenyAll = {},
+      onApprove = {},
+      onDeny = {}
+    )
   }
 }
 
@@ -223,7 +221,7 @@ private fun PendingParticipantsSheet(
         onClick = onDenyAll
       ) {
         Text(
-          text = "Deny all",
+          text = stringResource(id = R.string.PendingParticipantsBottomSheet__deny_all),
           color = MaterialTheme.colorScheme.onSurface
         )
       }
@@ -232,7 +230,7 @@ private fun PendingParticipantsSheet(
 
       Buttons.LargeTonal(onClick = onApproveAll) {
         Text(
-          text = "Approve all"
+          text = stringResource(id = R.string.PendingParticipantsBottomSheet__approve_all)
         )
       }
     }
@@ -322,7 +320,7 @@ private fun CircularIconButton(
 private fun PendingParticipantAvatar(recipient: Recipient) {
   if (LocalInspectionMode.current) {
     Icon(
-      imageVector = Icons.Default.Person,
+      imageVector = ImageVector.vectorResource(R.drawable.symbol_person_fill_24),
       contentDescription = null,
       modifier = Modifier
         .size(40.dp)

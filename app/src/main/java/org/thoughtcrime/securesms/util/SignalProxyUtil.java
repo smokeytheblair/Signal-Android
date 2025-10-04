@@ -4,10 +4,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
-import org.conscrypt.Conscrypt;
+import org.conscrypt.ConscryptSignal;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.push.AccountManagerFactory;
 import org.whispersystems.signalservice.api.SignalServiceAccountManager;
@@ -37,12 +37,12 @@ public final class SignalProxyUtil {
   private SignalProxyUtil() {}
 
   public static void startListeningToWebsocket() {
-    if (SignalStore.proxy().isProxyEnabled() && ApplicationDependencies.getSignalWebSocket().getWebSocketState().firstOrError().blockingGet().isFailure()) {
+    if (SignalStore.proxy().isProxyEnabled() && AppDependencies.getAuthWebSocket().getState().firstOrError().blockingGet().isFailure()) {
       Log.w(TAG, "Proxy is in a failed state. Restarting.");
-      ApplicationDependencies.closeConnections();
+      AppDependencies.resetNetwork();
     }
 
-    ApplicationDependencies.getIncomingMessageObserver();
+    SignalExecutors.UNBOUNDED.execute(AppDependencies::startNetwork);
   }
 
   /**
@@ -51,8 +51,8 @@ public final class SignalProxyUtil {
    */
   public static void enableProxy(@NonNull SignalProxy proxy) {
     SignalStore.proxy().enableProxy(proxy);
-    Conscrypt.setUseEngineSocketByDefault(true);
-    ApplicationDependencies.resetAllNetworkConnections();
+    ConscryptSignal.setUseEngineSocketByDefault(true);
+    AppDependencies.resetNetwork();
     startListeningToWebsocket();
   }
 
@@ -62,8 +62,8 @@ public final class SignalProxyUtil {
    */
   public static void disableProxy() {
     SignalStore.proxy().disableProxy();
-    Conscrypt.setUseEngineSocketByDefault(false);
-    ApplicationDependencies.resetAllNetworkConnections();
+    ConscryptSignal.setUseEngineSocketByDefault(false);
+    AppDependencies.resetNetwork();
     startListeningToWebsocket();
   }
 
@@ -88,16 +88,16 @@ public final class SignalProxyUtil {
       return testWebsocketConnectionUnregistered(timeout);
     }
 
-    return ApplicationDependencies.getSignalWebSocket()
-                                  .getWebSocketState()
-                                  .subscribeOn(Schedulers.trampoline())
-                                  .observeOn(Schedulers.trampoline())
-                                  .timeout(timeout, TimeUnit.MILLISECONDS)
-                                  .skipWhile(state -> state != WebSocketConnectionState.CONNECTED && !state.isFailure())
-                                  .firstOrError()
-                                  .flatMap(state -> Single.just(state == WebSocketConnectionState.CONNECTED))
-                                  .onErrorReturn(t -> false)
-                                  .blockingGet();
+    return AppDependencies.getAuthWebSocket()
+                          .getState()
+                          .subscribeOn(Schedulers.trampoline())
+                          .observeOn(Schedulers.trampoline())
+                          .timeout(timeout, TimeUnit.MILLISECONDS)
+                          .skipWhile(state -> state != WebSocketConnectionState.CONNECTED && !state.isFailure())
+                          .firstOrError()
+                          .flatMap(state -> Single.just(state == WebSocketConnectionState.CONNECTED))
+                          .onErrorReturn(t -> false)
+                          .blockingGet();
   }
 
   /**
@@ -158,7 +158,7 @@ public final class SignalProxyUtil {
   private static boolean testWebsocketConnectionUnregistered(long timeout) {
     CountDownLatch              latch          = new CountDownLatch(1);
     AtomicBoolean               success        = new AtomicBoolean(false);
-    SignalServiceAccountManager accountManager = AccountManagerFactory.getInstance().createUnauthenticated(ApplicationDependencies.getApplication(), "", SignalServiceAddress.DEFAULT_DEVICE_ID, "");
+    SignalServiceAccountManager accountManager = AccountManagerFactory.getInstance().createUnauthenticated(AppDependencies.getApplication(), "", SignalServiceAddress.DEFAULT_DEVICE_ID, "");
 
     SignalExecutors.UNBOUNDED.execute(() -> {
       try {

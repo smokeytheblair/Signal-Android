@@ -24,16 +24,16 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import org.signal.core.util.DimensionUnit;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.components.ContactFilterView;
 import org.thoughtcrime.securesms.contacts.ContactSelectionDisplayMode;
+import org.thoughtcrime.securesms.contacts.paged.ChatType;
 import org.thoughtcrime.securesms.contacts.sync.ContactDiscovery;
-import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme;
 import org.thoughtcrime.securesms.util.DynamicTheme;
 import org.thoughtcrime.securesms.util.ServiceUtil;
-import org.thoughtcrime.securesms.util.Util;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
@@ -70,8 +70,7 @@ public abstract class ContactSelectionActivity extends PassphraseRequiredActivit
   @Override
   protected void onCreate(Bundle icicle, boolean ready) {
     if (!getIntent().hasExtra(ContactSelectionListFragment.DISPLAY_MODE)) {
-      boolean includeSms  = Util.isDefaultSmsProvider(this) && SignalStore.misc().getSmsExportPhase().allowSmsFeatures();
-      int     displayMode = includeSms ? ContactSelectionDisplayMode.FLAG_ALL : ContactSelectionDisplayMode.FLAG_PUSH | ContactSelectionDisplayMode.FLAG_ACTIVE_GROUPS | ContactSelectionDisplayMode.FLAG_INACTIVE_GROUPS | ContactSelectionDisplayMode.FLAG_SELF;
+      int displayMode = ContactSelectionDisplayMode.FLAG_PUSH | ContactSelectionDisplayMode.FLAG_ACTIVE_GROUPS | ContactSelectionDisplayMode.FLAG_INACTIVE_GROUPS | ContactSelectionDisplayMode.FLAG_SELF;
       getIntent().putExtra(ContactSelectionListFragment.DISPLAY_MODE, displayMode);
     }
 
@@ -99,6 +98,10 @@ public abstract class ContactSelectionActivity extends PassphraseRequiredActivit
 
   private void initializeContactFilterView() {
     this.contactFilterView = findViewById(R.id.contact_filter_edit_text);
+
+    if (getResources().getDisplayMetrics().heightPixels >= DimensionUnit.DP.toPixels(600)) {
+      this.contactFilterView.focusAndShowKeyboard();
+    }
   }
 
   private void initializeToolbar() {
@@ -125,12 +128,12 @@ public abstract class ContactSelectionActivity extends PassphraseRequiredActivit
   }
 
   @Override
-  public void onBeforeContactSelected(boolean isFromUnknownSearchKey, @NonNull Optional<RecipientId> recipientId, String number, @NonNull Consumer<Boolean> callback) {
+  public void onBeforeContactSelected(boolean isFromUnknownSearchKey, @NonNull Optional<RecipientId> recipientId, String number, @NonNull Optional<ChatType> chatType, @NonNull Consumer<Boolean> callback) {
     callback.accept(true);
   }
 
   @Override
-  public void onContactDeselected(@NonNull Optional<RecipientId> recipientId, String number) {}
+  public void onContactDeselected(@NonNull Optional<RecipientId> recipientId, String number, @NonNull Optional<ChatType> chatType) {}
 
   @Override
   public void onBeginScroll() {
@@ -167,8 +170,7 @@ public abstract class ContactSelectionActivity extends PassphraseRequiredActivit
       ContactSelectionActivity activity = this.activity.get();
 
       if (activity != null && !activity.isFinishing()) {
-        activity.contactFilterView.clear();
-        activity.contactsFragment.resetQueryFilter();
+        activity.contactsFragment.onDataRefreshed();
       }
     }
   }

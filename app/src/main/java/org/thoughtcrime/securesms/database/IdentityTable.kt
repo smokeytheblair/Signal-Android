@@ -19,6 +19,7 @@ package org.thoughtcrime.securesms.database
 import android.content.Context
 import androidx.core.content.contentValuesOf
 import org.greenrobot.eventbus.EventBus
+import org.signal.core.util.Base64
 import org.signal.core.util.delete
 import org.signal.core.util.exists
 import org.signal.core.util.firstOrNull
@@ -34,11 +35,10 @@ import org.signal.libsignal.protocol.IdentityKey
 import org.thoughtcrime.securesms.database.SignalDatabase.Companion.recipients
 import org.thoughtcrime.securesms.database.model.IdentityRecord
 import org.thoughtcrime.securesms.database.model.IdentityStoreRecord
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.storage.StorageSyncHelper
-import org.thoughtcrime.securesms.util.Base64
 import org.thoughtcrime.securesms.util.IdentityUtil
 import org.whispersystems.signalservice.api.push.ServiceId
 import org.whispersystems.signalservice.api.util.UuidUtil
@@ -98,7 +98,7 @@ class IdentityTable internal constructor(context: Context?, databaseHelper: Sign
           val byServiceId = recipients.getByServiceId(ServiceId.parseOrThrow(addressName))
           if (byServiceId.isPresent) {
             val recipient = Recipient.resolved(byServiceId.get())
-            if (recipient.hasE164() && !UuidUtil.isUuid(recipient.requireE164())) {
+            if (recipient.hasE164 && !UuidUtil.isUuid(recipient.requireE164())) {
               Log.i(TAG, "Could not find identity for UUID. Attempting E164.")
               return getIdentityStoreRecord(recipient.requireE164())
             } else {
@@ -146,7 +146,7 @@ class IdentityTable internal constructor(context: Context?, databaseHelper: Sign
     val updated = writableDatabase
       .update(TABLE_NAME)
       .values(VERIFIED to verifiedStatus.toInt())
-      .where("$ADDRESS = ? AND $IDENTITY_KEY = ?", addressName, Base64.encodeBytes(identityKey.serialize()))
+      .where("$ADDRESS = ? AND $IDENTITY_KEY = ?", addressName, Base64.encodeWithPadding(identityKey.serialize()))
       .run()
 
     if (updated > 0) {
@@ -173,7 +173,7 @@ class IdentityTable internal constructor(context: Context?, databaseHelper: Sign
         EventBus.getDefault().post(record.get())
       }
 
-      ApplicationDependencies.getProtocolStore().aci().identities().invalidate(addressName)
+      AppDependencies.protocolStore.aci().identities().invalidate(addressName)
     }
 
     if (hadEntry && !keyMatches) {
@@ -211,14 +211,14 @@ class IdentityTable internal constructor(context: Context?, databaseHelper: Sign
   private fun hasMatchingKey(addressName: String, identityKey: IdentityKey): Boolean {
     return readableDatabase
       .exists(TABLE_NAME)
-      .where("$ADDRESS = ? AND $IDENTITY_KEY = ?", addressName, Base64.encodeBytes(identityKey.serialize()))
+      .where("$ADDRESS = ? AND $IDENTITY_KEY = ?", addressName, Base64.encodeWithPadding(identityKey.serialize()))
       .run()
   }
 
   private fun hasMatchingStatus(addressName: String, identityKey: IdentityKey, verifiedStatus: VerifiedStatus): Boolean {
     return readableDatabase
       .exists(TABLE_NAME)
-      .where("$ADDRESS = ? AND $IDENTITY_KEY = ? AND $VERIFIED = ?", addressName, Base64.encodeBytes(identityKey.serialize()), verifiedStatus.toInt())
+      .where("$ADDRESS = ? AND $IDENTITY_KEY = ? AND $VERIFIED = ?", addressName, Base64.encodeWithPadding(identityKey.serialize()), verifiedStatus.toInt())
       .run()
   }
 
@@ -233,7 +233,7 @@ class IdentityTable internal constructor(context: Context?, databaseHelper: Sign
   ) {
     val contentValues = contentValuesOf(
       ADDRESS to addressName,
-      IDENTITY_KEY to Base64.encodeBytes(identityKey.serialize()),
+      IDENTITY_KEY to Base64.encodeWithPadding(identityKey.serialize()),
       TIMESTAMP to timestamp,
       VERIFIED to verifiedStatus.toInt(),
       NONBLOCKING_APPROVAL to if (nonBlockingApproval) 1 else 0,
@@ -244,7 +244,9 @@ class IdentityTable internal constructor(context: Context?, databaseHelper: Sign
   }
 
   enum class VerifiedStatus {
-    DEFAULT, VERIFIED, UNVERIFIED;
+    DEFAULT,
+    VERIFIED,
+    UNVERIFIED;
 
     fun toInt(): Int {
       return when (this) {

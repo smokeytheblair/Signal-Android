@@ -2,7 +2,6 @@ package org.thoughtcrime.securesms.lock.v2;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -23,10 +22,11 @@ import androidx.appcompat.widget.Toolbar;
 import com.google.android.material.button.MaterialButton;
 
 import org.thoughtcrime.securesms.LoggingFragment;
+import org.thoughtcrime.securesms.PassphraseRequiredActivity;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.pin.PinOptOutDialog;
-import org.thoughtcrime.securesms.registration.RegistrationUtil;
+import org.thoughtcrime.securesms.registration.util.RegistrationUtil;
 import org.thoughtcrime.securesms.util.CommunicationActions;
 import org.thoughtcrime.securesms.util.text.AfterTextChanged;
 import org.thoughtcrime.securesms.util.views.CircularProgressMaterialButton;
@@ -69,9 +69,8 @@ public abstract class BaseSvrPinFragment<ViewModel extends BaseSvrPinViewModel> 
     });
 
     viewModel.getKeyboard().observe(getViewLifecycleOwner(), keyboardType -> {
-      updateKeyboard(keyboardType);
+      keyboardType.applyTo(input, keyboardToggle);
       keyboardToggle.setText(resolveKeyboardToggleText(keyboardType));
-      keyboardToggle.setIconResource(keyboardType.getOther().getIconResource());
     });
 
     description.setOnLinkClickListener(v -> {
@@ -151,8 +150,11 @@ public abstract class BaseSvrPinFragment<ViewModel extends BaseSvrPinViewModel> 
 
   protected void closeNavGraphBranch() {
     Intent activityIntent = requireActivity().getIntent();
-    if (activityIntent != null && activityIntent.hasExtra("next_intent")) {
-      startActivity(activityIntent.getParcelableExtra("next_intent"));
+    if (activityIntent != null && activityIntent.hasExtra(PassphraseRequiredActivity.NEXT_INTENT_EXTRA)) {
+      final Intent nextIntent = activityIntent.getParcelableExtra(PassphraseRequiredActivity.NEXT_INTENT_EXTRA);
+      if (nextIntent != null) {
+        startActivity(nextIntent);
+      }
     }
 
     requireActivity().finish();
@@ -185,15 +187,8 @@ public abstract class BaseSvrPinFragment<ViewModel extends BaseSvrPinViewModel> 
     return true;
   }
 
-  private void updateKeyboard(@NonNull PinKeyboardType keyboard) {
-    boolean isAlphaNumeric = keyboard == PinKeyboardType.ALPHA_NUMERIC;
-
-    input.setInputType(isAlphaNumeric ? InputType.TYPE_CLASS_TEXT   | InputType.TYPE_TEXT_VARIATION_PASSWORD
-                                      : InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-  }
-
-  private @StringRes int resolveKeyboardToggleText(@NonNull PinKeyboardType keyboard) {
-    if (keyboard == PinKeyboardType.ALPHA_NUMERIC) {
+  private @StringRes int resolveKeyboardToggleText(@NonNull PinKeyboardType keyboardType) {
+    if (keyboardType == PinKeyboardType.ALPHA_NUMERIC) {
       return R.string.BaseKbsPinFragment__create_numeric_pin;
     } else {
       return R.string.BaseKbsPinFragment__create_alphanumeric_pin;

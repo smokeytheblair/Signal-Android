@@ -25,7 +25,7 @@ import org.thoughtcrime.securesms.database.documents.NetworkFailure;
 import org.thoughtcrime.securesms.database.model.GroupRecord;
 import org.thoughtcrime.securesms.database.model.MessageId;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.JobLogger;
@@ -37,12 +37,15 @@ import org.thoughtcrime.securesms.messages.StorySendUtil;
 import org.thoughtcrime.securesms.mms.MessageGroupContext;
 import org.thoughtcrime.securesms.mms.MmsException;
 import org.thoughtcrime.securesms.mms.OutgoingMessage;
+import org.thoughtcrime.securesms.polls.Poll;
+import org.thoughtcrime.securesms.ratelimit.ProofRequiredExceptionHandler;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.RecipientUtil;
 import org.thoughtcrime.securesms.transport.RetryLaterException;
 import org.thoughtcrime.securesms.transport.UndeliverableMessageException;
 import org.thoughtcrime.securesms.util.GroupUtil;
+import org.thoughtcrime.securesms.util.MessageUtil;
 import org.thoughtcrime.securesms.util.RecipientAccessList;
 import org.thoughtcrime.securesms.util.SignalLocalMetrics;
 import org.thoughtcrime.securesms.util.Util;
@@ -72,6 +75,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import okio.ByteString;
+import okio.Utf8;
 
 public final class PushGroupSendJob extends PushSendJob {
 
@@ -117,6 +121,10 @@ public final class PushGroupSendJob extends PushSendJob {
         throw new AssertionError("Not a group!");
       }
 
+      if (group.isPushV1Group()) {
+        throw new MmsException("Cannot send to GV1 groups");
+      }
+
       MessageTable    database = SignalDatabase.messages();
       OutgoingMessage message  = database.getOutgoingMessage(messageId);
 
@@ -124,7 +132,7 @@ public final class PushGroupSendJob extends PushSendJob {
         if (!filterAddresses.isEmpty()) {
           throw new MmsException("Cannot schedule a group message with filter addresses!");
         }
-        ApplicationDependencies.getScheduledMessageManager().scheduleIfNecessary();
+        AppDependencies.getScheduledMessageManager().scheduleIfNecessary();
         return;
       }
 
@@ -186,7 +194,9 @@ public final class PushGroupSendJob extends PushSendJob {
     Set<NetworkFailure>      existingNetworkFailures    = new HashSet<>(message.getNetworkFailures());
     Set<IdentityKeyMismatch> existingIdentityMismatches = new HashSet<>(message.getIdentityKeyMismatches());
 
-    ApplicationDependencies.getJobManager().cancelAllInQueue(TypingSendJob.getQueue(threadId));
+    SignalLocalMetrics.GroupMessageSend.setSentTimestamp(messageId, message.getSentTimeMillis());
+
+    AppDependencies.getJobManager().cancelAllInQueue(TypingSendJob.getQueue(threadId));
 
     if (database.isSent(messageId)) {
       log(TAG, String.valueOf(message.getSentTimeMillis()), "Message " + messageId + " was already sent. Ignoring.");
@@ -221,9 +231,9 @@ public final class PushGroupSendJob extends PushSendJob {
       if (Util.hasItems(filterRecipients)) {
         target = new ArrayList<>(filterRecipients.size() + existingNetworkFailures.size());
         target.addAll(Stream.of(filterRecipients).map(Recipient::resolved).toList());
-        target.addAll(Stream.of(existingNetworkFailures).map(nf -> nf.getRecipientId(context)).distinct().map(Recipient::resolved).toList());
+        target.addAll(Stream.of(existingNetworkFailures).map(NetworkFailure::getRecipientId).distinct().map(Recipient::resolved).toList());
       } else if (!existingNetworkFailures.isEmpty()) {
-        target = Stream.of(existingNetworkFailures).map(nf -> nf.getRecipientId(context)).distinct().map(Recipient::resolved).toList();
+        target = Stream.of(existingNetworkFailures).map(NetworkFailure::getRecipientId).distinct().map(Recipient::resolved).toList();
       } else {
         GroupRecipientResult result = getGroupMessageRecipients(groupRecipient.requireGroupId(), messageId);
 
@@ -259,18 +269,24 @@ public final class PushGroupSendJob extends PushSendJob {
   private List<SendMessageResult> deliver(OutgoingMessage message, @Nullable MessageRecord originalEditedMessage, @NonNull Recipient groupRecipient, @NonNull List<Recipient> destinations)
       throws IOException, UntrustedIdentityException, UndeliverableMessageException
   {
+    if (Utf8.size(message.getBody()) > MessageUtil.MAX_INLINE_BODY_SIZE_BYTES) {
+      throw new UndeliverableMessageException("The total body size was greater than our limit of " + MessageUtil.MAX_INLINE_BODY_SIZE_BYTES + " bytes.");
+    }
+
     try {
       rotateSenderCertificateIfNecessary();
 
-      GroupId.Push                               groupId            = groupRecipient.requireGroupId().requirePush();
-      Optional<byte[]>                           profileKey         = getProfileKey(groupRecipient);
-      Optional<SignalServiceDataMessage.Sticker> sticker            = getStickerFor(message);
-      List<SharedContact>                        sharedContacts     = getSharedContactsFor(message);
-      List<SignalServicePreview>                 previews           = getPreviewsFor(message);
-      List<SignalServiceDataMessage.Mention>     mentions           = getMentionsFor(message.getMentions());
-      List<BodyRange>                            bodyRanges         = getBodyRanges(message);
-      List<Attachment>                           attachments        = Stream.of(message.getAttachments()).filterNot(Attachment::isSticker).toList();
-      List<SignalServiceAttachment>              attachmentPointers = getAttachmentPointersFor(attachments);
+      GroupId.Push                                     groupId            = groupRecipient.requireGroupId().requirePush();
+      Optional<byte[]>                                 profileKey         = getProfileKey(groupRecipient);
+      Optional<SignalServiceDataMessage.Sticker>       sticker            = getStickerFor(message);
+      List<SharedContact>                              sharedContacts     = getSharedContactsFor(message);
+      List<SignalServicePreview>                       previews           = getPreviewsFor(message);
+      List<SignalServiceDataMessage.Mention>           mentions           = getMentionsFor(message.getMentions());
+      List<BodyRange>                                  bodyRanges         = getBodyRanges(message);
+      Optional<SignalServiceDataMessage.PollCreate>    pollCreate         = getPollCreate(message);
+      Optional<SignalServiceDataMessage.PollTerminate> pollTerminate      = getPollTerminate(message);
+      List<Attachment>                                 attachments        = Stream.of(message.getAttachments()).filterNot(Attachment::isSticker).toList();
+      List<SignalServiceAttachment>                    attachmentPointers = getAttachmentPointersFor(attachments);
       boolean isRecipientUpdate = Stream.of(SignalDatabase.groupReceipts().getGroupReceiptInfo(messageId))
                                         .anyMatch(info -> info.getStatus() > GroupReceiptTable.STATUS_UNDELIVERED);
 
@@ -349,7 +365,9 @@ public final class PushGroupSendJob extends PushSendJob {
                                                                       .withSharedContacts(sharedContacts)
                                                                       .withPreviews(previews)
                                                                       .withMentions(mentions)
-                                                                      .withBodyRanges(bodyRanges);
+                                                                      .withBodyRanges(bodyRanges)
+                                                                      .withPollCreate(pollCreate.orElse(null))
+                                                                      .withPollTerminate(pollTerminate.orElse(null));
 
         if (message.getParentStoryId() != null) {
           try {
@@ -394,6 +412,23 @@ public final class PushGroupSendJob extends PushSendJob {
     }
   }
 
+  private Optional<SignalServiceDataMessage.PollCreate> getPollCreate(OutgoingMessage message) {
+    Poll poll = message.getPoll();
+    if (poll == null) {
+      return Optional.empty();
+    }
+
+    return Optional.of(new SignalServiceDataMessage.PollCreate(poll.getQuestion(), poll.getAllowMultipleVotes(), poll.getPollOptions()));
+  }
+
+  private Optional<SignalServiceDataMessage.PollTerminate> getPollTerminate(OutgoingMessage message) {
+    if (message.getMessageExtras() == null || message.getMessageExtras().pollTerminate == null) {
+      return Optional.empty();
+    }
+
+    return Optional.of(new SignalServiceDataMessage.PollTerminate(message.getMessageExtras().pollTerminate.targetTimestamp));
+  }
+
   public static long getMessageId(@Nullable byte[] serializedData) {
     JsonJobData data = JsonJobData.deserialize(serializedData);
     return data.getLong(KEY_MESSAGE_ID);
@@ -421,8 +456,8 @@ public final class PushGroupSendJob extends PushSendJob {
     List<SendMessageResult>          successes                 = Stream.of(results).filter(result -> result.getSuccess() != null).toList();
     List<Pair<RecipientId, Boolean>> successUnidentifiedStatus = Stream.of(successes).map(result -> new Pair<>(accessList.requireIdByAddress(result.getAddress()), result.getSuccess().isUnidentified())).toList();
     Set<RecipientId>                 successIds                = Stream.of(successUnidentifiedStatus).map(Pair::first).collect(Collectors.toSet());
-    Set<NetworkFailure>              resolvedNetworkFailures   = Stream.of(existingNetworkFailures).filter(failure -> successIds.contains(failure.getRecipientId(context))).collect(Collectors.toSet());
-    Set<IdentityKeyMismatch>         resolvedIdentityFailures  = Stream.of(existingIdentityMismatches).filter(failure -> successIds.contains(failure.getRecipientId(context))).collect(Collectors.toSet());
+    Set<NetworkFailure>              resolvedNetworkFailures   = Stream.of(existingNetworkFailures).filter(failure -> successIds.contains(failure.getRecipientId())).collect(Collectors.toSet());
+    Set<IdentityKeyMismatch>         resolvedIdentityFailures  = Stream.of(existingIdentityMismatches).filter(failure -> successIds.contains(failure.getRecipientId())).collect(Collectors.toSet());
     List<RecipientId>                unregisteredRecipients    = Stream.of(results).filter(SendMessageResult::isUnregisteredFailure).map(result -> RecipientId.from(result.getAddress())).toList();
     List<RecipientId>                invalidPreKeyRecipients   = Stream.of(results).filter(SendMessageResult::isInvalidPreKeyFailure).map(result -> RecipientId.from(result.getAddress())).toList();
     Set<RecipientId>                 skippedRecipients         = new HashSet<>();
@@ -442,19 +477,24 @@ public final class PushGroupSendJob extends PushSendJob {
     }
 
     existingNetworkFailures.removeAll(resolvedNetworkFailures);
-    existingNetworkFailures.removeIf(it -> skippedRecipients.contains(it.getRecipientId(context)));
+    existingNetworkFailures.removeIf(it -> skippedRecipients.contains(it.getRecipientId()));
     existingNetworkFailures.addAll(networkFailures);
     database.setNetworkFailures(messageId, existingNetworkFailures);
 
     existingIdentityMismatches.removeAll(resolvedIdentityFailures);
-    existingIdentityMismatches.removeIf(it -> skippedRecipients.contains(it.getRecipientId(context)));
+    existingIdentityMismatches.removeIf(it -> skippedRecipients.contains(it.getRecipientId()));
     existingIdentityMismatches.addAll(identityMismatches);
     database.setMismatchedIdentities(messageId, existingIdentityMismatches);
 
     SignalDatabase.groupReceipts().setUnidentified(successUnidentifiedStatus, messageId);
 
     if (proofRequired != null) {
-      handleProofRequiredException(context, proofRequired, groupRecipient, threadId, messageId, true);
+      ProofRequiredExceptionHandler.Result result = ProofRequiredExceptionHandler.handle(context, proofRequired, groupRecipient, threadId, messageId);
+      if (result.isRetry()) {
+        throw new RetryLaterException();
+      } else {
+        throw proofRequired;
+      }
     }
 
     if (existingNetworkFailures.isEmpty() && existingIdentityMismatches.isEmpty()) {
@@ -462,14 +502,17 @@ public final class PushGroupSendJob extends PushSendJob {
 
       markAttachmentsUploaded(messageId, message);
 
+      // For scheduled messages, which may not have updated the thread with it's snippet yet
+      SignalDatabase.threads().updateSilently(threadId, false);
+
       if (skippedRecipients.size() > 0) {
         SignalDatabase.groupReceipts().setSkipped(skippedRecipients, messageId);
       }
 
       if (message.getExpiresIn() > 0 && !message.isExpirationUpdate()) {
         database.markExpireStarted(messageId);
-        ApplicationDependencies.getExpiringMessageManager()
-                               .scheduleDeletion(messageId, true, message.getExpiresIn());
+        AppDependencies.getExpiringMessageManager()
+                       .scheduleDeletion(messageId, true, message.getExpiresIn());
       }
 
       if (message.isViewOnce()) {
@@ -477,7 +520,7 @@ public final class PushGroupSendJob extends PushSendJob {
       }
 
       if (message.getStoryType().isStory()) {
-        ApplicationDependencies.getExpireStoriesManager().scheduleIfNecessary();
+        AppDependencies.getExpireStoriesManager().scheduleIfNecessary();
       }
     } else if (!existingIdentityMismatches.isEmpty()) {
       Log.w(TAG, "Failing because there were " + existingIdentityMismatches.size() + " identity mismatches.");
@@ -485,14 +528,18 @@ public final class PushGroupSendJob extends PushSendJob {
       notifyMediaMessageDeliveryFailed(context, messageId);
 
       Set<RecipientId> mismatchRecipientIds = Stream.of(existingIdentityMismatches)
-                                                    .map(mismatch -> mismatch.getRecipientId(context))
+                                                    .map(mismatch -> mismatch.getRecipientId())
                                                     .collect(Collectors.toSet());
 
-      RetrieveProfileJob.enqueue(mismatchRecipientIds);
+      RetrieveProfileJob.enqueue(mismatchRecipientIds, true);
     } else if (!networkFailures.isEmpty()) {
       long retryAfter = results.stream()
                                .filter(r -> r.getRateLimitFailure() != null)
-                               .map(r -> r.getRateLimitFailure().getRetryAfterMilliseconds().orElse(-1L))
+                               .map(r -> {
+                                      long milliseconds = r.getRateLimitFailure().getRetryAfterMilliseconds().orElse(-1L);
+                                      return (milliseconds > 0) ? milliseconds : -1L;
+                                    }
+                               )
                                .max(Long::compare)
                                .orElse(-1L);
       Log.w(TAG, "Retrying because there were " + networkFailures.size() + " network failures. retryAfter: " + retryAfter);

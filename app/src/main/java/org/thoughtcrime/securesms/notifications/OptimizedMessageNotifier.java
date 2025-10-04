@@ -30,7 +30,6 @@ public class OptimizedMessageNotifier implements MessageNotifier {
 
   private static final String DEDUPE_KEY_GENERAL        = "MESSAGE_NOTIFIER_DEFAULT";
   private static final String DEDUPE_KEY_CHAT           = "MESSAGE_NOTIFIER_CHAT_";
-  private static final String DEDUPE_KEY_CANCEL_DELAYED = "MESSAGE_NOTIFIER_CANCEL_DELAYED";
 
   @MainThread
   public OptimizedMessageNotifier(@NonNull Application context) {
@@ -51,6 +50,16 @@ public class OptimizedMessageNotifier implements MessageNotifier {
   @Override
   public void clearVisibleThread() {
     getNotifier().clearVisibleThread();
+  }
+
+  @Override
+  public void setVisibleBubbleThread(@Nullable ConversationId conversationId) {
+    getNotifier().setVisibleBubbleThread(conversationId);
+  }
+
+  @Override
+  public void clearVisibleBubbleThread() {
+    getNotifier().clearVisibleBubbleThread();
   }
 
   @Override
@@ -81,9 +90,7 @@ public class OptimizedMessageNotifier implements MessageNotifier {
 
   @Override
   public void cancelDelayedNotifications() {
-    SignalDatabase.runPostSuccessfulTransaction(DEDUPE_KEY_CANCEL_DELAYED, () -> {
-      getNotifier().cancelDelayedNotifications();
-    });
+    getNotifier().cancelDelayedNotifications();
   }
 
   @Override
@@ -101,30 +108,9 @@ public class OptimizedMessageNotifier implements MessageNotifier {
   }
 
   @Override
-  public void updateNotification(@NonNull Context context, @NonNull ConversationId conversationId, @NonNull BubbleUtil.BubbleState defaultBubbleState) {
+  public void forceBubbleNotification(@NonNull Context context, @NonNull ConversationId conversationId) {
     SignalDatabase.runPostSuccessfulTransaction(() -> {
-      runOnLimiter(() -> getNotifier().updateNotification(context, conversationId, defaultBubbleState));
-    });
-  }
-
-  @Override
-  public void updateNotification(@NonNull Context context, @NonNull ConversationId conversationId, boolean signal) {
-    SignalDatabase.runPostSuccessfulTransaction(() -> {
-      runOnLimiter(() -> getNotifier().updateNotification(context, conversationId, signal));
-    });
-  }
-
-  @Override
-  public void updateNotification(@NonNull Context context, @Nullable ConversationId conversationId, boolean signal, int reminderCount, @NonNull BubbleUtil.BubbleState defaultBubbleState) {
-    SignalDatabase.runPostSuccessfulTransaction(() -> {
-      runOnLimiter(() -> getNotifier().updateNotification(context, conversationId, signal, reminderCount, defaultBubbleState));
-    });
-  }
-
-  @Override
-  public void clearReminder(@NonNull Context context) {
-    SignalDatabase.runPostSuccessfulTransaction(() -> {
-      getNotifier().clearReminder(context);
+      runOnLimiter(() -> getNotifier().forceBubbleNotification(context, conversationId));
     });
   }
 

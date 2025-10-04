@@ -1,7 +1,7 @@
 package org.thoughtcrime.securesms.components.settings.app.account.export
 
+import android.annotation.SuppressLint
 import android.app.Application
-import androidx.test.core.app.ApplicationProvider
 import com.fasterxml.jackson.core.JsonParseException
 import io.mockk.every
 import io.mockk.mockk
@@ -12,21 +12,24 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
-import org.thoughtcrime.securesms.dependencies.MockApplicationDependencyProvider
+import org.thoughtcrime.securesms.net.SignalNetwork
 import org.thoughtcrime.securesms.providers.BlobProvider
+import org.thoughtcrime.securesms.testutil.MockAppDependenciesRule
 import org.thoughtcrime.securesms.util.JsonUtils
-import org.whispersystems.signalservice.api.SignalServiceAccountManager
+import org.whispersystems.signalservice.api.NetworkResult
 import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, application = Application::class)
 class ExportAccountDataTest {
+
+  @get:Rule
+  val appDependencies = MockAppDependenciesRule()
 
   private val mockJson: String = """
 {
@@ -64,21 +67,14 @@ class ExportAccountDataTest {
 }
   """
 
-  @Before
-  fun setup() {
-    if (!ApplicationDependencies.isInitialized()) {
-      ApplicationDependencies.init(ApplicationProvider.getApplicationContext(), MockApplicationDependencyProvider())
-    }
-  }
-
+  @SuppressLint("CheckResult")
   @Test
   fun `Export json without text field`() {
     val scheduler = TestScheduler()
-    val accountManager: SignalServiceAccountManager = mockk {
-      every { accountDataReport } returns mockJson
-    }
-    val mockRepository = ExportAccountDataRepository(accountManager)
-    val viewModel = ExportAccountDataViewModel(mockRepository)
+
+    every { SignalNetwork.account.accountDataReport() } returns NetworkResult.Success(mockJson)
+
+    val viewModel = ExportAccountDataViewModel(ExportAccountDataRepository())
 
     viewModel.setExportAsTxt()
     viewModel.onGenerateReport()

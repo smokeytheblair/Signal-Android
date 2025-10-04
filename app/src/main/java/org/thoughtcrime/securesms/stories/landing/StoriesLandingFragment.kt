@@ -1,37 +1,25 @@
 package org.thoughtcrime.securesms.stories.landing
 
-import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
-import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.annotation.IdRes
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.ActivityOptionsCompat
-import androidx.core.app.SharedElementCallback
 import androidx.core.view.ViewCompat
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.transition.TransitionInflater
-import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.android.material.snackbar.Snackbar
-import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
-import io.reactivex.rxjava3.core.Single
+import androidx.recyclerview.widget.RecyclerView.AdapterDataObserver
 import io.reactivex.rxjava3.kotlin.subscribeBy
-import org.greenrobot.eventbus.EventBus
-import org.greenrobot.eventbus.Subscribe
-import org.greenrobot.eventbus.ThreadMode
+import kotlinx.coroutines.launch
 import org.signal.core.util.concurrent.LifecycleDisposable
+import org.thoughtcrime.securesms.MainActivity
 import org.thoughtcrime.securesms.R
-import org.thoughtcrime.securesms.components.Material3SearchToolbar
-import org.thoughtcrime.securesms.components.reminder.ExpiredBuildReminder
-import org.thoughtcrime.securesms.components.reminder.Reminder
-import org.thoughtcrime.securesms.components.reminder.ReminderView
-import org.thoughtcrime.securesms.components.reminder.UnauthorizedReminder
+import org.thoughtcrime.securesms.banner.BannerManager
+import org.thoughtcrime.securesms.banner.banners.DeprecatedBuildBanner
+import org.thoughtcrime.securesms.banner.banners.UnauthorizedBanner
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
 import org.thoughtcrime.securesms.components.settings.DSLSettingsFragment
 import org.thoughtcrime.securesms.components.settings.DSLSettingsText
@@ -39,33 +27,28 @@ import org.thoughtcrime.securesms.components.settings.configure
 import org.thoughtcrime.securesms.conversation.ConversationIntents
 import org.thoughtcrime.securesms.conversation.mutiselect.forward.MultiselectForwardFragment
 import org.thoughtcrime.securesms.conversation.mutiselect.forward.MultiselectForwardFragmentArgs
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.StoryViewState
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
-import org.thoughtcrime.securesms.events.ReminderUpdateEvent
+import org.thoughtcrime.securesms.dependencies.AppDependencies
+import org.thoughtcrime.securesms.main.MainNavigationListLocation
+import org.thoughtcrime.securesms.main.MainNavigationViewModel
+import org.thoughtcrime.securesms.main.MainToolbarMode
+import org.thoughtcrime.securesms.main.MainToolbarViewModel
 import org.thoughtcrime.securesms.main.Material3OnScrollHelperBinder
-import org.thoughtcrime.securesms.main.SearchBinder
-import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionActivity
+import org.thoughtcrime.securesms.main.SnackbarState
 import org.thoughtcrime.securesms.permissions.Permissions
-import org.thoughtcrime.securesms.registration.RegistrationNavigationActivity
 import org.thoughtcrime.securesms.safety.SafetyNumberBottomSheet
 import org.thoughtcrime.securesms.stories.StoryTextPostModel
 import org.thoughtcrime.securesms.stories.StoryViewerArgs
 import org.thoughtcrime.securesms.stories.dialogs.StoryContextMenu
 import org.thoughtcrime.securesms.stories.dialogs.StoryDialogs
 import org.thoughtcrime.securesms.stories.my.MyStoriesActivity
-import org.thoughtcrime.securesms.stories.settings.StorySettingsActivity
-import org.thoughtcrime.securesms.stories.tabs.ConversationListTab
-import org.thoughtcrime.securesms.stories.tabs.ConversationListTabsViewModel
 import org.thoughtcrime.securesms.stories.viewer.StoryViewerActivity
-import org.thoughtcrime.securesms.util.PlayStoreUtil
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
 import org.thoughtcrime.securesms.util.fragments.requireListener
 import org.thoughtcrime.securesms.util.views.Stub
 import org.thoughtcrime.securesms.util.visible
-import java.util.concurrent.TimeUnit
 
 /**
  * The "landing page" for Stories.
@@ -77,31 +60,21 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
   }
 
   private lateinit var emptyNotice: View
-  private lateinit var cameraFab: FloatingActionButton
 
-  private lateinit var reminderView: Stub<ReminderView>
+  private lateinit var bannerView: Stub<ComposeView>
 
   private val lifecycleDisposable = LifecycleDisposable()
 
-  private val viewModel: StoriesLandingViewModel by viewModels(
+  private val viewModel: StoriesLandingViewModel by activityViewModels(
     factoryProducer = {
       StoriesLandingViewModel.Factory(StoriesLandingRepository(requireContext()))
     }
   )
 
-  private val tabsViewModel: ConversationListTabsViewModel by viewModels(ownerProducer = { requireActivity() })
+  private val mainToolbarViewModel: MainToolbarViewModel by activityViewModels()
+  private val mainNavigationViewModel: MainNavigationViewModel by activityViewModels()
 
   private lateinit var adapter: MappingAdapter
-
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    setHasOptionsMenu(true)
-  }
-
-  override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-    menu.clear()
-    inflater.inflate(R.menu.story_landing_menu, menu)
-  }
 
   override fun onResume() {
     super.onResume()
@@ -109,30 +82,20 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
     initializeSearchAction()
     viewModel.markStoriesRead()
 
-    ApplicationDependencies.getExpireStoriesManager().scheduleIfNecessary()
-    EventBus.getDefault().register(this)
-  }
-
-  override fun onPause() {
-    super.onPause()
-    requireListener<SearchBinder>().getSearchAction().setOnClickListener(null)
-    EventBus.getDefault().unregister(this)
+    AppDependencies.expireStoriesManager.scheduleIfNecessary()
   }
 
   private fun initializeSearchAction() {
-    val searchBinder = requireListener<SearchBinder>()
-    searchBinder.getSearchAction().setOnClickListener {
-      searchBinder.onSearchOpened()
-      searchBinder.getSearchToolbar().get().setSearchInputHint(R.string.SearchToolbar_search)
-
-      searchBinder.getSearchToolbar().get().listener = object : Material3SearchToolbar.Listener {
-        override fun onSearchTextChange(text: String) {
-          viewModel.setSearchQuery(text.trim())
-        }
-
-        override fun onSearchClosed() {
+    lifecycleDisposable += mainToolbarViewModel.getSearchEventsFlowable().subscribeBy {
+      when (it) {
+        MainToolbarViewModel.Event.Search.Close -> {
           viewModel.setSearchQuery("")
-          searchBinder.onSearchClosed()
+        }
+        MainToolbarViewModel.Event.Search.Open -> {
+          mainToolbarViewModel.setSearchHint(R.string.SearchToolbar_search)
+        }
+        is MainToolbarViewModel.Event.Search.Query -> {
+          viewModel.setSearchQuery(it.query.trim())
         }
       }
     }
@@ -141,53 +104,29 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     super.onViewCreated(view, savedInstanceState)
 
-    reminderView = ViewUtil.findStubById(view, R.id.reminder)
-    updateReminders()
+    bannerView = ViewUtil.findStubById(view, R.id.banner_stub)
+    initializeBanners()
   }
 
-  @Subscribe(threadMode = ThreadMode.MAIN)
-  fun onEvent(event: ReminderUpdateEvent?) {
-    updateReminders()
-  }
-
-  private fun updateReminders() {
-    if (ExpiredBuildReminder.isEligible()) {
-      showReminder(ExpiredBuildReminder(context))
-    } else if (UnauthorizedReminder.isEligible(context)) {
-      showReminder(UnauthorizedReminder())
-    } else {
-      hideReminders()
-    }
-  }
-
-  private fun showReminder(reminder: Reminder) {
-    if (!reminderView.resolved()) {
-      reminderView.get().addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
-        recyclerView?.setPadding(0, bottom - top, 0, 0)
+  private fun initializeBanners() {
+    val bannerManager = BannerManager(
+      banners = listOf(
+        DeprecatedBuildBanner(),
+        UnauthorizedBanner(requireContext())
+      ),
+      onNewBannerShownListener = {
+        if (bannerView.resolved()) {
+          bannerView.get().addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+            recyclerView?.setPadding(0, bottom - top, 0, 0)
+          }
+          recyclerView?.clipToPadding = false
+        }
+      },
+      onNoBannerShownListener = {
+        recyclerView?.clipToPadding = true
       }
-      recyclerView?.clipToPadding = false
-    }
-    reminderView.get().showReminder(reminder)
-    reminderView.get().setOnActionClickListener { reminderActionId: Int -> this.handleReminderAction(reminderActionId) }
-  }
-
-  private fun hideReminders() {
-    if (reminderView.resolved()) {
-      reminderView.get().hide()
-      recyclerView?.clipToPadding = true
-    }
-  }
-
-  private fun handleReminderAction(@IdRes reminderActionId: Int) {
-    when (reminderActionId) {
-      R.id.reminder_action_update_now -> {
-        PlayStoreUtil.openPlayStoreOrOurApkDownloadPage(requireContext())
-      }
-
-      R.id.reminder_action_re_register -> {
-        startActivity(RegistrationNavigationActivity.newIntentForReRegistration(requireContext()))
-      }
-    }
+    )
+    bannerManager.updateContent(bannerView.get())
   }
 
   override fun bindAdapter(adapter: MappingAdapter) {
@@ -197,43 +136,10 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
     MyStoriesItem.register(adapter)
     ExpandHeader.register(adapter)
 
-    requireListener<Material3OnScrollHelperBinder>().bindScrollHelper(recyclerView!!)
+    requireListener<Material3OnScrollHelperBinder>().bindScrollHelper(recyclerView!!, viewLifecycleOwner)
 
     lifecycleDisposable.bindTo(viewLifecycleOwner)
     emptyNotice = requireView().findViewById(R.id.empty_notice)
-    cameraFab = requireView().findViewById(R.id.camera_fab)
-    val sharedElementTarget: View = requireView().findViewById(R.id.camera_fab_shared_element_target)
-
-    ViewCompat.setTransitionName(cameraFab, "new_convo_fab")
-    ViewCompat.setTransitionName(sharedElementTarget, "camera_fab")
-
-    sharedElementEnterTransition = TransitionInflater.from(requireContext()).inflateTransition(R.transition.change_transform_fabs)
-    setEnterSharedElementCallback(object : SharedElementCallback() {
-      override fun onSharedElementStart(sharedElementNames: MutableList<String>?, sharedElements: MutableList<View>?, sharedElementSnapshots: MutableList<View>?) {
-        if (sharedElementNames?.contains("camera_fab") == true) {
-          cameraFab.setImageResource(R.drawable.symbol_edit_24)
-          lifecycleDisposable += Single.timer(200, TimeUnit.MILLISECONDS)
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribeBy {
-              cameraFab.setImageResource(R.drawable.symbol_camera_24)
-              sharedElementTarget.alpha = 0f
-            }
-        }
-      }
-    })
-
-    cameraFab.setOnClickListener {
-      Permissions.with(this)
-        .request(Manifest.permission.CAMERA)
-        .ifNecessary()
-        .withRationaleDialog(getString(R.string.ConversationActivity_to_capture_photos_and_video_allow_signal_access_to_the_camera), R.drawable.symbol_camera_24)
-        .withPermanentDenialDialog(getString(R.string.ConversationActivity_signal_needs_the_camera_permission_to_take_photos_or_video))
-        .onAllGranted {
-          startActivityIfAble(MediaSelectionActivity.camera(requireContext(), isStory = true))
-        }
-        .onAnyDenied { Toast.makeText(requireContext(), R.string.ConversationActivity_signal_needs_camera_permissions_to_take_photos_or_video, Toast.LENGTH_LONG).show() }
-        .execute()
-    }
 
     viewModel.state.observe(viewLifecycleOwner) {
       if (it.loadingState == StoriesLandingState.LoadingState.LOADED) {
@@ -247,14 +153,14 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
       object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
           if (!closeSearchIfOpen()) {
-            tabsViewModel.onChatsSelected()
+            mainNavigationViewModel.onChatsSelected()
           }
         }
       }
     )
 
-    lifecycleDisposable += tabsViewModel.tabClickEvents
-      .filter { it == ConversationListTab.STORIES }
+    lifecycleDisposable += mainNavigationViewModel.tabClickEvents
+      .filter { it == MainNavigationListLocation.STORIES }
       .subscribeBy(onNext = {
         val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager ?: return@subscribeBy
         if (layoutManager.findFirstVisibleItemPosition() <= LIST_SMOOTH_SCROLL_TO_TOP_THRESHOLD) {
@@ -263,6 +169,13 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
           recyclerView?.scrollToPosition(0)
         }
       })
+
+    this.adapter.registerAdapterDataObserver(object : AdapterDataObserver() {
+      override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+        (requireActivity() as? MainActivity)?.onFirstRender()
+        this@StoriesLandingFragment.adapter.unregisterAdapterDataObserver(this)
+      }
+    })
   }
 
   private fun getConfiguration(state: StoriesLandingState): DSLConfiguration {
@@ -285,8 +198,9 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
       if (state.displayMyStoryItem) {
         customPref(
           MyStoriesItem.Model(
+            lifecycleOwner = viewLifecycleOwner,
             onClick = {
-              cameraFab.performClick()
+              mainNavigationViewModel.goToCameraFirstStoryCapture()
             }
           )
         )
@@ -339,10 +253,15 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
         }
       },
       onShareStory = {
-        StoryContextMenu.share(this@StoriesLandingFragment, it.data.primaryStory.messageRecord as MediaMmsMessageRecord)
+        StoryContextMenu.share(this@StoriesLandingFragment, it.data.primaryStory.messageRecord as MmsMessageRecord)
       },
       onSave = {
-        StoryContextMenu.save(requireContext(), it.data.primaryStory.messageRecord)
+        lifecycleScope.launch {
+          StoryContextMenu.save(
+            fragment = this@StoriesLandingFragment,
+            messageRecord = it.data.primaryStory.messageRecord
+          )
+        }
       },
       onDeleteStory = {
         handleDeleteStory(it)
@@ -351,7 +270,7 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
         openStoryViewer(model, preview, true)
       },
       onAvatarClick = {
-        cameraFab.performClick()
+        mainNavigationViewModel.goToCameraFirstStoryCapture()
       },
       onLockList = {
         recyclerView?.suppressLayout(true)
@@ -413,21 +332,16 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
   private fun handleHideStory(model: StoriesLandingItem.Model) {
     StoryDialogs.hideStory(requireContext(), model.data.storyRecipient.getShortDisplayName(requireContext())) {
       viewModel.setHideStory(model.data.storyRecipient, true).subscribe {
-        Snackbar.make(cameraFab, R.string.StoriesLandingFragment__story_hidden, Snackbar.LENGTH_SHORT)
-          .show()
+        mainNavigationViewModel.setSnackbar(
+          SnackbarState(
+            message = getString(R.string.StoriesLandingFragment__story_hidden)
+          )
+        )
       }
     }
   }
 
-  override fun onOptionsItemSelected(item: MenuItem): Boolean {
-    return if (item.itemId == R.id.action_settings) {
-      startActivityIfAble(StorySettingsActivity.getIntent(requireContext()))
-      true
-    } else {
-      false
-    }
-  }
-
+  @Suppress("OVERRIDE_DEPRECATION")
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     Permissions.onRequestPermissionsResult(this, requestCode, permissions, grantResults)
   }
@@ -446,19 +360,14 @@ class StoriesLandingFragment : DSLSettingsFragment(layoutId = R.layout.stories_l
   }
 
   private fun isSearchVisible(): Boolean {
-    return requreSearchBinder().getSearchToolbar().resolved() && requreSearchBinder().getSearchToolbar().get().getVisibility() == View.VISIBLE
+    return mainToolbarViewModel.state.value.mode == MainToolbarMode.SEARCH
   }
 
   private fun closeSearchIfOpen(): Boolean {
     if (isSearchOpen()) {
-      requreSearchBinder().getSearchToolbar().get().collapse()
-      requreSearchBinder().onSearchClosed()
+      mainToolbarViewModel.setToolbarMode(MainToolbarMode.FULL)
       return true
     }
     return false
-  }
-
-  private fun requreSearchBinder(): SearchBinder {
-    return requireListener()
   }
 }

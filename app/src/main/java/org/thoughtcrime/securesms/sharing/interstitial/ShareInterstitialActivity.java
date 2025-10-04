@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.annimon.stream.Stream;
+import com.bumptech.glide.Glide;
 
 import org.thoughtcrime.securesms.PassphraseRequiredActivity;
 import org.thoughtcrime.securesms.R;
@@ -18,7 +19,6 @@ import org.thoughtcrime.securesms.components.LinkPreviewView;
 import org.thoughtcrime.securesms.components.SelectionAwareEmojiEditText;
 import org.thoughtcrime.securesms.linkpreview.LinkPreviewRepository;
 import org.thoughtcrime.securesms.linkpreview.LinkPreviewViewModel;
-import org.thoughtcrime.securesms.mms.GlideApp;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.sharing.MultiShareArgs;
 import org.thoughtcrime.securesms.sharing.MultiShareDialogs;
@@ -113,13 +113,13 @@ public class ShareInterstitialActivity extends PassphraseRequiredActivity {
     toolbar.setNavigationOnClickListener(unused -> finish());
 
     text.addTextChangedListener(new AfterTextChanged(editable -> {
-      linkPreviewViewModel.onTextChanged(this, editable.toString(), text.getSelectionStart(), text.getSelectionEnd());
+      linkPreviewViewModel.onTextChanged(editable.toString(), text.getSelectionStart(), text.getSelectionEnd());
       viewModel.onDraftTextChanged(editable.toString());
     }));
 
     //noinspection CodeBlock2Expr
     text.setOnSelectionChangedListener(((selStart, selEnd) -> {
-      linkPreviewViewModel.onTextChanged(this, text.getText().toString(), text.getSelectionStart(), text.getSelectionEnd());
+      linkPreviewViewModel.onTextChanged(Objects.requireNonNull(text.getText()).toString(), text.getSelectionStart(), text.getSelectionEnd());
     }));
 
     preview.setCloseClickedListener(linkPreviewViewModel::onUserCancel);
@@ -149,15 +149,15 @@ public class ShareInterstitialActivity extends PassphraseRequiredActivity {
 
     linkPreviewViewModel.getLinkPreviewState().observe(this, linkPreviewState -> {
       preview.setVisibility(View.VISIBLE);
-      if (linkPreviewState.getError() != null) {
-        preview.setNoPreview(linkPreviewState.getError());
+      if (linkPreviewState.error != null) {
+        preview.setNoPreview(linkPreviewState.error);
         viewModel.onLinkPreviewChanged(null);
-      } else if (linkPreviewState.isLoading()) {
+      } else if (linkPreviewState.isLoading) {
         preview.setLoading();
         viewModel.onLinkPreviewChanged(null);
-      } else if (linkPreviewState.getLinkPreview().isPresent()) {
-        preview.setLinkPreview(GlideApp.with(this), linkPreviewState.getLinkPreview().get(), true);
-        viewModel.onLinkPreviewChanged(linkPreviewState.getLinkPreview().get());
+      } else if (linkPreviewState.linkPreview.isPresent()) {
+        preview.setLinkPreview(Glide.with(this), linkPreviewState.linkPreview.get(), true);
+        viewModel.onLinkPreviewChanged(linkPreviewState.linkPreview.get());
       } else if (!linkPreviewState.hasLinks()) {
         preview.setVisibility(View.GONE);
         viewModel.onLinkPreviewChanged(null);

@@ -17,8 +17,10 @@ import androidx.media3.ui.LegacyPlayerControlView;
 
 import org.signal.core.util.concurrent.LifecycleDisposable;
 import org.signal.core.util.logging.Log;
+import org.signal.libsignal.protocol.incrementalmac.InvalidMacException;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.components.voice.VoiceNoteMediaControllerOwner;
+import org.thoughtcrime.securesms.mms.PartUriParser;
 import org.thoughtcrime.securesms.mms.VideoSlide;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.video.VideoPlayer;
@@ -97,13 +99,17 @@ public final class VideoMediaPreviewFragment extends MediaPreviewFragment {
       }
 
       @Override
-      public void onError() {
+      public void onError(Exception e) {
+        if (e instanceof InvalidMacException) {
+          viewModel.onIncrementalMacError(uri);
+        }
         events.unableToPlayMedia();
       }
     });
 
     if (isVideoGif) {
       videoView.loopForever();
+      videoView.disableAudioFocus();
     }
 
     videoView.setOnClickListener(v -> events.singleTapOnMedia());
@@ -165,7 +171,9 @@ public final class VideoMediaPreviewFragment extends MediaPreviewFragment {
 
   @Override
   public void setBottomButtonControls(@NonNull MediaPreviewPlayerControlView playerControlView) {
-    videoView.setControlView(playerControlView);
+    if (videoView != null) {
+      videoView.setControlView(playerControlView);
+    }
     updateSkipButtonState();
   }
 

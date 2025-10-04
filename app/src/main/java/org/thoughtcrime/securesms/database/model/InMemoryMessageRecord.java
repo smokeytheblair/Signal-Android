@@ -7,6 +7,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
 import org.thoughtcrime.securesms.R;
+import org.thoughtcrime.securesms.fonts.SignalSymbols.Glyph;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
@@ -41,22 +42,24 @@ public class InMemoryMessageRecord extends MessageRecord {
           System.currentTimeMillis(),
           threadId,
           0,
-          0,
+          false,
           type,
           Collections.emptySet(),
           Collections.emptySet(),
           -1,
           0,
           System.currentTimeMillis(),
-          0,
+          1,
+          false,
           false,
           Collections.emptyList(),
           false,
           0,
-          0,
+          false,
           -1,
           null,
-          0);
+          0,
+          null);
   }
 
   @Override
@@ -82,45 +85,6 @@ public class InMemoryMessageRecord extends MessageRecord {
     return 0;
   }
 
-  /**
-   * Warning message to show during message request state if you do not have groups in common
-   * with an individual or do not know anyone in the group.
-   */
-  public static final class NoGroupsInCommon extends InMemoryMessageRecord {
-    private final boolean isGroup;
-
-    public NoGroupsInCommon(long threadId, boolean isGroup) {
-      super(NO_GROUPS_IN_COMMON_ID, "", Recipient.UNKNOWN, threadId, 0);
-      this.isGroup = isGroup;
-    }
-
-    @Override
-    public @Nullable UpdateDescription getUpdateDisplayBody(@NonNull Context context, @Nullable Consumer<RecipientId> recipientClickHandler) {
-      return UpdateDescription.staticDescription(context.getString(isGroup ? R.string.ConversationUpdateItem_no_contacts_in_this_group_review_requests_carefully
-                                                                           : R.string.ConversationUpdateItem_no_groups_in_common_review_requests_carefully),
-                                                 R.drawable.symbol_info_compact_16);
-    }
-
-    @Override
-    public boolean isUpdate() {
-      return true;
-    }
-
-    @Override
-    public boolean showActionButton() {
-      return true;
-    }
-
-    public boolean isGroup() {
-      return isGroup;
-    }
-
-    @Override
-    public @StringRes int getActionButtonText() {
-      return R.string.ConversationUpdateItem_learn_more;
-    }
-  }
-
   public static final class RemovedContactHidden extends InMemoryMessageRecord {
 
     public RemovedContactHidden(long threadId) {
@@ -130,7 +94,7 @@ public class InMemoryMessageRecord extends MessageRecord {
     @Override
     public @Nullable UpdateDescription getUpdateDisplayBody(@NonNull Context context, @Nullable Consumer<RecipientId> recipientClickHandler) {
       return UpdateDescription.staticDescription(context.getString(R.string.ConversationUpdateItem_hidden_contact_message_to_add_back),
-                                                 R.drawable.symbol_info_compact_16);
+                                                 Glyph.INFO);
     }
 
     @Override
@@ -159,7 +123,7 @@ public class InMemoryMessageRecord extends MessageRecord {
       String update = context.getString(R.string.ConversationUpdateItem_the_disappearing_message_time_will_be_set_to_s_when_you_message_them,
                                         ExpirationUtil.getExpirationDisplayValue(context, SignalStore.settings().getUniversalExpireTimer()));
 
-      return UpdateDescription.staticDescription(update, R.drawable.symbol_timer_compact_24);
+      return UpdateDescription.staticDescription(update, Glyph.TIMER);
     }
 
     @Override

@@ -1,18 +1,21 @@
 package org.thoughtcrime.securesms.messages
 
-import ProtoUtil.isNotEmpty
 import com.squareup.wire.Message
 import okio.ByteString
+import okio.ByteString.Companion.toByteString
+import org.signal.core.util.isNotEmpty
 import org.signal.core.util.orNull
 import org.signal.libsignal.protocol.message.DecryptionErrorMessage
 import org.signal.libsignal.zkgroup.groups.GroupMasterKey
+import org.signal.storageservice.protos.groups.local.DecryptedGroupChange
 import org.thoughtcrime.securesms.attachments.Attachment
+import org.thoughtcrime.securesms.attachments.Cdn
 import org.thoughtcrime.securesms.attachments.PointerAttachment
 import org.thoughtcrime.securesms.database.model.StoryType
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.stickers.StickerLocator
-import org.thoughtcrime.securesms.util.FeatureFlags
 import org.thoughtcrime.securesms.util.MediaUtil
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.whispersystems.signalservice.api.InvalidMessageStructureException
 import org.whispersystems.signalservice.api.crypto.EnvelopeMetadata
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentPointer
@@ -24,13 +27,18 @@ import org.whispersystems.signalservice.internal.push.DataMessage
 import org.whispersystems.signalservice.internal.push.DataMessage.Payment
 import org.whispersystems.signalservice.internal.push.GroupContextV2
 import org.whispersystems.signalservice.internal.push.StoryMessage
+import org.whispersystems.signalservice.internal.push.SyncMessage
 import org.whispersystems.signalservice.internal.push.SyncMessage.Sent
 import org.whispersystems.signalservice.internal.push.TypingMessage
+import org.whispersystems.signalservice.internal.util.Util
 import java.util.Optional
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 object SignalServiceProtoUtil {
+
+  @JvmStatic
+  val emptyGroupChange: DecryptedGroupChange by lazy { DecryptedGroupChange() }
 
   /** Contains some user data that affects the conversation  */
   val DataMessage.hasRenderableContent: Boolean
@@ -43,7 +51,10 @@ object SignalServiceProtoUtil {
         bodyRanges.isNotEmpty() ||
         sticker != null ||
         reaction != null ||
-        hasRemoteDelete
+        hasRemoteDelete ||
+        pollCreate != null ||
+        pollVote != null ||
+        pollTerminate != null
     }
 
   val DataMessage.hasDisallowedAnnouncementOnlyContent: Boolean
@@ -89,7 +100,7 @@ object SignalServiceProtoUtil {
   val DataMessage.isInvalid: Boolean
     get() {
       if (isViewOnce == true) {
-        val contentType = attachments[0].contentType?.lowercase()
+        val contentType = attachments.getOrNull(0)?.contentType?.lowercase()
         return attachments.size != 1 || !MediaUtil.isImageOrVideoType(contentType)
       }
       return false
@@ -163,12 +174,17 @@ object SignalServiceProtoUtil {
   }
 
   fun List<AttachmentPointer>.toPointersWithinLimit(): List<Attachment> {
-    return mapNotNull { it.toPointer() }.take(FeatureFlags.maxAttachmentCount())
+    return mapNotNull { it.toPointer() }.take(RemoteConfig.maxAttachmentCount)
   }
 
   fun AttachmentPointer.toPointer(stickerLocator: StickerLocator? = null): Attachment? {
     return try {
-      PointerAttachment.forPointer(Optional.of(toSignalServiceAttachmentPointer()), stickerLocator).orNull()
+      val pointer = PointerAttachment.forPointer(Optional.of(toSignalServiceAttachmentPointer()), stickerLocator).orNull()
+      if (pointer?.cdn != Cdn.S3) {
+        pointer
+      } else {
+        null
+      }
     } catch (e: InvalidMessageStructureException) {
       null
     }
@@ -180,6 +196,11 @@ object SignalServiceProtoUtil {
 
   fun Long.toMobileCoinMoney(): Money {
     return Money.picoMobileCoin(this)
+  }
+
+  fun SyncMessage.Builder.pad(length: Int = 512): SyncMessage.Builder {
+    padding(Util.getRandomLengthSecretBytes(length).toByteString())
+    return this
   }
 
   @Suppress("UNCHECKED_CAST")

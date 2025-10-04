@@ -1,29 +1,31 @@
 package org.thoughtcrime.securesms.database
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.hamcrest.MatcherAssert.assertThat
-import org.hamcrest.Matchers.`is`
-import org.hamcrest.Matchers.notNullValue
-import org.hamcrest.Matchers.nullValue
+import assertk.assertThat
+import assertk.assertions.isEqualTo
+import assertk.assertions.isNull
+import assertk.assertions.isPresent
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.signal.core.util.Hex
 import org.signal.libsignal.zkgroup.groups.GroupMasterKey
+import org.thoughtcrime.securesms.database.MessageTable.InsertResult
+import org.thoughtcrime.securesms.database.model.GroupsV2UpdateMessageConverter
 import org.thoughtcrime.securesms.database.model.databaseprotos.DecryptedGroupV2Context
+import org.thoughtcrime.securesms.database.model.databaseprotos.GV2UpdateDescription
 import org.thoughtcrime.securesms.database.model.databaseprotos.addMember
 import org.thoughtcrime.securesms.database.model.databaseprotos.addRequestingMember
 import org.thoughtcrime.securesms.database.model.databaseprotos.deleteRequestingMember
 import org.thoughtcrime.securesms.database.model.databaseprotos.groupChange
 import org.thoughtcrime.securesms.database.model.databaseprotos.groupContext
 import org.thoughtcrime.securesms.groups.GroupId
+import org.thoughtcrime.securesms.isAbsent
 import org.thoughtcrime.securesms.keyvalue.SignalStore
+import org.thoughtcrime.securesms.mms.IncomingMessage
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.thoughtcrime.securesms.sms.IncomingGroupUpdateMessage
-import org.thoughtcrime.securesms.sms.IncomingTextMessage
 import org.whispersystems.signalservice.api.push.ServiceId.ACI
 import org.whispersystems.signalservice.api.push.ServiceId.PNI
-import java.util.Optional
 import java.util.UUID
 
 @Suppress("ClassName", "TestFunctionName")
@@ -46,8 +48,8 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
     recipients = SignalDatabase.recipients
     sms = SignalDatabase.messages
 
-    SignalStore.account().setAci(localAci)
-    SignalStore.account().setPni(localPni)
+    SignalStore.account.setAci(localAci)
+    SignalStore.account.setPni(localPni)
 
     alice = recipients.getOrInsertFromServiceId(aliceServiceId)
     bob = recipients.getOrInsertFromServiceId(bobServiceId)
@@ -70,7 +72,7 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
       )
     )
 
-    assertThat("result is null when not collapsing", result.orElse(null), nullValue())
+    assertThat(result, "result is null when not collapsing").isAbsent()
   }
 
   /**
@@ -92,7 +94,7 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
       )
     )
 
-    assertThat("result is null when not collapsing", result.orElse(null), nullValue())
+    assertThat(result, "result is null when not collapsing").isAbsent()
   }
 
   /**
@@ -123,7 +125,7 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
       )
     )
 
-    assertThat("result is null when not collapsing", result.orElse(null), nullValue())
+    assertThat(result, "result is null when not collapsing").isAbsent()
   }
 
   /**
@@ -154,7 +156,7 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
       )
     )
 
-    assertThat("result is null when not collapsing", result.orElse(null), nullValue())
+    assertThat(result, "result is null when not collapsing").isAbsent()
   }
 
   /**
@@ -185,8 +187,12 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
       )
     )
 
-    assertThat("result is not null when collapsing", result.orElse(null), notNullValue())
-    assertThat("result message id should be same as latest message", result.get().messageId, `is`(latestMessage.messageId))
+    assertThat(result, "result is not null when collapsing")
+      .isPresent()
+      .given { result: InsertResult ->
+        assertThat(result.messageId, "result message id should be same as latest message")
+          .isEqualTo(latestMessage.messageId)
+      }
   }
 
   /**
@@ -221,8 +227,12 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
       )
     )
 
-    assertThat("result is not null when collapsing", result.orElse(null), notNullValue())
-    assertThat("result message id should be same as latest message", result.get().messageId, `is`(latestMessage.messageId))
+    assertThat(result, "result is not null when collapsing")
+      .isPresent()
+      .given { result: InsertResult ->
+        assertThat(result.messageId, "result message id should be same as latest message")
+          .isEqualTo(latestMessage.messageId)
+      }
   }
 
   /**
@@ -267,18 +277,45 @@ class SmsDatabaseTest_collapseJoinRequestEventsIfPossible {
       )
     )
 
-    assertThat("result is not null when collapsing", result.orElse(null), notNullValue())
-    assertThat("result message id should be same as second latest message", result.get().messageId, `is`(secondLatestMessage.messageId))
-    assertThat("latest message should be deleted", sms.getMessageRecordOrNull(latestMessage.messageId), nullValue())
+    assertThat(result, "result is not null when collapsing")
+      .isPresent()
+      .given { result: InsertResult ->
+        assertThat(result.messageId, "result message id should be same as second latest message")
+          .isEqualTo(secondLatestMessage.messageId)
+        assertThat(sms.getMessageRecordOrNull(latestMessage.messageId), "latest message should be deleted").isNull()
+      }
   }
 
-  private fun smsMessage(sender: RecipientId, body: String? = ""): IncomingTextMessage {
+  private fun smsMessage(sender: RecipientId, body: String? = ""): IncomingMessage {
     wallClock++
-    return IncomingTextMessage(sender, 1, wallClock, wallClock, wallClock, body, Optional.of(groupId), 0, true, null)
+    return IncomingMessage(
+      type = MessageType.NORMAL,
+      from = sender,
+      sentTimeMillis = wallClock,
+      serverTimeMillis = wallClock,
+      receivedTimeMillis = wallClock,
+      body = body,
+      groupId = groupId,
+      isUnidentified = true
+    )
   }
 
-  private fun groupUpdateMessage(sender: RecipientId, groupContext: DecryptedGroupV2Context): IncomingGroupUpdateMessage {
-    return IncomingGroupUpdateMessage(smsMessage(sender, null), groupContext)
+  private fun groupUpdateMessage(sender: RecipientId, groupContext: DecryptedGroupV2Context): IncomingMessage {
+    wallClock++
+
+    val updateDescription = GV2UpdateDescription(
+      gv2ChangeDescription = groupContext,
+      groupChangeUpdate = GroupsV2UpdateMessageConverter.translateDecryptedChangeUpdate(SignalStore.account.getServiceIds(), groupContext)
+    )
+
+    return IncomingMessage.groupUpdate(
+      from = sender,
+      timestamp = wallClock,
+      groupId = groupId,
+      update = updateDescription,
+      isGroupAdd = false,
+      serverGuid = null
+    )
   }
 
   companion object {

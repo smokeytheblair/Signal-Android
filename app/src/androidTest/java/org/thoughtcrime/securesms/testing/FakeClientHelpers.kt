@@ -1,56 +1,42 @@
 package org.thoughtcrime.securesms.testing
 
 import okio.ByteString.Companion.toByteString
-import org.signal.libsignal.internal.Native
-import org.signal.libsignal.internal.NativeHandleGuard
+import org.signal.core.util.Base64
 import org.signal.libsignal.metadata.certificate.CertificateValidator
 import org.signal.libsignal.metadata.certificate.SenderCertificate
 import org.signal.libsignal.metadata.certificate.ServerCertificate
-import org.signal.libsignal.protocol.ecc.Curve
 import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.zkgroup.profiles.ProfileKey
 import org.thoughtcrime.securesms.messages.SignalServiceProtoUtil.buildWith
 import org.whispersystems.signalservice.api.crypto.ContentHint
 import org.whispersystems.signalservice.api.crypto.EnvelopeContent
+import org.whispersystems.signalservice.api.crypto.SealedSenderAccess
 import org.whispersystems.signalservice.api.crypto.UnidentifiedAccess
-import org.whispersystems.signalservice.api.crypto.UnidentifiedAccessPair
 import org.whispersystems.signalservice.api.push.ServiceId
 import org.whispersystems.signalservice.internal.push.Content
 import org.whispersystems.signalservice.internal.push.DataMessage
 import org.whispersystems.signalservice.internal.push.Envelope
 import org.whispersystems.signalservice.internal.push.OutgoingPushMessage
-import org.whispersystems.util.Base64
 import java.util.Optional
 import java.util.UUID
 
 object FakeClientHelpers {
 
-  val noOpCertificateValidator = object : CertificateValidator(null) {
+  val noOpCertificateValidator = object : CertificateValidator(ECKeyPair.generate().publicKey) {
     override fun validate(certificate: SenderCertificate, validationTime: Long) = Unit
   }
 
   fun createCertificateFor(trustRoot: ECKeyPair, uuid: UUID, e164: String, deviceId: Int, identityKey: ECPublicKey, expires: Long): SenderCertificate {
-    val serverKey: ECKeyPair = Curve.generateKeyPair()
-    NativeHandleGuard(serverKey.publicKey).use { serverPublicGuard ->
-      NativeHandleGuard(trustRoot.privateKey).use { trustRootPrivateGuard ->
-        val serverCertificate = ServerCertificate(Native.ServerCertificate_New(1, serverPublicGuard.nativeHandle(), trustRootPrivateGuard.nativeHandle()))
-        NativeHandleGuard(identityKey).use { identityGuard ->
-          NativeHandleGuard(serverCertificate).use { serverCertificateGuard ->
-            NativeHandleGuard(serverKey.privateKey).use { serverPrivateGuard ->
-              return SenderCertificate(Native.SenderCertificate_New(uuid.toString(), e164, deviceId, identityGuard.nativeHandle(), expires, serverCertificateGuard.nativeHandle(), serverPrivateGuard.nativeHandle()))
-            }
-          }
-        }
-      }
-    }
+    val serverKey: ECKeyPair = ECKeyPair.generate()
+    val serverCertificate = ServerCertificate(trustRoot.privateKey, 1, serverKey.publicKey)
+    return serverCertificate.issue(serverKey.privateKey, uuid.toString(), Optional.of(e164), deviceId, identityKey, expires)
   }
 
-  fun getTargetUnidentifiedAccess(myProfileKey: ProfileKey, theirProfileKey: ProfileKey, senderCertificate: SenderCertificate): Optional<UnidentifiedAccess> {
-    val selfUnidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(myProfileKey)
-    val themUnidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(theirProfileKey)
+  fun getSealedSenderAccess(theirProfileKey: ProfileKey, senderCertificate: SenderCertificate): SealedSenderAccess? {
+    val themUnidentifiedAccessKey = UnidentifiedAccess(UnidentifiedAccess.deriveAccessKeyFrom(theirProfileKey), senderCertificate.serialized, false)
 
-    return UnidentifiedAccessPair(UnidentifiedAccess(selfUnidentifiedAccessKey, senderCertificate.serialized, false), UnidentifiedAccess(themUnidentifiedAccessKey, senderCertificate.serialized, false)).targetUnidentifiedAccess
+    return SealedSenderAccess.forIndividual(themUnidentifiedAccessKey)
   }
 
   fun encryptedTextMessage(now: Long, message: String = "Test body message"): EnvelopeContent {

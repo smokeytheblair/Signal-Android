@@ -79,7 +79,7 @@ public class AvatarSelectionActivity extends AppCompatActivity implements Camera
 
   @Override
   public void onCameraError() {
-    Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show();
+    Toast.makeText(this, androidx.biometric.R.string.default_error_msg, Toast.LENGTH_SHORT).show();
     finish();
   }
 
@@ -99,9 +99,10 @@ public class AvatarSelectionActivity extends AppCompatActivity implements Camera
                               0,
                               false,
                               false,
-                              Optional.of(Media.ALL_MEDIA_BUCKET_ID),
-                              Optional.empty(),
-                              Optional.empty()));
+                              Media.ALL_MEDIA_BUCKET_ID,
+                              null,
+                              null,
+                              null));
   }
 
   @Override
@@ -181,16 +182,18 @@ public class AvatarSelectionActivity extends AppCompatActivity implements Camera
 
   @Override
   public void onMainImageLoaded() {
-
   }
 
   @Override
   public void onMainImageFailedToLoad() {
-
   }
 
   @Override
   public void restoreState() {
+  }
+
+  @Override
+  public void onQrCodeFound(@NonNull String data) {
   }
 
   public boolean popToRoot() {

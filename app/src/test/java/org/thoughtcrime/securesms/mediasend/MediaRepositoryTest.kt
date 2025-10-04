@@ -4,36 +4,22 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import io.mockk.every
+import io.mockk.mockkStatic
 import org.junit.Assert.assertEquals
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.ArgumentMatchers
-import org.mockito.Mock
-import org.mockito.MockedStatic
-import org.mockito.Mockito.`when`
-import org.mockito.junit.MockitoJUnit
-import org.mockito.junit.MockitoRule
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.database.AttachmentTable.TransformProperties
 import org.thoughtcrime.securesms.testutil.EmptyLogger
 import org.thoughtcrime.securesms.util.MediaUtil
-import java.util.Optional
 
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, application = Application::class)
 class MediaRepositoryTest {
-
-  @Rule
-  @JvmField
-  val mockitoRule: MockitoRule = MockitoJUnit.rule()
-
-  @Mock
-  private lateinit var staticMediaUtilMock: MockedStatic<MediaUtil>
-
   private lateinit var context: Context
 
   @Before
@@ -41,7 +27,9 @@ class MediaRepositoryTest {
     Log.initialize(EmptyLogger())
 
     context = ApplicationProvider.getApplicationContext()
-    `when`(MediaUtil.isOctetStream(MediaUtil.OCTET)).thenReturn(true)
+
+    mockkStatic(MediaUtil::class)
+    every { MediaUtil.isOctetStream(MediaUtil.OCTET) } returns true
   }
 
   @Test
@@ -62,11 +50,11 @@ class MediaRepositoryTest {
     val media = buildMedia(mimeType = MediaUtil.OCTET)
 
     // WHEN
-    `when`(MediaUtil.getMimeType(ArgumentMatchers.any(), ArgumentMatchers.any())).thenReturn(MediaUtil.IMAGE_JPEG)
+    every { MediaUtil.getMimeType(any(), any()) } returns MediaUtil.IMAGE_JPEG
     val result: Media = MediaRepository.fixMimeType(context, media)
 
     // THEN
-    assertEquals(MediaUtil.IMAGE_JPEG, result.mimeType)
+    assertEquals(MediaUtil.IMAGE_JPEG, result.contentType)
   }
 
   @Test
@@ -83,7 +71,7 @@ class MediaRepositoryTest {
     val result: Media = MediaRepository.fixMimeType(context, media)
 
     // THEN
-    assertEquals(MediaUtil.IMAGE_JPEG, result.mimeType)
+    assertEquals(MediaUtil.IMAGE_JPEG, result.contentType)
   }
 
   @Test
@@ -101,7 +89,7 @@ class MediaRepositoryTest {
     val result: Media = MediaRepository.fixMimeType(context, media)
 
     // THEN
-    assertEquals(MediaUtil.VIDEO_UNSPECIFIED, result.mimeType)
+    assertEquals(MediaUtil.VIDEO_UNSPECIFIED, result.contentType)
   }
 
   private fun buildMedia(
@@ -114,9 +102,10 @@ class MediaRepositoryTest {
     duration: Long = 0,
     borderless: Boolean = false,
     videoGif: Boolean = false,
-    bucketId: Optional<String> = Optional.empty(),
-    caption: Optional<String> = Optional.empty(),
-    transformProperties: Optional<TransformProperties> = Optional.empty()
+    bucketId: String? = null,
+    caption: String? = null,
+    transformProperties: TransformProperties? = null,
+    fileName: String? = null
   ): Media {
     return Media(
       uri,
@@ -130,7 +119,8 @@ class MediaRepositoryTest {
       videoGif,
       bucketId,
       caption,
-      transformProperties
+      transformProperties,
+      fileName
     )
   }
 }

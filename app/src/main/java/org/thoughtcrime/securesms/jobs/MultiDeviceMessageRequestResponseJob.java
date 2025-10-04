@@ -5,11 +5,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
-import org.thoughtcrime.securesms.jobmanager.JsonJobData;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.jobmanager.Job;
+import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
+import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.net.NotPushRegisteredException;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
@@ -54,7 +54,11 @@ public class MultiDeviceMessageRequestResponseJob extends BaseJob {
   }
 
   public static @NonNull MultiDeviceMessageRequestResponseJob forBlockAndReportSpam(@NonNull RecipientId threadRecipient) {
-    return new MultiDeviceMessageRequestResponseJob(threadRecipient, Type.BLOCK);
+    return new MultiDeviceMessageRequestResponseJob(threadRecipient, Type.BLOCK_AND_SPAM);
+  }
+
+  public static @NonNull MultiDeviceMessageRequestResponseJob forReportSpam(@NonNull RecipientId threadRecipient) {
+    return new MultiDeviceMessageRequestResponseJob(threadRecipient, Type.SPAM);
   }
 
   private MultiDeviceMessageRequestResponseJob(@NonNull RecipientId threadRecipient, @NonNull Type type) {
@@ -94,15 +98,15 @@ public class MultiDeviceMessageRequestResponseJob extends BaseJob {
       throw new NotPushRegisteredException();
     }
 
-    if (!TextSecurePreferences.isMultiDevice(context)) {
+    if (!SignalStore.account().isMultiDevice()) {
       Log.i(TAG, "Not multi device, aborting...");
       return;
     }
 
-    SignalServiceMessageSender messageSender = ApplicationDependencies.getSignalServiceMessageSender();
+    SignalServiceMessageSender messageSender = AppDependencies.getSignalServiceMessageSender();
     Recipient                  recipient     = Recipient.resolved(threadRecipient);
 
-    if (!recipient.isGroup() && !recipient.hasServiceId()) {
+    if (!recipient.isGroup() && !recipient.getHasServiceId()) {
       Log.i(TAG, "Queued for non-group recipient without ServiceId");
       return;
     }
@@ -118,8 +122,8 @@ public class MultiDeviceMessageRequestResponseJob extends BaseJob {
     }
 
     if (response != null) {
-      messageSender.sendSyncMessage(SignalServiceSyncMessage.forMessageRequestResponse(response),
-                                    UnidentifiedAccessUtil.getAccessForSync(context));
+      messageSender.sendSyncMessage(SignalServiceSyncMessage.forMessageRequestResponse(response)
+      );
     } else {
       Log.w(TAG, recipient.getId() + " not registered!");
     }
@@ -135,6 +139,10 @@ public class MultiDeviceMessageRequestResponseJob extends BaseJob {
         return MessageRequestResponseMessage.Type.BLOCK;
       case BLOCK_AND_DELETE:
         return MessageRequestResponseMessage.Type.BLOCK_AND_DELETE;
+      case SPAM:
+        return MessageRequestResponseMessage.Type.SPAM;
+      case BLOCK_AND_SPAM:
+        return MessageRequestResponseMessage.Type.BLOCK_AND_SPAM;
       default:
         return MessageRequestResponseMessage.Type.UNKNOWN;
     }
@@ -151,7 +159,7 @@ public class MultiDeviceMessageRequestResponseJob extends BaseJob {
   }
 
   private enum Type {
-    UNKNOWN(0), ACCEPT(1), DELETE(2), BLOCK(3), BLOCK_AND_DELETE(4);
+    UNKNOWN(0), ACCEPT(1), DELETE(2), BLOCK(3), BLOCK_AND_DELETE(4), SPAM(5), BLOCK_AND_SPAM(6);
 
     private final int value;
 

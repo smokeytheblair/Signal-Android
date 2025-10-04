@@ -29,7 +29,7 @@
       {{queryResult.timeToFirstRow}} ms to read the first row. <br />
       {{queryResult.timeToReadRows}} ms to read the rest of the rows. <br />
       <br />
-      <table id="data-table" class="invisible">
+      <table>
         <tr>
           {{#each queryResult.columns}}
             <th>{{this}}</th>
@@ -43,20 +43,17 @@
           </tr>
         {{/each}}
       </table>
-
-      <div id="handson-table"></div>
     {{else}}
       No data.
     {{/if}}
 
-    <script src="/js/lib/handsontable.full.min.js"></script>
-
     {{> partials/suffix}}
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql-formatter/4.0.2/sql-formatter.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.20.0/ace.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.20.0/mode-sql.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.20.0/theme-github.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.5/ace.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.5/mode-sql.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.5/theme-github.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.5/theme-github_dark.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script type="text/javascript">
       let editor;
 
@@ -67,7 +64,7 @@
 
         editor = ace.edit(document.querySelector('.query-input'), {
           mode: 'ace/mode/sql',
-          theme: 'ace/theme/github',
+          theme: isDarkTheme() ? 'ace/theme/github_dark' : 'ace/theme/github',
           selectionStyle: 'text',
           showPrintMargin: false
         });
@@ -91,34 +88,6 @@
           bindKey: {win: "Ctrl-Shift-F", mac: "Command-Shift-F"},
           exec: formatSql
         });
-
-        const table = document.getElementById('data-table')
-        if (!table) {
-          return;
-        }
-
-        const data = htmlToHandsonData(table)
-        table.remove()
-
-        const renderers = []
-        for (const header of data.headers) {
-          renderers.push({ renderer: 'nullRenderer' })
-        }
-
-        const hot = new Handsontable(document.getElementById('handson-table'), {
-          data: data.rows,
-          colHeaders: data.headers,
-          columns: renderers,
-          readOnly: true,
-          filters: true,
-          columnSorting: true,
-          manualColumnResize: true,
-          manualColumnMove: true,
-          manualRowResize: true,
-          dropdownMenu: ['filter_by_condition', 'filter_by_value', 'filter_action_bar'],
-          viewportColumnRenderingOffset: 1000,
-          licenseKey: 'non-commercial-and-evaluation'
-        })
       }
 
       function onFormatClicked(e) {
@@ -147,9 +116,15 @@
       function onQuerySubmitted() {
         const query = editor.getValue();
 
-        document.getElementById('query').value = query
+        document.getElementById('query').value = query;
 
         let history = getQueryHistory();
+
+        if (history.length > 0 && history[0] === query) {
+          console.log('Query already at the top of the history, not saving.');
+          return;
+        }
+
         history.unshift(query);
         history = history.slice(0, 25);
 
@@ -185,6 +160,10 @@
       function getQueryHistory() {
         const historyRaw = localStorage.getItem('query-history') || "[]";
         return JSON.parse(historyRaw);
+      }
+
+      function isDarkTheme() {
+        return document.body.getAttribute('data-theme') === 'dark'
       }
 
       main();

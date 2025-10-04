@@ -26,12 +26,16 @@ import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.ViewKt;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.vectordrawable.graphics.drawable.AnimatorInflaterCompat;
 
 import com.annimon.stream.Stream;
 
 import org.signal.core.util.DimensionUnit;
+import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.animation.AnimationCompleteListener;
 import org.thoughtcrime.securesms.components.emoji.EmojiImageView;
@@ -41,7 +45,6 @@ import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.ReactionRecord;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.recipients.Recipient;
-import org.thoughtcrime.securesms.util.FeatureFlags;
 import org.thoughtcrime.securesms.util.ThemeUtil;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.util.ViewUtil;
@@ -54,6 +57,7 @@ import kotlin.Unit;
 
 public final class ConversationReactionOverlay extends FrameLayout {
 
+  private static final String       TAG          = Log.tag(ConversationReactionOverlay.class);
   private static final Interpolator INTERPOLATOR = new DecelerateInterpolator();
 
   private final Rect  emojiViewGlobalRect = new Rect();
@@ -166,11 +170,21 @@ public final class ConversationReactionOverlay extends FrameLayout {
 
     setupSelectedEmoji();
 
-    View statusBarBackground = activity.findViewById(android.R.id.statusBarBackground);
-    statusBarHeight = statusBarBackground == null ? 0 : statusBarBackground.getHeight();
+    View               root             = activity.findViewById(android.R.id.content).getRootView();
+    WindowInsetsCompat rootWindowInsets = ViewCompat.getRootWindowInsets(root);
 
-    View navigationBarBackground = activity.findViewById(android.R.id.navigationBarBackground);
-    bottomNavigationBarHeight = navigationBarBackground == null ? 0 : navigationBarBackground.getHeight();
+    if (rootWindowInsets != null) {
+      Log.i(TAG, "Capturing insets from root view.");
+
+      Insets insets = rootWindowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+      statusBarHeight = insets.top;
+      bottomNavigationBarHeight = insets.bottom;
+    } else {
+      Log.i(TAG, "Capturing insets from util methods.");
+
+      statusBarHeight           = ViewUtil.getStatusBarHeight(root);
+      bottomNavigationBarHeight = ViewUtil.getNavigationBarHeight(root);
+    }
 
     if (zeroNavigationBarHeightForConfiguration()) {
       bottomNavigationBarHeight = 0;
@@ -566,7 +580,7 @@ public final class ConversationReactionOverlay extends FrameLayout {
   }
 
   private void setupSelectedEmoji() {
-    final List<String> emojis   = SignalStore.emojiValues().getReactions();
+    final List<String> emojis   = SignalStore.emoji().getReactions();
     final String       oldEmoji = getOldEmoji(messageRecord);
 
     if (oldEmoji == null) {
@@ -604,13 +618,13 @@ public final class ConversationReactionOverlay extends FrameLayout {
           view.setImageEmoji(oldEmoji);
           view.setTag(oldEmoji);
         } else {
-          view.setImageEmoji(SignalStore.emojiValues().getPreferredVariation(emojis.get(i)));
+          view.setImageEmoji(SignalStore.emoji().getPreferredVariation(emojis.get(i)));
         }
       } else if (isAtCustomIndex) {
         view.setImageDrawable(ContextCompat.getDrawable(getContext(), R.drawable.ic_any_emoji_32));
         view.setTag(null);
       } else {
-        view.setImageEmoji(SignalStore.emojiValues().getPreferredVariation(emojis.get(i)));
+        view.setImageEmoji(SignalStore.emoji().getPreferredVariation(emojis.get(i)));
       }
     }
   }
@@ -676,7 +690,7 @@ public final class ConversationReactionOverlay extends FrameLayout {
       if (selected == customEmojiIndex) {
         onReactionSelectedListener.onCustomReactionSelected(messageRecord, emojiViews[selected].getTag() != null);
       } else {
-        onReactionSelectedListener.onReactionSelected(messageRecord, SignalStore.emojiValues().getPreferredVariation(SignalStore.emojiValues().getReactions().get(selected)));
+        onReactionSelectedListener.onReactionSelected(messageRecord, SignalStore.emoji().getPreferredVariation(SignalStore.emoji().getReactions().get(selected)));
       }
     } else {
       hide();
@@ -716,7 +730,7 @@ public final class ConversationReactionOverlay extends FrameLayout {
       items.add(new ActionItem(R.drawable.symbol_reply_24, getResources().getString(R.string.conversation_selection__menu_reply), () -> handleActionItemClicked(Action.REPLY)));
     }
 
-    if (FeatureFlags.editMessageSending() && menuState.shouldShowEditAction()) {
+    if (menuState.shouldShowEditAction()) {
       items.add(new ActionItem(R.drawable.symbol_edit_24, getResources().getString(R.string.conversation_selection__menu_edit), () -> handleActionItemClicked(Action.EDIT)));
     }
 
@@ -744,6 +758,10 @@ public final class ConversationReactionOverlay extends FrameLayout {
 
     if (menuState.shouldShowDetailsAction()) {
       items.add(new ActionItem(R.drawable.symbol_info_24, getResources().getString(R.string.conversation_selection__menu_message_details), () -> handleActionItemClicked(Action.VIEW_INFO)));
+    }
+
+    if (menuState.shouldShowPollTerminateAction()) {
+      items.add(new ActionItem(R.drawable.symbol_stop_24, getResources().getString(R.string.conversation_selection__menu_end_poll), () -> handleActionItemClicked(Action.END_POLL)));
     }
 
     backgroundView.setVisibility(menuState.shouldShowReactions() ? View.VISIBLE : View.INVISIBLE);
@@ -947,5 +965,6 @@ public final class ConversationReactionOverlay extends FrameLayout {
     PAYMENT_DETAILS,
     VIEW_INFO,
     DELETE,
+    END_POLL
   }
 }

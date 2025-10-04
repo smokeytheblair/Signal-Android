@@ -46,12 +46,22 @@ public abstract class Slide {
   }
 
   public String getContentType() {
-    return attachment.getContentType();
+    return attachment.contentType;
+  }
+
+  @Nullable
+  public Uri getThumbnailUri() {
+    return attachment.getThumbnailUri();
   }
 
   @Nullable
   public Uri getUri() {
     return attachment.getUri();
+  }
+
+  @Nullable
+  public Uri getDisplayUri() {
+    return attachment.getDisplayUri();
   }
 
   public @Nullable Uri getPublicUri() {
@@ -69,21 +79,26 @@ public abstract class Slide {
 
   @NonNull
   public Optional<String> getCaption() {
-    return Optional.ofNullable(attachment.getCaption());
+    return Optional.ofNullable(attachment.caption);
   }
 
   @NonNull
   public Optional<String> getFileName() {
-    return Optional.ofNullable(attachment.getFileName());
+    return Optional.ofNullable(attachment.fileName);
   }
 
   @Nullable
   public String getFastPreflightId() {
-    return attachment.getFastPreflightId();
+    return attachment.fastPreflightId;
+  }
+
+  @Nullable
+  public String getQuoteTargetContentType() {
+    return attachment.quoteTargetContentType;
   }
 
   public long getFileSize() {
-    return attachment.getSize();
+    return attachment.size;
   }
 
   public boolean hasImage() {
@@ -117,7 +132,7 @@ public abstract class Slide {
   }
 
   public boolean isVideoGif() {
-    return hasVideo() && attachment.isVideoGif();
+    return hasVideo() && attachment.videoGif;
   }
 
   public @NonNull String getContentDescription(@NonNull Context context) { return ""; }
@@ -132,11 +147,12 @@ public abstract class Slide {
 
   public boolean isPendingDownload() {
     return getTransferState() == AttachmentTable.TRANSFER_PROGRESS_FAILED ||
-           getTransferState() == AttachmentTable.TRANSFER_PROGRESS_PENDING;
+           getTransferState() == AttachmentTable.TRANSFER_PROGRESS_PENDING ||
+           getTransferState() == AttachmentTable.TRANSFER_RESTORE_OFFLOADED;
   }
 
   public int getTransferState() {
-    return attachment.getTransferState();
+    return attachment.transferState;
   }
 
   public @DrawableRes int getPlaceholderRes(Theme theme) {
@@ -144,11 +160,15 @@ public abstract class Slide {
   }
 
   public @Nullable BlurHash getPlaceholderBlur() {
-    return attachment.getBlurHash();
+    return attachment.blurHash;
   }
 
   public boolean hasPlaceholder() {
     return false;
+  }
+
+  public boolean hasThumbnail() {
+    return attachment.getThumbnailUri() != null;
   }
 
   public boolean hasPlayOverlay() {
@@ -207,6 +227,7 @@ public abstract class Slide {
                              borderless,
                              gif,
                              quote,
+                             null,
                              caption,
                              stickerLocator,
                              blurHash,
@@ -215,34 +236,7 @@ public abstract class Slide {
   }
 
   public @NonNull Optional<String> getFileType(@NonNull Context context) {
-    Optional<String> fileName = getFileName();
-
-    if (fileName.isPresent()) {
-      String fileType = getFileType(fileName);
-      if (!fileType.isEmpty()) {
-        return Optional.of(fileType);
-      }
-    }
-
-    return Optional.ofNullable(MediaUtil.getExtension(context, getUri()));
-  }
-
-  private static @NonNull String getFileType(Optional<String> fileName) {
-    if (!fileName.isPresent()) return "";
-
-    String[] parts = fileName.get().split("\\.");
-
-    if (parts.length < 2) {
-      return "";
-    }
-
-    String suffix = parts[parts.length - 1];
-
-    if (suffix.length() <= 3) {
-      return suffix;
-    }
-
-    return "";
+    return MediaUtil.getFileType(context, getFileName(), getUri());
   }
 
   @Override

@@ -1,5 +1,6 @@
 package org.thoughtcrime.securesms.database
 
+import android.app.Application
 import android.content.Context
 import net.zetetic.database.DatabaseErrorHandler
 import net.zetetic.database.sqlcipher.SQLiteConnection
@@ -9,48 +10,62 @@ import org.signal.core.util.CursorUtil
 import org.signal.core.util.ExceptionUtil
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.crypto.DatabaseSecretProvider
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
  * The default error handler wipes the file. This one instead prints some diagnostics and then crashes so the original corrupt file isn't lost.
  */
 @Suppress("ClassName")
-class SqlCipherErrorHandler(private val databaseName: String) : DatabaseErrorHandler {
+class SqlCipherErrorHandler(private val application: Application, private val databaseName: String) : DatabaseErrorHandler {
+  companion object {
+    private val TAG = Log.tag(SqlCipherErrorHandler::class.java)
+
+    private val errorHandlingInProgress = AtomicBoolean(false)
+  }
 
   override fun onCorruption(db: SQLiteDatabase, message: String) {
-    val result: DiagnosticResults = runDiagnostics(ApplicationDependencies.getApplication(), db)
-    var lines: List<String> = result.logs.split("\n")
-    lines = listOf("Database '$databaseName' corrupted!", "[sqlite] $message", "Diagnostics results:") + lines
+    if (errorHandlingInProgress.getAndSet(true)) {
+      Log.w(TAG, "Error handling already in progress, skipping.")
+      return
+    }
 
-    Log.e(TAG, "Database '$databaseName' corrupted!")
-    Log.e(TAG, "[sqlite] $message")
-    Log.e(TAG, "Diagnostic results:\n ${result.logs}")
+    try {
+      val result: DiagnosticResults = runDiagnostics(application, db)
+      var lines: List<String> = result.logs.split("\n")
+      lines = listOf("Database '$databaseName' corrupted!", "[sqlite] $message", "Diagnostics results:") + lines
 
-    if (result is DiagnosticResults.Success) {
-      if (result.pragma1Passes && result.pragma2Passes) {
-        var endCount = 0
-        while (db.inTransaction() && endCount < 10) {
-          db.endTransaction()
-          endCount++
+      Log.e(TAG, "Database '$databaseName' corrupted!")
+      Log.e(TAG, "[sqlite] $message")
+      Log.e(TAG, "Diagnostic results:\n ${result.logs}")
+
+      if (result is DiagnosticResults.Success) {
+        if (result.pragma1Passes && result.pragma2Passes) {
+          var endCount = 0
+          while (db.inTransaction() && endCount < 10) {
+            db.endTransaction()
+            endCount++
+          }
+
+          attemptToClearFullTextSearchIndex(db)
+          throw DatabaseCorruptedError_BothChecksPass(lines)
+        } else if (!result.pragma1Passes && result.pragma2Passes) {
+          attemptToClearFullTextSearchIndex(db)
+          throw DatabaseCorruptedError_NormalCheckFailsCipherCheckPasses(lines)
+        } else if (result.pragma1Passes && !result.pragma2Passes) {
+          attemptToClearFullTextSearchIndex(db)
+          throw DatabaseCorruptedError_NormalCheckPassesCipherCheckFails(lines)
+        } else {
+          attemptToClearFullTextSearchIndex(db)
+          throw DatabaseCorruptedError_BothChecksFail(lines)
         }
-
-        attemptToClearFullTextSearchIndex(db)
-        throw DatabaseCorruptedError_BothChecksPass(lines)
-      } else if (!result.pragma1Passes && result.pragma2Passes) {
-        attemptToClearFullTextSearchIndex(db)
-        throw DatabaseCorruptedError_NormalCheckFailsCipherCheckPasses(lines)
-      } else if (result.pragma1Passes && !result.pragma2Passes) {
-        attemptToClearFullTextSearchIndex(db)
-        throw DatabaseCorruptedError_NormalCheckPassesCipherCheckFails(lines)
       } else {
         attemptToClearFullTextSearchIndex(db)
-        throw DatabaseCorruptedError_BothChecksFail(lines)
+        throw DatabaseCorruptedError_FailedToRunChecks(lines)
       }
-    } else {
-      attemptToClearFullTextSearchIndex(db)
-      throw DatabaseCorruptedError_FailedToRunChecks(lines)
+    } finally {
+      errorHandlingInProgress.set(false)
     }
   }
 
@@ -156,9 +171,9 @@ class SqlCipherErrorHandler(private val databaseName: String) : DatabaseErrorHan
       } catch (e: Exception) {
         Log.w(TAG, "Failed to re-open as read-write!", e)
       }
-      SignalDatabase.messageSearch.fullyResetTables(db)
+      SignalDatabase.messageSearch.rebuildIndex(db)
     } catch (e: Throwable) {
-      Log.w(TAG, "Failed to clear full text search index.", e)
+      Log.w(TAG, "Failed to rebuild the full text search index.", e)
     }
   }
 
@@ -184,8 +199,4 @@ class SqlCipherErrorHandler(private val databaseName: String) : DatabaseErrorHan
   private class DatabaseCorruptedError_NormalCheckFailsCipherCheckPasses constructor(lines: List<String>) : CustomTraceError(lines)
   private class DatabaseCorruptedError_NormalCheckPassesCipherCheckFails constructor(lines: List<String>) : CustomTraceError(lines)
   private class DatabaseCorruptedError_FailedToRunChecks constructor(lines: List<String>) : CustomTraceError(lines)
-
-  companion object {
-    private val TAG = Log.tag(SqlCipherErrorHandler::class.java)
-  }
 }

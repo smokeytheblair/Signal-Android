@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 public enum KeepMessagesDuration {
   FOREVER(0, R.string.preferences_storage__forever, Long.MAX_VALUE),
-  ONE_YEAR(1, R.string.preferences_storage__one_year, TimeUnit.DAYS.toMillis(365)),
+  ONE_YEAR(1, R.string.preferences_storage__one_year, TimeUnit.DAYS.toMillis(367)),
   SIX_MONTHS(2, R.string.preferences_storage__six_months, TimeUnit.DAYS.toMillis(183)),
   THIRTY_DAYS(3, R.string.preferences_storage__thirty_days, TimeUnit.DAYS.toMillis(30));
 
@@ -35,7 +35,7 @@ public enum KeepMessagesDuration {
     return duration;
   }
 
-  static @NonNull KeepMessagesDuration fromId(int id) {
+  public static @NonNull KeepMessagesDuration fromId(int id) {
     return values()[id];
   }
 }

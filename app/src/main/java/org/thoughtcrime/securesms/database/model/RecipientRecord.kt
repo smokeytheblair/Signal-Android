@@ -9,8 +9,9 @@ import org.thoughtcrime.securesms.conversation.colors.ChatColors
 import org.thoughtcrime.securesms.database.IdentityTable.VerifiedStatus
 import org.thoughtcrime.securesms.database.RecipientTable
 import org.thoughtcrime.securesms.database.RecipientTable.MentionSetting
+import org.thoughtcrime.securesms.database.RecipientTable.PhoneNumberSharingState
 import org.thoughtcrime.securesms.database.RecipientTable.RegisteredState
-import org.thoughtcrime.securesms.database.RecipientTable.UnidentifiedAccessMode
+import org.thoughtcrime.securesms.database.RecipientTable.SealedSenderAccessMode
 import org.thoughtcrime.securesms.database.RecipientTable.VibrateState
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.profiles.ProfileName
@@ -42,6 +43,7 @@ data class RecipientRecord(
   val messageRingtone: Uri?,
   val callRingtone: Uri?,
   val expireMessages: Int,
+  val expireTimerVersion: Int,
   val registered: RegisteredState,
   val profileKey: ByteArray?,
   val expiringProfileKeyCredential: ExpiringProfileKeyCredential?,
@@ -59,7 +61,7 @@ data class RecipientRecord(
   val profileSharing: Boolean,
   val lastProfileFetch: Long,
   val notificationChannel: String?,
-  val unidentifiedAccessMode: UnidentifiedAccessMode,
+  val sealedSenderAccessMode: SealedSenderAccessMode,
   val capabilities: Capabilities,
   val storageId: ByteArray?,
   val mentionSetting: MentionSetting,
@@ -76,7 +78,10 @@ data class RecipientRecord(
   @get:JvmName("needsPniSignature")
   val needsPniSignature: Boolean,
   val hiddenState: Recipient.HiddenState,
-  val callLinkRoomId: CallLinkRoomId?
+  val callLinkRoomId: CallLinkRoomId?,
+  val phoneNumberSharing: PhoneNumberSharingState,
+  val nickname: ProfileName,
+  val note: String?
 ) {
 
   fun e164Only(): Boolean {
@@ -109,32 +114,17 @@ data class RecipientRecord(
     val isArchived: Boolean,
     val isForcedUnread: Boolean,
     val unregisteredTimestamp: Long,
-    val systemNickname: String?
+    val systemNickname: String?,
+    val pniSignatureVerified: Boolean
   )
 
   data class Capabilities(
-    val rawBits: Long,
-    val groupsV1MigrationCapability: Recipient.Capability,
-    val senderKeyCapability: Recipient.Capability,
-    val announcementGroupCapability: Recipient.Capability,
-    val changeNumberCapability: Recipient.Capability,
-    val storiesCapability: Recipient.Capability,
-    val giftBadgesCapability: Recipient.Capability,
-    val pnpCapability: Recipient.Capability,
-    val paymentActivation: Recipient.Capability
+    val rawBits: Long
   ) {
     companion object {
       @JvmField
       val UNKNOWN = Capabilities(
-        0,
-        Recipient.Capability.UNKNOWN,
-        Recipient.Capability.UNKNOWN,
-        Recipient.Capability.UNKNOWN,
-        Recipient.Capability.UNKNOWN,
-        Recipient.Capability.UNKNOWN,
-        Recipient.Capability.UNKNOWN,
-        Recipient.Capability.UNKNOWN,
-        Recipient.Capability.UNKNOWN
+        rawBits = 0
       )
     }
   }

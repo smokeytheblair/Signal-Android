@@ -5,6 +5,7 @@ import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord
 import org.signal.libsignal.protocol.state.IdentityKeyStore
+import org.signal.libsignal.protocol.state.IdentityKeyStore.IdentityChange
 import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.SessionRecord
@@ -34,10 +35,13 @@ class InMemorySignalServiceAccountDataStore : SignalServiceAccountDataStore {
     return 1
   }
 
-  override fun saveIdentity(address: SignalProtocolAddress, identityKey: IdentityKey): Boolean {
-    val hadPrevious = identities.containsKey(address)
-    identities[address] = identityKey
-    return hadPrevious
+  override fun saveIdentity(address: SignalProtocolAddress, identityKey: IdentityKey): IdentityChange {
+    val previous = identities.put(address, identityKey)
+    return if (previous == null || previous == identityKey) {
+      IdentityChange.NEW_OR_UNCHANGED
+    } else {
+      IdentityChange.REPLACED_EXISTING
+    }
   }
 
   override fun isTrustedIdentity(address: SignalProtocolAddress?, identityKey: IdentityKey?, direction: IdentityKeyStore.Direction?): Boolean {
@@ -118,8 +122,8 @@ class InMemorySignalServiceAccountDataStore : SignalServiceAccountDataStore {
     senderKeys[SenderKeyLocator(sender, distributionId)] = record
   }
 
-  override fun loadSenderKey(sender: SignalProtocolAddress, distributionId: UUID): SenderKeyRecord {
-    return senderKeys[SenderKeyLocator(sender, distributionId)]!!
+  override fun loadSenderKey(sender: SignalProtocolAddress, distributionId: UUID): SenderKeyRecord? {
+    return senderKeys[SenderKeyLocator(sender, distributionId)]
   }
 
   override fun loadKyberPreKey(kyberPreKeyId: Int): KyberPreKeyRecord {
@@ -142,11 +146,27 @@ class InMemorySignalServiceAccountDataStore : SignalServiceAccountDataStore {
     kyberPreKeys.remove(kyberPreKeyId)
   }
 
+  override fun deleteAllStaleOneTimeEcPreKeys(threshold: Long, minCount: Int) {
+    error("Not used")
+  }
+
+  override fun markAllOneTimeEcPreKeysStaleIfNecessary(staleTime: Long) {
+    error("Not used")
+  }
+
   override fun storeLastResortKyberPreKey(kyberPreKeyId: Int, kyberPreKeyRecord: KyberPreKeyRecord) {
     error("Not used")
   }
 
   override fun removeKyberPreKey(kyberPreKeyId: Int) {
+    error("Not used")
+  }
+
+  override fun markAllOneTimeKyberPreKeysStaleIfNecessary(staleTime: Long) {
+    error("Not used")
+  }
+
+  override fun deleteAllStaleOneTimeKyberPreKeys(threshold: Long, minCount: Int) {
     error("Not used")
   }
 
@@ -158,12 +178,11 @@ class InMemorySignalServiceAccountDataStore : SignalServiceAccountDataStore {
     sessions[address]!!.archiveCurrentState()
   }
 
-  override fun getAllAddressesWithActiveSessions(addressNames: MutableList<String>): Set<SignalProtocolAddress> {
+  override fun getAllAddressesWithActiveSessions(addressNames: MutableList<String>): MutableMap<SignalProtocolAddress, SessionRecord> {
     return sessions
       .filter { it.key.name in addressNames }
       .filter { it.value.isValid() }
-      .map { it.key }
-      .toSet()
+      .toMutableMap()
   }
 
   override fun getSenderKeySharedWith(distributionId: DistributionId): Set<SignalProtocolAddress> {

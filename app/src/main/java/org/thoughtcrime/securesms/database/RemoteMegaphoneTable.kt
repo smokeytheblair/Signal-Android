@@ -8,7 +8,7 @@ import androidx.core.content.contentValuesOf
 import androidx.core.net.toUri
 import org.json.JSONException
 import org.json.JSONObject
-import org.signal.core.util.delete
+import org.signal.core.util.deleteAll
 import org.signal.core.util.logging.Log
 import org.signal.core.util.readToList
 import org.signal.core.util.requireInt
@@ -29,7 +29,7 @@ class RemoteMegaphoneTable(context: Context, databaseHelper: SignalDatabase) : D
   companion object {
     private val TAG = Log.tag(RemoteMegaphoneTable::class.java)
 
-    private const val TABLE_NAME = "remote_megaphone"
+    const val TABLE_NAME = "remote_megaphone"
     private const val ID = "_id"
     private const val UUID = "uuid"
     private const val COUNTRIES = "countries"
@@ -194,9 +194,7 @@ class RemoteMegaphoneTable(context: Context, databaseHelper: SignalDatabase) : D
 
   /** Only call from internal settings */
   fun debugRemoveAll() {
-    writableDatabase
-      .delete(TABLE_NAME)
-      .run()
+    writableDatabase.deleteAll(TABLE_NAME)
   }
 
   private fun RemoteMegaphoneRecord.toContentValues(): ContentValues {

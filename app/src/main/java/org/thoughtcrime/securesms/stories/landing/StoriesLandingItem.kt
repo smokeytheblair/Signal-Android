@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
@@ -16,9 +17,8 @@ import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.avatar.view.AvatarView
 import org.thoughtcrime.securesms.badges.BadgeImageView
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
-import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader
-import org.thoughtcrime.securesms.mms.GlideApp
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
+import org.thoughtcrime.securesms.mms.DecryptableUri
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.stories.StoryTextPostModel
 import org.thoughtcrime.securesms.stories.dialogs.StoryContextMenu
@@ -66,8 +66,18 @@ object StoriesLandingItem {
         data == newItem.data &&
         !hasStatusChange(newItem) &&
         !hasThumbChange(newItem) &&
+        !hasSelfProfileChange(newItem) &&
         (data.sendingCount == newItem.data.sendingCount && data.failureCount == newItem.data.failureCount) &&
         data.storyViewState == newItem.data.storyViewState
+    }
+
+    private fun hasSelfProfileChange(newItem: Model): Boolean {
+      if (!data.storyRecipient.isMyStory || !newItem.data.storyRecipient.isMyStory) {
+        return false
+      }
+      val old = data.individualRecipient
+      val new = Recipient.self()
+      return old.hasAvatar != new.hasAvatar || old.profileAvatarFileDetails != new.profileAvatarFileDetails || old.profileName.toString() != new.profileName.toString()
     }
 
     override fun getChangePayload(newItem: Model): Any? {
@@ -92,8 +102,8 @@ object StoriesLandingItem {
     }
 
     private fun hasThumbChange(newItem: Model): Boolean {
-      val oldRecord = data.primaryStory.messageRecord as? MediaMmsMessageRecord ?: return false
-      val newRecord = newItem.data.primaryStory.messageRecord as? MediaMmsMessageRecord ?: return false
+      val oldRecord = data.primaryStory.messageRecord as? MmsMessageRecord ?: return false
+      val newRecord = newItem.data.primaryStory.messageRecord as? MmsMessageRecord ?: return false
 
       val oldThumb = oldRecord.slideDeck.thumbnailSlide?.uri
       val newThumb = newRecord.slideDeck.thumbnailSlide?.uri
@@ -150,7 +160,7 @@ object StoriesLandingItem {
         badgeView.setBadgeFromRecipient(model.data.storyRecipient)
       }
 
-      val record = model.data.primaryStory.messageRecord as MediaMmsMessageRecord
+      val record = model.data.primaryStory.messageRecord as MmsMessageRecord
 
       avatarView.setStoryRingFromState(model.data.storyViewState)
 
@@ -164,14 +174,14 @@ object StoriesLandingItem {
       clearGlide()
       storyBlur.visible = blur != null
       if (blur != null) {
-        GlideApp.with(storyBlur).load(blur).into(storyBlur)
+        Glide.with(storyBlur).load(blur).into(storyBlur)
       }
 
       @Suppress("CascadeIf")
       if (record.storyType.isTextStory) {
         storyBlur.visible = false
         val storyTextPostModel = StoryTextPostModel.parseFrom(record)
-        GlideApp.with(storyPreview)
+        Glide.with(storyPreview)
           .load(storyTextPostModel)
           .placeholder(storyTextPostModel.getPlaceholder())
           .centerCrop()
@@ -179,8 +189,8 @@ object StoriesLandingItem {
           .into(storyPreview)
       } else if (thumbnail != null) {
         storyBlur.visible = blur != null
-        GlideApp.with(storyPreview)
-          .load(DecryptableStreamUriLoader.DecryptableUri(thumbnail))
+        Glide.with(storyPreview)
+          .load(DecryptableUri(thumbnail))
           .addListener(HideBlurAfterLoadListener())
           .centerCrop()
           .dontAnimate()
@@ -188,14 +198,14 @@ object StoriesLandingItem {
       }
 
       if (model.data.secondaryStory != null) {
-        val secondaryRecord = model.data.secondaryStory.messageRecord as MediaMmsMessageRecord
+        val secondaryRecord = model.data.secondaryStory.messageRecord as MmsMessageRecord
         val secondaryThumb = secondaryRecord.slideDeck.thumbnailSlide?.uri
         storyOutline.setBackgroundColor(ContextCompat.getColor(context, R.color.signal_background_primary))
 
         @Suppress("CascadeIf")
         if (secondaryRecord.storyType.isTextStory) {
           val storyTextPostModel = StoryTextPostModel.parseFrom(secondaryRecord)
-          GlideApp.with(storyMulti)
+          Glide.with(storyMulti)
             .load(storyTextPostModel)
             .placeholder(storyTextPostModel.getPlaceholder())
             .centerCrop()
@@ -203,20 +213,20 @@ object StoriesLandingItem {
             .into(storyMulti)
           storyMulti.visible = true
         } else if (secondaryThumb != null) {
-          GlideApp.with(storyMulti)
-            .load(DecryptableStreamUriLoader.DecryptableUri(secondaryThumb))
+          Glide.with(storyMulti)
+            .load(DecryptableUri(secondaryThumb))
             .centerCrop()
             .dontAnimate()
             .into(storyMulti)
           storyMulti.visible = true
         } else {
           storyOutline.setBackgroundColor(Color.TRANSPARENT)
-          GlideApp.with(storyMulti).clear(storyMulti)
+          Glide.with(storyMulti).clear(storyMulti)
           storyMulti.visible = false
         }
       } else {
         storyOutline.setBackgroundColor(Color.TRANSPARENT)
-        GlideApp.with(storyMulti).clear(storyMulti)
+        Glide.with(storyMulti).clear(storyMulti)
         storyMulti.visible = false
       }
 
@@ -303,8 +313,8 @@ object StoriesLandingItem {
     }
 
     private fun clearGlide() {
-      GlideApp.with(storyPreview).clear(storyPreview)
-      GlideApp.with(storyBlur).clear(storyBlur)
+      Glide.with(storyPreview).clear(storyPreview)
+      Glide.with(storyBlur).clear(storyBlur)
     }
 
     private inner class HideBlurAfterLoadListener : RequestListener<Drawable> {

@@ -14,8 +14,10 @@ import androidx.lifecycle.ViewModelProvider
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import org.signal.core.util.ByteLimitInputFilter
 import org.signal.core.util.EditTextUtil
 import org.thoughtcrime.securesms.R
+import org.thoughtcrime.securesms.components.KeyboardAwareLinearLayout
 import org.thoughtcrime.securesms.components.KeyboardEntryDialogFragment
 import org.thoughtcrime.securesms.components.ViewBinderDelegate
 import org.thoughtcrime.securesms.components.emoji.MediaKeyboard
@@ -30,12 +32,14 @@ import org.thoughtcrime.securesms.conversation.ui.mentions.MentionsPickerViewMod
 import org.thoughtcrime.securesms.databinding.V2MediaAddMessageDialogFragmentBinding
 import org.thoughtcrime.securesms.keyboard.KeyboardPage
 import org.thoughtcrime.securesms.keyboard.KeyboardPagerViewModel
-import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.mediasend.v2.HudCommand
+import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionState
 import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionViewModel
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.stories.Stories
+import org.thoughtcrime.securesms.util.MediaUtil
+import org.thoughtcrime.securesms.util.MessageUtil
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.views.Stub
 import org.thoughtcrime.securesms.util.visible
@@ -89,14 +93,20 @@ class AddMessageDialogFragment : KeyboardEntryDialogFragment(R.layout.v2_media_a
     })
 
     binding.content.addAMessageInput.setText(requireArguments().getCharSequence(ARG_INITIAL_TEXT))
+    binding.content.addAMessageInput.addTextChangedListener { viewModel.setMessage(it) }
+    binding.content.addAMessageInput.filters += ByteLimitInputFilter(MessageUtil.MAX_TOTAL_BODY_SIZE_BYTES)
 
-    if (SignalStore.settings().isPreferSystemEmoji) {
-      binding.content.emojiToggle.visible = false
-    } else {
-      binding.content.emojiToggle.setOnClickListener { onEmojiToggleClicked() }
+    binding.content.emojiToggle.setOnClickListener { onEmojiToggleClicked() }
+    if (requireArguments().getBoolean(ARG_INITIAL_EMOJI_TOGGLE) && view is KeyboardAwareLinearLayout) {
+      view.addOnKeyboardShownListener(EmojiLaunchListener(view))
     }
 
     binding.hud.setOnClickListener { dismissAllowingStateLoss() }
+
+    binding.content.viewOnceToggle.setOnClickListener {
+      dismissAllowingStateLoss()
+      viewModel.incrementViewOnceState()
+    }
 
     val confirm: View = view.findViewById(R.id.confirm_button)
     confirm.setOnClickListener { dismissAllowingStateLoss() }
@@ -117,6 +127,19 @@ class AddMessageDialogFragment : KeyboardEntryDialogFragment(R.layout.v2_media_a
         }
       }
     )
+
+    viewModel.state.observe(viewLifecycleOwner) { state ->
+      val newChild = if (state.viewOnceToggleState == MediaSelectionState.ViewOnceToggleState.ONCE) 1 else 0
+      if (binding.content.viewOnceToggle.displayedChild != newChild) {
+        binding.content.viewOnceToggle.displayedChild = newChild
+      }
+
+      if (state.viewOnceToggleState == MediaSelectionState.ViewOnceToggleState.ONCE) {
+        binding.content.addAMessageInput.text = null
+        dismiss()
+      }
+      binding.content.viewOnceToggle.visible = state.selectedMedia.size == 1 && !state.isStory && !MediaUtil.isDocumentType(state.focusedMedia?.contentType)
+    }
 
     initializeMentions()
   }
@@ -271,16 +294,25 @@ class AddMessageDialogFragment : KeyboardEntryDialogFragment(R.layout.v2_media_a
     binding.content.addAMessageInput.dispatchKeyEvent(keyEvent)
   }
 
+  private inner class EmojiLaunchListener(private val layout: KeyboardAwareLinearLayout) : KeyboardAwareLinearLayout.OnKeyboardShownListener {
+    override fun onKeyboardShown() {
+      layout.removeOnKeyboardShownListener(this)
+      onEmojiToggleClicked()
+    }
+  }
+
   companion object {
 
     const val TAG = "ADD_MESSAGE_DIALOG_FRAGMENT"
 
     private const val ARG_INITIAL_TEXT = "arg.initial.text"
+    private const val ARG_INITIAL_EMOJI_TOGGLE = "arg.initial.emojiToggle"
 
-    fun show(fragmentManager: FragmentManager, initialText: CharSequence?) {
+    fun show(fragmentManager: FragmentManager, initialText: CharSequence?, startWithEmojiKeyboard: Boolean) {
       AddMessageDialogFragment().apply {
         arguments = Bundle().apply {
           putCharSequence(ARG_INITIAL_TEXT, initialText)
+          putBoolean(ARG_INITIAL_EMOJI_TOGGLE, startWithEmojiKeyboard)
         }
       }.show(fragmentManager, TAG)
     }

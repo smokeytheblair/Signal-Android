@@ -19,7 +19,7 @@ import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.audio.AudioDeviceUpdatedListener
 import org.thoughtcrime.securesms.audio.SignalBluetoothManager
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.util.safeUnregisterReceiver
 import org.whispersystems.signalservice.api.util.Preconditions
@@ -33,7 +33,7 @@ sealed class SignalAudioManager(protected val context: Context, protected val ev
 
   protected var state: State = State.UNINITIALIZED
 
-  protected val androidAudioManager = ApplicationDependencies.getAndroidCallAudioManager()
+  protected val androidAudioManager = AppDependencies.androidCallAudioManager
 
   protected var selectedAudioDevice: AudioDevice = AudioDevice.NONE
 
@@ -43,6 +43,8 @@ sealed class SignalAudioManager(protected val context: Context, protected val ev
 
   protected val incomingRinger = IncomingRinger(context)
   protected val outgoingRinger = OutgoingRinger(context)
+
+  private val stateChangeUpSoundId = soundPool.load(context, R.raw.notification_simple_01, 1)
 
   companion object {
     @JvmStatic
@@ -66,6 +68,7 @@ sealed class SignalAudioManager(protected val context: Context, protected val ev
         is AudioManagerCommand.StartIncomingRinger -> startIncomingRinger(command.ringtoneUri, command.vibrate)
         is AudioManagerCommand.SilenceIncomingRinger -> silenceIncomingRinger()
         is AudioManagerCommand.StartOutgoingRinger -> startOutgoingRinger()
+        is AudioManagerCommand.PlayStateChangeUp -> playStateChangeUp()
       }
     }
   }
@@ -79,6 +82,11 @@ sealed class SignalAudioManager(protected val context: Context, protected val ev
         commandAndControlThread = null
       }
     }
+  }
+
+  private fun playStateChangeUp() {
+    val volume: Float = androidAudioManager.voiceCallVolume
+    soundPool.play(stateChangeUpSoundId, volume, volume, 0, 0, 1f)
   }
 
   protected abstract fun initialize()
@@ -95,11 +103,17 @@ sealed class SignalAudioManager(protected val context: Context, protected val ev
   }
 
   enum class AudioDevice {
-    SPEAKER_PHONE, WIRED_HEADSET, EARPIECE, BLUETOOTH, NONE
+    SPEAKER_PHONE,
+    WIRED_HEADSET,
+    EARPIECE,
+    BLUETOOTH,
+    NONE
   }
 
   enum class State {
-    UNINITIALIZED, PREINITIALIZED, RUNNING
+    UNINITIALIZED,
+    PREINITIALIZED,
+    RUNNING
   }
 
   /**
@@ -370,7 +384,7 @@ class FullSignalAudioManager(context: Context, eventListener: EventListener?) : 
     if (isId) {
       throw IllegalArgumentException("Passing audio device address $device to legacy audio manager")
     }
-    val mappedDevice = AudioDevice.values()[device]
+    val mappedDevice = AudioDevice.entries[device]
     val actualDevice: AudioDevice = if (mappedDevice == AudioDevice.EARPIECE && audioDevices.contains(AudioDevice.WIRED_HEADSET)) AudioDevice.WIRED_HEADSET else mappedDevice
 
     Log.d(TAG, "selectAudioDevice(): device: $device actualDevice: $actualDevice")

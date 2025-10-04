@@ -3,7 +3,6 @@ package org.thoughtcrime.securesms.webrtc.locks;
 import android.content.Context;
 import android.net.wifi.WifiManager;
 import android.os.PowerManager;
-import android.provider.Settings;
 
 import org.signal.core.util.logging.Log;
 
@@ -16,17 +15,12 @@ public class LockManager {
 
   private static final String TAG = Log.tag(LockManager.class);
 
-  private final PowerManager.WakeLock        fullLock;
-  private final PowerManager.WakeLock        partialLock;
-  private final WifiManager.WifiLock         wifiLock;
-  private final ProximityLock                proximityLock;
+  private final PowerManager.WakeLock fullLock;
+  private final PowerManager.WakeLock partialLock;
+  private final WifiManager.WifiLock  wifiLock;
+  private final ProximityLock         proximityLock;
 
-  private final AccelerometerListener accelerometerListener;
-  private final boolean               wifiLockEnforced;
-
-
-  private int orientation = AccelerometerListener.ORIENTATION_UNKNOWN;
-  private boolean proximityDisabled = false;
+  private boolean     proximityDisabled = false;
 
   public enum PhoneState {
     IDLE,
@@ -56,32 +50,10 @@ public class LockManager {
     fullLock.setReferenceCounted(false);
     partialLock.setReferenceCounted(false);
     wifiLock.setReferenceCounted(false);
-
-    accelerometerListener = new AccelerometerListener(context, new AccelerometerListener.OrientationListener() {
-      @Override
-      public void orientationChanged(int newOrientation) {
-        orientation = newOrientation;
-        Log.d(TAG, "Orentation Update: " + newOrientation);
-        updateInCallLockState();
-      }
-    });
-
-    wifiLockEnforced = isWifiPowerActiveModeEnabled(context);
-  }
-
-  private boolean isWifiPowerActiveModeEnabled(Context context) {
-    int wifi_pwr_active_mode = Settings.Secure.getInt(context.getContentResolver(), "wifi_pwr_active_mode", -1);
-    Log.d(TAG, "Wifi Activity Policy: " + wifi_pwr_active_mode);
-
-    if (wifi_pwr_active_mode == 0) {
-      return false;
-    }
-
-    return true;
   }
 
   private void updateInCallLockState() {
-    if (orientation != AccelerometerListener.ORIENTATION_HORIZONTAL && wifiLockEnforced && !proximityDisabled) {
+    if (!proximityDisabled) {
       setLockState(LockState.PROXIMITY);
     } else {
       setLockState(LockState.FULL);
@@ -92,29 +64,23 @@ public class LockManager {
     switch(state) {
       case IDLE:
         setLockState(LockState.SLEEP);
-        accelerometerListener.enable(false);
         break;
       case PROCESSING:
         setLockState(LockState.PARTIAL);
-        accelerometerListener.enable(false);
         break;
       case INTERACTIVE:
         setLockState(LockState.FULL);
-        accelerometerListener.enable(false);
         break;
       case IN_HANDS_FREE_CALL:
         setLockState(LockState.PARTIAL);
         proximityDisabled = true;
-        accelerometerListener.enable(false);
         break;
       case IN_VIDEO:
         proximityDisabled = true;
-        accelerometerListener.enable(false);
         updateInCallLockState();
         break;
       case IN_CALL:
         proximityDisabled = false;
-        accelerometerListener.enable(true);
         updateInCallLockState();
         break;
     }

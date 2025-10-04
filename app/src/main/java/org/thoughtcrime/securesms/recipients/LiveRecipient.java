@@ -9,24 +9,16 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 
-import com.annimon.stream.Stream;
-
 import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.conversation.colors.AvatarColor;
-import org.thoughtcrime.securesms.database.CallLinkTable;
 import org.thoughtcrime.securesms.database.DistributionListTables;
 import org.thoughtcrime.securesms.database.GroupTable;
-import org.thoughtcrime.securesms.database.model.GroupRecord;
 import org.thoughtcrime.securesms.database.RecipientTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.database.model.DistributionListRecord;
 import org.thoughtcrime.securesms.database.model.RecipientRecord;
 import org.thoughtcrime.securesms.util.livedata.LiveDataUtil;
 
-import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicReference;
@@ -103,6 +95,13 @@ public final class LiveRecipient {
   }
 
   /**
+   * Removes observer of this data.
+   */
+  public void removeObserver(@NonNull Observer<Recipient> observer) {
+    ThreadUtil.runOnMain(() -> observableLiveData.removeObserver(observer));
+  }
+
+  /**
    * Removes all observers of this data registered for the given LifecycleOwner.
    */
   public void removeObservers(@NonNull LifecycleOwner owner) {
@@ -157,8 +156,9 @@ public final class LiveRecipient {
   }
 
   @WorkerThread
-  public void refresh() {
+  public LiveRecipient refresh() {
     refresh(getId());
+    return this;
   }
 
   /**
@@ -190,60 +190,17 @@ public final class LiveRecipient {
   }
 
   private @NonNull Recipient fetchAndCacheRecipientFromDisk(@NonNull RecipientId id) {
-    RecipientRecord  record  = recipientTable.getRecord(id);
-    RecipientDetails details;
-    if (record.getGroupId() != null) {
-      details = getGroupRecipientDetails(record);
-    } else if (record.getDistributionListId() != null) {
-      details = getDistributionListRecipientDetails(record);
-    } else if (record.getCallLinkRoomId() != null) {
-      details = getCallLinkRecipientDetails(record);
-    }else {
-      details = RecipientDetails.forIndividual(context, record);
+    RecipientRecord record;
+    try {
+      record = recipientTable.getRecord(id);
+    } catch (RecipientTable.MissingRecipientException e) {
+      Log.w(TAG, "Failed to find " + id + "! Returning UNKNOWN.");
+      return Recipient.UNKNOWN;
     }
 
-    Recipient recipient = new Recipient(record.getId(), details, true);
+    Recipient recipient = RecipientCreator.forRecord(context, record);
     RecipientIdCache.INSTANCE.put(recipient);
     return recipient;
-  }
-
-  @WorkerThread
-  private @NonNull RecipientDetails getGroupRecipientDetails(@NonNull RecipientRecord record) {
-    Optional<GroupRecord> groupRecord = groupDatabase.getGroup(record.getId());
-
-    if (groupRecord.isPresent()) {
-      return RecipientDetails.forGroup(groupRecord.get(), record);
-    } else {
-      return RecipientDetails.forUnknown();
-    }
-  }
-
-  @WorkerThread
-  private @NonNull RecipientDetails getDistributionListRecipientDetails(@NonNull RecipientRecord record) {
-    DistributionListRecord groupRecord = distributionListTables.getList(Objects.requireNonNull(record.getDistributionListId()));
-
-    // TODO [stories] We'll have to see what the perf is like for very large distribution lists. We may not be able to support fetching all the members.
-    if (groupRecord != null) {
-      String            title    = groupRecord.isUnknown() ? null : groupRecord.getName();
-      List<RecipientId> members  = Stream.of(groupRecord.getMembers()).filterNot(RecipientId::isUnknown).toList();
-
-      return RecipientDetails.forDistributionList(title, members, record);
-    }
-
-    return RecipientDetails.forDistributionList(null, null, record);
-  }
-
-  @WorkerThread
-  private @NonNull RecipientDetails getCallLinkRecipientDetails(@NonNull RecipientRecord record) {
-    CallLinkTable.CallLink callLink = SignalDatabase.callLinks().getCallLinkByRoomId(Objects.requireNonNull(record.getCallLinkRoomId()));
-
-    if (callLink != null) {
-      String name = callLink.getState().getName();
-
-      return RecipientDetails.forCallLink(name, record, callLink.getAvatarColor());
-    }
-
-    return RecipientDetails.forCallLink(null, record, AvatarColor.UNKNOWN);
   }
 
   synchronized void set(@NonNull Recipient recipient) {

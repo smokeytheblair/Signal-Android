@@ -1,7 +1,6 @@
 package org.thoughtcrime.securesms.database.helpers.migration
 
 import android.app.Application
-import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.signal.core.util.SqlUtil
 import org.signal.core.util.Stopwatch
 import org.signal.core.util.delete
@@ -9,6 +8,7 @@ import org.signal.core.util.logging.Log
 import org.signal.core.util.readToList
 import org.signal.core.util.requireLong
 import org.signal.core.util.update
+import org.thoughtcrime.securesms.database.SQLiteDatabase
 
 /**
  * This one's a doozy. We want to add additional foreign key constraints between the thread, recipient, and message tables. This will let us know for sure
@@ -66,7 +66,9 @@ object V166_ThreadAndMessageForeignKeys : SignalDatabaseMigration {
         Log.w(TAG, "There were $count threads for RecipientId::$recipientId. Merging.", true)
 
         val threads: List<ThreadInfo> = getThreadsByRecipientId(db, cursor.requireLong("thread_recipient_id"))
-        mergeThreads(db, threads)
+        if (threads.size > 1) {
+          mergeThreads(db, threads)
+        }
       }
     }
   }

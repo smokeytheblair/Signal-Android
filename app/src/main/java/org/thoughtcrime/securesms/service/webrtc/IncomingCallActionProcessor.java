@@ -2,6 +2,7 @@ package org.thoughtcrime.securesms.service.webrtc;
 
 import android.net.Uri;
 import android.os.ResultReceiver;
+import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -13,11 +14,11 @@ import org.signal.ringrtc.CallManager;
 import org.thoughtcrime.securesms.database.CallTable;
 import org.thoughtcrime.securesms.database.RecipientTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.events.CallParticipant;
 import org.thoughtcrime.securesms.events.WebRtcViewModel;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.notifications.DoNotDisturbUtil;
+import org.thoughtcrime.securesms.notifications.NotificationChannels;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.ringrtc.CallState;
@@ -25,6 +26,7 @@ import org.thoughtcrime.securesms.ringrtc.RemotePeer;
 import org.thoughtcrime.securesms.service.webrtc.state.CallSetupState;
 import org.thoughtcrime.securesms.service.webrtc.state.VideoState;
 import org.thoughtcrime.securesms.service.webrtc.state.WebRtcServiceState;
+import org.thoughtcrime.securesms.util.AppForegroundObserver;
 import org.thoughtcrime.securesms.util.NetworkUtil;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.webrtc.locks.LockManager;
@@ -93,7 +95,7 @@ public class IncomingCallActionProcessor extends DeviceAwareActionProcessor {
       return currentState;
     }
 
-    boolean         hideIp          = !activePeer.getRecipient().isSystemContact() || callSetupState.isAlwaysTurnServers();
+    boolean         hideIp          = !activePeer.getRecipient().isProfileSharing() || callSetupState.isAlwaysTurnServers();
     VideoState      videoState      = currentState.getVideoState();
     CallParticipant callParticipant = Objects.requireNonNull(currentState.getCallInfoState().getRemoteCallParticipant(activePeer.getRecipient()));
 
@@ -101,7 +103,7 @@ public class IncomingCallActionProcessor extends DeviceAwareActionProcessor {
       webRtcInteractor.getCallManager().proceed(activePeer.getCallId(),
                                                 context,
                                                 videoState.getLockableEglBase().require(),
-                                                RingRtcDynamicConfiguration.getAudioProcessingMethod(),
+                                                RingRtcDynamicConfiguration.getAudioConfig(),
                                                 videoState.requireLocalSink(),
                                                 callParticipant.getVideoSink(),
                                                 videoState.requireCamera(),
@@ -171,8 +173,9 @@ public class IncomingCallActionProcessor extends DeviceAwareActionProcessor {
   protected @NonNull WebRtcServiceState handleLocalRinging(@NonNull WebRtcServiceState currentState, @NonNull RemotePeer remotePeer) {
     Log.i(TAG, "handleLocalRinging(): call_id: " + remotePeer.getCallId());
 
-    RemotePeer activePeer = currentState.getCallInfoState().requireActivePeer();
-    Recipient  recipient  = remotePeer.getRecipient();
+    RemotePeer activePeer                = currentState.getCallInfoState().requireActivePeer();
+    Recipient  recipient                 = remotePeer.getRecipient();
+    boolean    shouldDisturbUserWithCall = DoNotDisturbUtil.shouldDisturbUserWithCall(context.getApplicationContext(), recipient);
 
     activePeer.localRinging();
 
@@ -183,23 +186,28 @@ public class IncomingCallActionProcessor extends DeviceAwareActionProcessor {
                                               CallTable.Direction.INCOMING,
                                               CallTable.Event.ONGOING);
 
-    webRtcInteractor.updatePhoneState(LockManager.PhoneState.INTERACTIVE);
 
-    boolean shouldDisturbUserWithCall = DoNotDisturbUtil.shouldDisturbUserWithCall(context.getApplicationContext(), recipient);
     if (shouldDisturbUserWithCall) {
+      webRtcInteractor.updatePhoneState(LockManager.PhoneState.INTERACTIVE);
       boolean started = webRtcInteractor.startWebRtcCallActivityIfPossible();
       if (!started) {
         Log.i(TAG, "Unable to start call activity due to OS version or not being in the foreground");
-        ApplicationDependencies.getAppForegroundObserver().addListener(webRtcInteractor.getForegroundListener());
+        AppForegroundObserver.addListener(webRtcInteractor.getForegroundListener());
       }
     }
 
-    if (shouldDisturbUserWithCall && SignalStore.settings().isCallNotificationsEnabled()) {
+    boolean isCallNotificationsEnabled = SignalStore.settings().isCallNotificationsEnabled() && NotificationChannels.getInstance().areNotificationsEnabled();
+    if (shouldDisturbUserWithCall && isCallNotificationsEnabled) {
       Uri                         ringtone     = recipient.resolve().getCallRingtone();
       RecipientTable.VibrateState vibrateState = recipient.resolve().getCallVibrate();
 
       if (ringtone == null) {
         ringtone = SignalStore.settings().getCallRingtone();
+      }
+
+      if (TextUtils.isEmpty(ringtone.toString())) {
+        Log.i(TAG, "Ringtone is likely set to silent");
+        ringtone = null;
       }
 
       webRtcInteractor.startIncomingRinger(ringtone, vibrateState == RecipientTable.VibrateState.ENABLED || (vibrateState == RecipientTable.VibrateState.DEFAULT && SignalStore.settings().isCallVibrateEnabled()));
@@ -221,6 +229,11 @@ public class IncomingCallActionProcessor extends DeviceAwareActionProcessor {
 
     webRtcInteractor.silenceIncomingRinger();
     return currentState;
+  }
+
+  @Override
+  protected @NonNull WebRtcServiceState handleRemoteAudioEnable(@NonNull WebRtcServiceState currentState, boolean enable) {
+    return activeCallDelegate.handleRemoteAudioEnable(currentState, enable);
   }
 
   @Override

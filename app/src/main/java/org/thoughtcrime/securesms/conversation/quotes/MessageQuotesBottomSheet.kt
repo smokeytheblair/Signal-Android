@@ -10,6 +10,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import org.signal.core.util.concurrent.LifecycleDisposable
@@ -20,13 +21,14 @@ import org.thoughtcrime.securesms.conversation.ConversationAdapter
 import org.thoughtcrime.securesms.conversation.ConversationAdapterBridge
 import org.thoughtcrime.securesms.conversation.ConversationBottomSheetCallback
 import org.thoughtcrime.securesms.conversation.ConversationItemDisplayMode
+import org.thoughtcrime.securesms.conversation.ConversationMessage
 import org.thoughtcrime.securesms.conversation.colors.Colorizer
 import org.thoughtcrime.securesms.conversation.colors.RecyclerViewColorizer
 import org.thoughtcrime.securesms.conversation.mutiselect.MultiselectPart
 import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.database.model.MessageRecord
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.giph.mp4.GiphyMp4ItemDecoration
 import org.thoughtcrime.securesms.giph.mp4.GiphyMp4PlaybackController
 import org.thoughtcrime.securesms.giph.mp4.GiphyMp4PlaybackPolicy
@@ -35,7 +37,8 @@ import org.thoughtcrime.securesms.giph.mp4.GiphyMp4ProjectionRecycler
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.groups.GroupMigrationMembershipChange
 import org.thoughtcrime.securesms.linkpreview.LinkPreview
-import org.thoughtcrime.securesms.mms.GlideApp
+import org.thoughtcrime.securesms.polls.PollOption
+import org.thoughtcrime.securesms.polls.PollRecord
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.util.BottomSheetUtil
@@ -53,7 +56,7 @@ class MessageQuotesBottomSheet : FixedRoundedCornerBottomSheetDialogFragment() {
     factoryProducer = {
       val messageId = MessageId.deserialize(arguments?.getString(KEY_MESSAGE_ID, null) ?: throw IllegalArgumentException())
       val conversationRecipientId = RecipientId.from(arguments?.getString(KEY_CONVERSATION_RECIPIENT_ID, null) ?: throw IllegalArgumentException())
-      MessageQuotesViewModel.Factory(ApplicationDependencies.getApplication(), messageId, conversationRecipientId)
+      MessageQuotesViewModel.Factory(AppDependencies.application, messageId, conversationRecipientId)
     }
   )
 
@@ -73,7 +76,7 @@ class MessageQuotesBottomSheet : FixedRoundedCornerBottomSheetDialogFragment() {
 
     val colorizer = Colorizer()
 
-    messageAdapter = ConversationAdapter(requireContext(), viewLifecycleOwner, GlideApp.with(this), Locale.getDefault(), ConversationAdapterListener(), conversationRecipient.hasWallpaper(), colorizer).apply {
+    messageAdapter = ConversationAdapter(requireContext(), viewLifecycleOwner, Glide.with(this), Locale.getDefault(), ConversationAdapterListener(), conversationRecipient.hasWallpaper, colorizer).apply {
       setCondensedMode(ConversationItemDisplayMode.Condensed(scheduleMessageMode = false))
     }
 
@@ -253,10 +256,17 @@ class MessageQuotesBottomSheet : FixedRoundedCornerBottomSheetDialogFragment() {
       getAdapterListener().onSendPaymentClicked(recipientId)
     }
 
-    override fun onEditedIndicatorClicked(messageRecord: MessageRecord) {
+    override fun onEditedIndicatorClicked(conversationMessage: ConversationMessage) {
       dismiss()
-      getAdapterListener().onEditedIndicatorClicked(messageRecord)
+      getAdapterListener().onEditedIndicatorClicked(conversationMessage)
     }
+
+    override fun onShowSafetyTips(forGroup: Boolean) = Unit
+    override fun onReportSpamLearnMoreClicked() = Unit
+    override fun onMessageRequestAcceptOptionsClicked() = Unit
+    override fun onItemDoubleClick(item: MultiselectPart) = Unit
+    override fun onToggleVote(poll: PollRecord, pollOption: PollOption, isChecked: Boolean?) = Unit
+    override fun onViewResultsClicked(pollId: Long) = Unit
   }
 
   companion object {

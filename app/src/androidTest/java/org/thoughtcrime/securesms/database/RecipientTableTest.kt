@@ -11,8 +11,6 @@ import org.signal.core.util.CursorUtil
 import org.thoughtcrime.securesms.profiles.ProfileName
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.testing.SignalActivityRule
-import org.thoughtcrime.securesms.util.FeatureFlags
-import org.thoughtcrime.securesms.util.FeatureFlagsAccessor
 import org.whispersystems.signalservice.api.push.ServiceId.ACI
 import org.whispersystems.signalservice.api.push.ServiceId.PNI
 import java.util.UUID
@@ -29,7 +27,7 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(hiddenRecipient, ProfileName.fromParts("Hidden", "Person"))
     SignalDatabase.recipients.markHidden(hiddenRecipient)
 
-    val results = SignalDatabase.recipients.queryAllContacts("Hidden")!!
+    val results = SignalDatabase.recipients.queryAllContacts("Hidden", RecipientTable.IncludeSelfMode.Exclude)!!
 
     assertEquals(1, results.count)
   }
@@ -40,7 +38,7 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(hiddenRecipient, ProfileName.fromParts("Hidden", "Person"))
     SignalDatabase.recipients.markHidden(hiddenRecipient)
 
-    val results: MutableList<RecipientId> = SignalDatabase.recipients.getSignalContacts(false)?.use {
+    val results: MutableList<RecipientId> = SignalDatabase.recipients.getSignalContacts(RecipientTable.IncludeSelfMode.Exclude).use {
       val ids = mutableListOf<RecipientId>()
       while (it.moveToNext()) {
         ids.add(RecipientId.from(CursorUtil.requireLong(it, RecipientTable.ID)))
@@ -59,18 +57,7 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(hiddenRecipient, ProfileName.fromParts("Hidden", "Person"))
     SignalDatabase.recipients.markHidden(hiddenRecipient)
 
-    val results = SignalDatabase.recipients.querySignalContacts("Hidden", false)!!
-
-    assertEquals(0, results.count)
-  }
-
-  @Test
-  fun givenAHiddenRecipient_whenIQueryNonGroupContacts_thenIDoNotExpectHiddenToBeReturned() {
-    val hiddenRecipient = harness.others[0]
-    SignalDatabase.recipients.setProfileName(hiddenRecipient, ProfileName.fromParts("Hidden", "Person"))
-    SignalDatabase.recipients.markHidden(hiddenRecipient)
-
-    val results = SignalDatabase.recipients.queryNonGroupContacts("Hidden", false)!!
+    val results = SignalDatabase.recipients.querySignalContacts(RecipientTable.ContactSearchQuery("Hidden", RecipientTable.IncludeSelfMode.Exclude))!!
 
     assertEquals(0, results.count)
   }
@@ -81,7 +68,7 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(hiddenRecipient, ProfileName.fromParts("Hidden", "Person"))
     SignalDatabase.recipients.markHidden(hiddenRecipient)
 
-    val results: MutableList<RecipientId> = SignalDatabase.recipients.getNonGroupContacts(false)?.use {
+    val results: MutableList<RecipientId> = SignalDatabase.recipients.getNonGroupContacts(RecipientTable.IncludeSelfMode.Exclude)?.use {
       val ids = mutableListOf<RecipientId>()
       while (it.moveToNext()) {
         ids.add(RecipientId.from(CursorUtil.requireLong(it, RecipientTable.ID)))
@@ -100,7 +87,7 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(blockedRecipient, ProfileName.fromParts("Blocked", "Person"))
     SignalDatabase.recipients.setBlocked(blockedRecipient, true)
 
-    val results = SignalDatabase.recipients.queryAllContacts("Blocked")!!
+    val results = SignalDatabase.recipients.queryAllContacts("Blocked", RecipientTable.IncludeSelfMode.Exclude)!!
 
     assertEquals(0, results.count)
   }
@@ -111,14 +98,14 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(blockedRecipient, ProfileName.fromParts("Blocked", "Person"))
     SignalDatabase.recipients.setBlocked(blockedRecipient, true)
 
-    val results: MutableList<RecipientId> = SignalDatabase.recipients.getSignalContacts(false)?.use {
+    val results: MutableList<RecipientId> = SignalDatabase.recipients.getSignalContacts(RecipientTable.IncludeSelfMode.Exclude).use {
       val ids = mutableListOf<RecipientId>()
       while (it.moveToNext()) {
         ids.add(RecipientId.from(CursorUtil.requireLong(it, RecipientTable.ID)))
       }
 
       ids
-    }!!
+    }
 
     assertNotEquals(0, results.size)
     assertFalse(blockedRecipient in results)
@@ -130,18 +117,7 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(blockedRecipient, ProfileName.fromParts("Blocked", "Person"))
     SignalDatabase.recipients.setBlocked(blockedRecipient, true)
 
-    val results = SignalDatabase.recipients.querySignalContacts("Blocked", false)!!
-
-    assertEquals(0, results.count)
-  }
-
-  @Test
-  fun givenABlockedRecipient_whenIQueryNonGroupContacts_thenIDoNotExpectBlockedToBeReturned() {
-    val blockedRecipient = harness.others[0]
-    SignalDatabase.recipients.setProfileName(blockedRecipient, ProfileName.fromParts("Blocked", "Person"))
-    SignalDatabase.recipients.setBlocked(blockedRecipient, true)
-
-    val results = SignalDatabase.recipients.queryNonGroupContacts("Blocked", false)!!
+    val results = SignalDatabase.recipients.querySignalContacts(RecipientTable.ContactSearchQuery("Blocked", RecipientTable.IncludeSelfMode.Exclude))!!
 
     assertEquals(0, results.count)
   }
@@ -152,7 +128,7 @@ class RecipientTableTest {
     SignalDatabase.recipients.setProfileName(blockedRecipient, ProfileName.fromParts("Blocked", "Person"))
     SignalDatabase.recipients.setBlocked(blockedRecipient, true)
 
-    val results: MutableList<RecipientId> = SignalDatabase.recipients.getNonGroupContacts(false)?.use {
+    val results: MutableList<RecipientId> = SignalDatabase.recipients.getNonGroupContacts(RecipientTable.IncludeSelfMode.Exclude)?.use {
       val ids = mutableListOf<RecipientId>()
       while (it.moveToNext()) {
         ids.add(RecipientId.from(CursorUtil.requireLong(it, RecipientTable.ID)))
@@ -167,8 +143,6 @@ class RecipientTableTest {
 
   @Test
   fun givenARecipientWithPniAndAci_whenIMarkItUnregistered_thenIExpectItToBeSplit() {
-    FeatureFlagsAccessor.forceValue(FeatureFlags.PHONE_NUMBER_PRIVACY, true)
-
     val mainId = SignalDatabase.recipients.getAndPossiblyMerge(ACI_A, PNI_A, E164_A)
 
     SignalDatabase.recipients.markUnregistered(mainId)
@@ -185,12 +159,10 @@ class RecipientTableTest {
 
   @Test
   fun givenARecipientWithPniAndAci_whenISplitItForStorageSync_thenIExpectItToBeSplit() {
-    FeatureFlagsAccessor.forceValue(FeatureFlags.PHONE_NUMBER_PRIVACY, true)
-
     val mainId = SignalDatabase.recipients.getAndPossiblyMerge(ACI_A, PNI_A, E164_A)
     val mainRecord = SignalDatabase.recipients.getRecord(mainId)
 
-    SignalDatabase.recipients.splitForStorageSync(mainRecord.storageId!!)
+    SignalDatabase.recipients.splitForStorageSyncIfNecessary(mainRecord.aci!!)
 
     val byAci: RecipientId = SignalDatabase.recipients.getByAci(ACI_A).get()
 

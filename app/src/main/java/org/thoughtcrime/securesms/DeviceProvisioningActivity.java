@@ -1,6 +1,5 @@
 package org.thoughtcrime.securesms;
 
-import android.content.Intent;
 import android.os.Bundle;
 import android.view.Window;
 
@@ -9,6 +8,7 @@ import androidx.appcompat.app.AlertDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.signal.core.util.logging.Log;
+import org.thoughtcrime.securesms.components.settings.app.AppSettingsActivity;
 
 public class DeviceProvisioningActivity extends PassphraseRequiredActivity {
 
@@ -24,11 +24,9 @@ public class DeviceProvisioningActivity extends PassphraseRequiredActivity {
   protected void onCreate(Bundle bundle, boolean ready) {
     AlertDialog dialog = new MaterialAlertDialogBuilder(this)
         .setTitle(getString(R.string.DeviceProvisioningActivity_link_a_signal_device))
-        .setMessage(getString(R.string.DeviceProvisioningActivity_it_looks_like_youre_trying_to_link_a_signal_device_using_a_3rd_party_scanner))
+        .setMessage(getString(R.string.DeviceProvisioningActivity_to_link_a_desktop_or_ipad_to_this_signal_account))
         .setPositiveButton(R.string.DeviceProvisioningActivity_continue, (dialog1, which) -> {
-          Intent intent = new Intent(DeviceProvisioningActivity.this, DeviceActivity.class);
-          intent.putExtra("add", true);
-          startActivity(intent);
+          startActivity(AppSettingsActivity.linkedDevices(this));
           finish();
         })
         .setNegativeButton(android.R.string.cancel, (dialog12, which) -> {
@@ -38,7 +36,6 @@ public class DeviceProvisioningActivity extends PassphraseRequiredActivity {
         .setOnDismissListener(dialog13 -> finish())
         .create();
 
-    dialog.setIcon(getResources().getDrawable(R.drawable.icon_dialog));
     dialog.show();
   }
 }

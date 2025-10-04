@@ -1,6 +1,7 @@
 package org.thoughtcrime.securesms.contacts.paged
 
 import org.thoughtcrime.securesms.contacts.HeaderAction
+import org.thoughtcrime.securesms.database.RecipientTable
 
 /**
  * A strongly typed descriptor of how a given list of contacts should be formatted
@@ -69,16 +70,19 @@ class ContactSearchConfiguration private constructor(
     /**
      * 1:1 Recipients with whom the user has started a conversation.
      *
+     * Note that sort order is only respected when returning a query result for signal-only contacts. In all other cases, natural ordering is used.
+     *
      * Key: [ContactSearchKey.RecipientSearchKey]
      * Data: [ContactSearchData.KnownRecipient]
      * Model: [ContactSearchAdapter.RecipientModel]
      */
     data class Individuals(
-      val includeSelf: Boolean,
+      val includeSelfMode: RecipientTable.IncludeSelfMode,
       val transportType: TransportType,
       override val includeHeader: Boolean,
       override val expandConfig: ExpandConfig? = null,
-      val includeLetterHeaders: Boolean = false
+      val includeLetterHeaders: Boolean = false,
+      val pushSearchResultsSortOrder: ContactSearchSortOrder = ContactSearchSortOrder.NATURAL
     ) : Section(SectionKey.INDIVIDUALS)
 
     /**
@@ -190,6 +194,18 @@ class ContactSearchConfiguration private constructor(
       override val includeHeader: Boolean = false
       override val expandConfig: ExpandConfig? = null
     }
+
+    /**
+     * Chat types that are displayed when creating a chat folder.
+     *
+     * Key: [ContactSearchKey.ChatType]
+     * Data: [ContactSearchData.ChatTypeRow]
+     * Model: [ContactSearchAdapter.ChatTypeModel]
+     */
+    data class ChatTypes(
+      override val includeHeader: Boolean = true,
+      override val expandConfig: ExpandConfig? = null
+    ) : Section(SectionKey.CHAT_TYPES)
   }
 
   /**
@@ -230,6 +246,11 @@ class ContactSearchConfiguration private constructor(
      * Section Key for [Section.ContactsWithoutThreads]
      */
     CONTACTS_WITHOUT_THREADS,
+
+    /**
+     * Chat types (ie unreads, 1:1, groups) that are used to customize folders
+     */
+    CHAT_TYPES,
 
     /**
      * Arbitrary row (think new group button, username row, etc)

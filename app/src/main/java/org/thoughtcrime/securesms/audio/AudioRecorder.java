@@ -13,6 +13,7 @@ import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.components.voice.VoiceNoteDraft;
+import org.thoughtcrime.securesms.notifications.v2.InChatNotificationSoundSuppressor;
 import org.thoughtcrime.securesms.providers.BlobProvider;
 import org.thoughtcrime.securesms.util.MediaUtil;
 
@@ -99,6 +100,7 @@ public class AudioRecorder {
         }
         recorder.start(fds[1]);
         this.recordingSubject = recordingSingle;
+        InChatNotificationSoundSuppressor.suppressNotification();
       } catch (IOException | RuntimeException e) {
         Log.w(TAG, e);
         recordingUriFuture = null;
@@ -113,6 +115,24 @@ public class AudioRecorder {
     });
   }
 
+  public void discardRecording() {
+    Log.i(TAG, "cancelRecording()");
+    executor.execute(() -> {
+      if (recorder == null) {
+        Log.e(TAG, "MediaRecorder was never initialized successfully!");
+        return;
+      }
+      InChatNotificationSoundSuppressor.allowNotification();
+      audioFocusManager.abandonAudioFocus();
+      recorder.stop();
+      recordingUriFuture.cancel(true);
+
+      recordingSubject   = null;
+      recorder           = null;
+      recordingUriFuture = null;
+    });
+  }
+
   public void stopRecording() {
     Log.i(TAG, "stopRecording()");
 
@@ -121,7 +141,7 @@ public class AudioRecorder {
         Log.e(TAG, "MediaRecorder was never initialized successfully!");
         return;
       }
-
+      InChatNotificationSoundSuppressor.allowNotification();
       audioFocusManager.abandonAudioFocus();
       recorder.stop();
 

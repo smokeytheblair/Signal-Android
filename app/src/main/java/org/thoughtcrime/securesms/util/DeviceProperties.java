@@ -9,27 +9,42 @@ import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
+import org.signal.core.util.logging.Log;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
+
 /**
  * Easy access to various properties of the device, typically to make performance-related decisions.
  */
 public final class DeviceProperties {
+
+  private static final String TAG = Log.tag(DeviceProperties.class);
 
   /**
    * Whether or not we believe the device has the performance capabilities to efficiently render
    * large numbers of APNGs simultaneously.
    */
   public static boolean shouldAllowApngStickerAnimation(@NonNull Context context) {
-    if (Build.VERSION.SDK_INT < 26) {
-      return false;
-    }
-
     MemoryInfo memoryInfo = getMemoryInfo(context);
     int        memoryMb   = (int) ByteUnit.BYTES.toMegabytes(memoryInfo.totalMem);
 
-    return !isLowMemoryDevice(context) &&
-           !memoryInfo.lowMemory       &&
-           (memoryMb                >= FeatureFlags.animatedStickerMinimumTotalMemoryMb() ||
-            getMemoryClass(context) >= FeatureFlags.animatedStickerMinimumMemoryClass());
+    if (isLowMemoryDevice(context)) {
+      return false;
+    }
+
+    if (memoryMb < RemoteConfig.animatedStickerMinimumTotalMemoryMb()) {
+      return false;
+    }
+
+    if (getMemoryClass(context) < RemoteConfig.animatedStickerMinimumMemoryClass()) {
+      return false;
+    }
+
+    if (memoryInfo.lowMemory) {
+      Log.w(TAG, "Currently in a low-memory situation! Can't render APNG.");
+      return false;
+    }
+
+    return true;
   }
 
   public static boolean isLowMemoryDevice(@NonNull Context context) {
@@ -49,6 +64,13 @@ public final class DeviceProperties {
     activityManager.getMemoryInfo(info);
 
     return info;
+  }
+
+  public static boolean isBackgroundRestricted() {
+    if (Build.VERSION.SDK_INT >= 28) {
+      return isBackgroundRestricted(AppDependencies.getApplication());
+    }
+    return false;
   }
 
   @RequiresApi(28)

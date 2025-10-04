@@ -29,9 +29,12 @@ import org.thoughtcrime.securesms.crypto.ModernEncryptingPartOutputStream;
 import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.database.EmojiSearchTable;
 import org.thoughtcrime.securesms.database.KeyValueDatabase;
+import org.thoughtcrime.securesms.database.KyberPreKeyTable;
+import org.thoughtcrime.securesms.database.OneTimePreKeyTable;
 import org.thoughtcrime.securesms.database.SearchTable;
+import org.thoughtcrime.securesms.database.SignedPreKeyTable;
 import org.thoughtcrime.securesms.database.StickerTable;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.keyvalue.KeyValueDataSet;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
@@ -45,6 +48,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -58,27 +63,57 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import kotlin.collections.SetsKt;
+
 public class FullBackupImporter extends FullBackupBase {
 
   @SuppressWarnings("unused")
   private static final String TAG = Log.tag(FullBackupImporter.class);
 
-  public static void importFile(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret,
-                                @NonNull SQLiteDatabase db, @NonNull Uri uri, @NonNull String passphrase)
+  private static final Set<String> KEY_TABLES = SetsKt.setOf(KyberPreKeyTable.TABLE_NAME, OneTimePreKeyTable.TABLE_NAME, SignedPreKeyTable.TABLE_NAME);
+
+  public static boolean validatePassphrase(@NonNull Context context,
+                                           @NonNull Uri uri,
+                                           @NonNull String passphrase)
       throws IOException
   {
+
     try (InputStream is = getInputStream(context, uri)) {
-      importFile(context, attachmentSecret, db, is, passphrase);
+      BackupRecordInputStream inputStream = new BackupRecordInputStream(is, passphrase);
+      return inputStream.validateFrame();
+    } catch (InvalidAlgorithmParameterException e) {
+      Log.w(TAG, "Invalid algorithm parameter exception in backup passphrase validation.", e);
+      return false;
+    } catch (InvalidKeyException e) {
+      Log.w(TAG, "Invalid key exception in backup passphrase validation.", e);
+      return false;
     }
   }
 
-  public static void importFile(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret,
-                                @NonNull SQLiteDatabase db, @NonNull InputStream is, @NonNull String passphrase)
+  public static void importFile(@NonNull Context context,
+                                @NonNull AttachmentSecret attachmentSecret,
+                                @NonNull SQLiteDatabase db,
+                                @NonNull Uri uri,
+                                @NonNull String passphrase,
+                                boolean excludeKeyTables)
+      throws IOException
+  {
+    try (InputStream is = getInputStream(context, uri)) {
+      importFile(context, attachmentSecret, db, is, passphrase, excludeKeyTables);
+    }
+  }
+
+  public static void importFile(@NonNull Context context,
+                                @NonNull AttachmentSecret attachmentSecret,
+                                @NonNull SQLiteDatabase db,
+                                @NonNull InputStream is,
+                                @NonNull String passphrase,
+                                boolean excludeKeyTables)
       throws IOException
   {
     int count = 0;
 
-    SQLiteDatabase keyValueDatabase = KeyValueDatabase.getInstance(ApplicationDependencies.getApplication()).getSqlCipherDatabase();
+    SQLiteDatabase keyValueDatabase = KeyValueDatabase.getInstance(AppDependencies.getApplication()).getSqlCipherDatabase();
 
     db.setForeignKeyConstraintsEnabled(false);
     db.beginTransaction();
@@ -86,7 +121,7 @@ public class FullBackupImporter extends FullBackupBase {
     try {
       BackupRecordInputStream inputStream = new BackupRecordInputStream(is, passphrase);
 
-      dropAllTables(db);
+      dropAllTables(db, excludeKeyTables);
 
       BackupFrame frame;
 
@@ -95,7 +130,7 @@ public class FullBackupImporter extends FullBackupBase {
         count++;
 
         if      (frame.version != null)    processVersion(db, frame.version);
-        else if (frame.statement != null)  processStatement(db, frame.statement);
+        else if (frame.statement != null)  processStatement(db, frame.statement, excludeKeyTables);
         else if (frame.preference != null) processPreference(context, frame.preference);
         else if (frame.attachment != null) processAttachment(context, attachmentSecret, db, frame.attachment, inputStream);
         else if (frame.sticker != null)    processSticker(context, attachmentSecret, db, frame.sticker, inputStream);
@@ -142,17 +177,19 @@ public class FullBackupImporter extends FullBackupBase {
     db.setVersion(version.version);
   }
 
-  private static void processStatement(@NonNull SQLiteDatabase db, SqlStatement statement) {
+  private static void processStatement(@NonNull SQLiteDatabase db, SqlStatement statement, boolean excludeKeyTables) {
     if (statement.statement == null) {
       Log.w(TAG, "Null statement!");
       return;
     }
 
-    boolean isForMmsFtsSecretTable = statement.statement.contains(SearchTable.FTS_TABLE_NAME + "_");
-    boolean isForEmojiSecretTable  = statement.statement.contains(EmojiSearchTable.TABLE_NAME + "_");
-    boolean isForSqliteSecretTable = statement.statement.toLowerCase().startsWith("create table sqlite_");
+    boolean isForMmsFtsSecretTable    = statement.statement.contains(SearchTable.FTS_TABLE_NAME + "_");
+    boolean isForEmojiSecretTable     = statement.statement.contains(EmojiSearchTable.TABLE_NAME + "_");
+    boolean isForSqliteSecretTable    = statement.statement.toLowerCase().startsWith("create table sqlite_");
+    boolean isForRemoteMegaphoneTable = statement.statement.toLowerCase().startsWith("insert into remote_megaphone");
+    boolean isForExcludedKeyTable     = excludeKeyTables && KEY_TABLES.stream().anyMatch(table -> statement.statement.toLowerCase().contains(table));
 
-    if (isForMmsFtsSecretTable || isForEmojiSecretTable || isForSqliteSecretTable) {
+    if (isForMmsFtsSecretTable || isForEmojiSecretTable || isForSqliteSecretTable || isForRemoteMegaphoneTable || isForExcludedKeyTable) {
       Log.i(TAG, "Ignoring import for statement: " + statement.statement);
       return;
     }
@@ -174,26 +211,33 @@ public class FullBackupImporter extends FullBackupBase {
   private static void processAttachment(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret, @NonNull SQLiteDatabase db, @NonNull Attachment attachment, BackupRecordInputStream inputStream)
       throws IOException
   {
-    File                       dataFile = AttachmentTable.newFile(context);
-    Pair<byte[], OutputStream> output   = ModernEncryptingPartOutputStream.createFor(attachmentSecret, dataFile, false);
+    File                       dataFile      = AttachmentTable.newDataFile(context);
+    Pair<byte[], OutputStream> output        = ModernEncryptingPartOutputStream.createFor(attachmentSecret, dataFile, false);
+    boolean                    isLegacyTable = SqlUtil.tableExists(db, "part");
+
+    String dataFileColumnName   = isLegacyTable ? "_data" : AttachmentTable.DATA_FILE;
+    String dataRandomColumnName = isLegacyTable ? "data_random" : AttachmentTable.DATA_RANDOM;
+    String idColumnName         = isLegacyTable ? "_id" : AttachmentTable.ID;
+    String tableName            = isLegacyTable ? "part" : AttachmentTable.TABLE_NAME;
 
     ContentValues contentValues = new ContentValues();
 
     try {
       inputStream.readAttachmentTo(output.second, attachment.length);
 
-      contentValues.put(AttachmentTable.DATA, dataFile.getAbsolutePath());
-      contentValues.put(AttachmentTable.DATA_RANDOM, output.first);
+      contentValues.put(dataFileColumnName, dataFile.getAbsolutePath());
+      contentValues.put(dataRandomColumnName, output.first);
     } catch (BackupRecordInputStream.BadMacException e) {
       Log.w(TAG, "Bad MAC for attachment " + attachment.attachmentId + "! Can't restore it.", e);
       dataFile.delete();
-      contentValues.put(AttachmentTable.DATA, (String) null);
-      contentValues.put(AttachmentTable.DATA_RANDOM, (String) null);
+      contentValues.put(dataFileColumnName, (String) null);
+      contentValues.put(dataRandomColumnName, (String) null);
     }
 
-    db.update(AttachmentTable.TABLE_NAME, contentValues,
-              AttachmentTable.ROW_ID + " = ? AND " + AttachmentTable.UNIQUE_ID + " = ?",
-              new String[] {String.valueOf(attachment.rowId), String.valueOf(attachment.attachmentId)});
+    db.update(tableName,
+              contentValues,
+              idColumnName + " = ?",
+              SqlUtil.buildArgs(attachment.rowId));
   }
 
   private static void processSticker(@NonNull Context context, @NonNull AttachmentSecret attachmentSecret, @NonNull SQLiteDatabase db, @NonNull Sticker sticker, BackupRecordInputStream inputStream)
@@ -212,7 +256,7 @@ public class FullBackupImporter extends FullBackupBase {
     contentValues.put(StickerTable.FILE_RANDOM, output.first);
 
     db.update(StickerTable.TABLE_NAME, contentValues,
-              StickerTable._ID + " = ?",
+              StickerTable.ID + " = ?",
               new String[] {String.valueOf(sticker.rowId)});
   }
 
@@ -260,7 +304,7 @@ public class FullBackupImporter extends FullBackupBase {
       return;
     }
 
-    KeyValueDatabase.getInstance(ApplicationDependencies.getApplication()).writeDataSet(dataSet, Collections.emptyList());
+    KeyValueDatabase.getInstance(AppDependencies.getApplication()).writeDataSet(dataSet, Collections.emptyList());
   }
 
   @SuppressLint("ApplySharedPref")
@@ -287,12 +331,18 @@ public class FullBackupImporter extends FullBackupBase {
     }
   }
 
-  private static void dropAllTables(@NonNull SQLiteDatabase db) {
+  private static void dropAllTables(@NonNull SQLiteDatabase db, boolean excludeKeyTables) {
     for (String trigger : SqlUtil.getAllTriggers(db)) {
       Log.i(TAG, "Dropping trigger: " + trigger);
       db.execSQL("DROP TRIGGER IF EXISTS " + trigger);
     }
+
     for (String table : getTablesToDropInOrder(db)) {
+      if (excludeKeyTables && KEY_TABLES.contains(table)) {
+        Log.i(TAG, "Skipping table: " + table);
+        continue;
+      }
+
       Log.i(TAG, "Dropping table: " + table);
       db.execSQL("DROP TABLE IF EXISTS " + table);
     }

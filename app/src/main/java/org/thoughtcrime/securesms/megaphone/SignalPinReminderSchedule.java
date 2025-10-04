@@ -14,7 +14,7 @@ final class SignalPinReminderSchedule implements MegaphoneSchedule {
       return false;
     }
 
-    if (!SignalStore.pinValues().arePinRemindersEnabled()) {
+    if (!SignalStore.pin().arePinRemindersEnabled()) {
       return false;
     }
 
@@ -22,9 +22,9 @@ final class SignalPinReminderSchedule implements MegaphoneSchedule {
       return false;
     }
 
-    long lastSuccessTime = SignalStore.pinValues().getLastSuccessfulEntryTime();
-    long interval        = SignalStore.pinValues().getCurrentInterval();
+    long lastReminderTime = SignalStore.pin().getLastReminderTime();
+    long interval         = SignalStore.pin().getCurrentInterval();
 
-    return currentTime - lastSuccessTime >= interval;
+    return currentTime - lastReminderTime >= interval;
   }
 }

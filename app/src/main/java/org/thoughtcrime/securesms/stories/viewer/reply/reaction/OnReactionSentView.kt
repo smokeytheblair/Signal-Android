@@ -11,13 +11,14 @@ import org.thoughtcrime.securesms.components.emoji.EmojiImageView
 
 class OnReactionSentView @JvmOverloads constructor(
   context: Context,
-  attrs: AttributeSet? = null
+  attrs: AttributeSet? = null,
+  layoutRes: Int = R.layout.on_reaction_sent_view
 ) : FrameLayout(context, attrs) {
 
   var callback: Callback? = null
 
   init {
-    inflate(context, R.layout.on_reaction_sent_view, this)
+    inflate(context, layoutRes, this)
   }
 
   private val motionLayout: MotionLayout = findViewById(R.id.motion_layout)
@@ -31,7 +32,7 @@ class OnReactionSentView @JvmOverloads constructor(
     })
   }
 
-  fun playForEmoji(emoji: CharSequence) {
+  fun playForEmoji(emojis: List<CharSequence>) {
     motionLayout.progress = 0f
 
     listOf(
@@ -46,8 +47,9 @@ class OnReactionSentView @JvmOverloads constructor(
       R.id.emoji_9,
       R.id.emoji_10,
       R.id.emoji_11
-    ).forEach {
-      findViewById<EmojiImageView>(it).setImageEmoji(emoji)
+    ).forEachIndexed { index, it ->
+      val emojiIndex = index % emojis.size
+      findViewById<EmojiImageView>(it).setImageEmoji(emojis[emojiIndex])
     }
 
     motionLayout.requestLayout()

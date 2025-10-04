@@ -90,7 +90,7 @@ object SystemContactsRepository {
    * lookup key.
    */
   @JvmStatic
-  fun getAllSystemContacts(context: Context, e164Formatter: (String) -> String): ContactIterator {
+  fun getAllSystemContacts(context: Context, e164Formatter: (String) -> String?): ContactIterator {
     val uri = ContactsContract.Data.CONTENT_URI
     val projection = arrayOf(
       ContactsContract.Data.MIMETYPE,
@@ -114,7 +114,7 @@ object SystemContactsRepository {
   }
 
   @JvmStatic
-  fun getContactDetailsByQueries(context: Context, queries: List<String>, e164Formatter: (String) -> String): ContactIterator {
+  fun getContactDetailsByQueries(context: Context, queries: List<String>, e164Formatter: (String) -> String?): ContactIterator {
     val lookupKeys: MutableSet<String> = mutableSetOf()
 
     for (query in queries) {
@@ -488,7 +488,12 @@ object SystemContactsRepository {
       // Data entry for name
       ContentProviderOperation.newInsert(dataUri)
         .withValueBackReference(ContactsContract.CommonDataKinds.StructuredName.RAW_CONTACT_ID, operationIndex)
-        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, systemContactInfo.displayName)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, systemContactInfo.name.displayName)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, systemContactInfo.name.givenName)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, systemContactInfo.name.familyName)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, systemContactInfo.name.prefix)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, systemContactInfo.name.suffix)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, systemContactInfo.name.middleName)
         .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
         .build(),
 
@@ -521,6 +526,16 @@ object SystemContactsRepository {
         .withYieldAllowed(true)
         .build(),
 
+      // Data entry for making a video call
+      ContentProviderOperation.newInsert(dataUri)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, operationIndex)
+        .withValue(ContactsContract.Data.MIMETYPE, linkConfig.videoCallMimetype)
+        .withValue(ContactsContract.Data.DATA1, systemContactInfo.displayPhone)
+        .withValue(ContactsContract.Data.DATA2, linkConfig.appName)
+        .withValue(ContactsContract.Data.DATA3, linkConfig.videoCallPrompt(systemContactInfo.displayPhone))
+        .withYieldAllowed(true)
+        .build(),
+
       // Ensures that this RawContact entry is shown next to another RawContact entry we found for this contact
       ContentProviderOperation.newUpdate(ContactsContract.AggregationExceptions.CONTENT_URI)
         .withValue(ContactsContract.AggregationExceptions.RAW_CONTACT_ID1, systemContactInfo.siblingRawContactId)
@@ -545,7 +560,7 @@ object SystemContactsRepository {
     )
   }
 
-  private fun getLinkedContactsByE164(context: Context, account: Account, e164Formatter: (String) -> String): Map<String, LinkedContactDetails> {
+  private fun getLinkedContactsByE164(context: Context, account: Account, e164Formatter: (String) -> String?): Map<String, LinkedContactDetails> {
     val currentContactsUri = ContactsContract.RawContacts.CONTENT_URI.buildUpon()
       .appendQueryParameter(ContactsContract.RawContacts.ACCOUNT_NAME, account.name)
       .appendQueryParameter(ContactsContract.RawContacts.ACCOUNT_TYPE, account.type).build()
@@ -565,7 +580,7 @@ object SystemContactsRepository {
         val displayPhone = cursor.requireString(FIELD_DISPLAY_PHONE)
 
         if (displayPhone != null) {
-          val e164 = e164Formatter(displayPhone)
+          val e164 = e164Formatter(displayPhone) ?: continue
 
           contactsDetails[e164] = LinkedContactDetails(
             id = cursor.requireLong(BaseColumns._ID),
@@ -581,7 +596,7 @@ object SystemContactsRepository {
     return contactsDetails
   }
 
-  private fun getSystemContactInfo(context: Context, e164: String, e164Formatter: (String) -> String): SystemContactInfo? {
+  private fun getSystemContactInfo(context: Context, e164: String, e164Formatter: (String) -> String?): SystemContactInfo? {
     ContactsContract.RawContactsEntity.RAW_CONTACT_ID
     val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(e164))
     val projection = arrayOf(
@@ -596,15 +611,41 @@ object SystemContactsRepository {
         val systemNumber: String? = contactCursor.requireString(ContactsContract.PhoneLookup.NUMBER)
         if (systemNumber != null && e164Formatter(systemNumber) == e164) {
           val phoneLookupId = contactCursor.requireLong(ContactsContract.PhoneLookup._ID)
+          val idProjection = arrayOf(ContactsContract.RawContacts._ID)
+          val idSelection = "${ContactsContract.RawContacts.CONTACT_ID} = ? "
+          val idArgs = SqlUtil.buildArgs(phoneLookupId)
 
-          context.contentResolver.query(ContactsContract.RawContacts.CONTENT_URI, arrayOf(ContactsContract.RawContacts._ID), "${ContactsContract.RawContacts.CONTACT_ID} = ? ", SqlUtil.buildArgs(phoneLookupId), null)?.use { idCursor ->
+          context.contentResolver.query(ContactsContract.RawContacts.CONTENT_URI, idProjection, idSelection, idArgs, null)?.use { idCursor ->
             if (idCursor.moveToNext()) {
-              return SystemContactInfo(
-                displayName = contactCursor.requireString(ContactsContract.PhoneLookup.DISPLAY_NAME),
-                displayPhone = systemNumber,
-                siblingRawContactId = idCursor.requireLong(ContactsContract.RawContacts._ID),
-                type = contactCursor.requireInt(ContactsContract.PhoneLookup.TYPE)
+              val rawContactId = idCursor.requireLong(ContactsContract.RawContacts._ID)
+              val nameProjection = arrayOf(
+                ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME,
+                ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME,
+                ContactsContract.CommonDataKinds.StructuredName.PREFIX,
+                ContactsContract.CommonDataKinds.StructuredName.SUFFIX,
+                ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME
               )
+              val nameSelection = "${ContactsContract.Data.RAW_CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?"
+              val nameArgs = SqlUtil.buildArgs(rawContactId, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+
+              context.contentResolver.query(ContactsContract.Data.CONTENT_URI, nameProjection, nameSelection, nameArgs, null)?.use { nameCursor ->
+                if (nameCursor.moveToNext()) {
+                  return SystemContactInfo(
+                    name = NameDetails(
+                      displayName = nameCursor.requireString(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME),
+                      givenName = nameCursor.requireString(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME),
+                      familyName = nameCursor.requireString(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME),
+                      prefix = nameCursor.requireString(ContactsContract.CommonDataKinds.StructuredName.PREFIX),
+                      suffix = nameCursor.requireString(ContactsContract.CommonDataKinds.StructuredName.SUFFIX),
+                      middleName = nameCursor.requireString(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME)
+                    ),
+                    displayPhone = systemNumber,
+                    siblingRawContactId = rawContactId,
+                    type = contactCursor.requireInt(ContactsContract.PhoneLookup.TYPE)
+                  )
+                }
+              }
             }
           }
         }
@@ -671,7 +712,7 @@ object SystemContactsRepository {
    */
   private class CursorContactIterator(
     private val cursor: Cursor,
-    private val e164Formatter: (String) -> String
+    private val e164Formatter: (String) -> String?
   ) : ContactIterator {
 
     init {
@@ -711,13 +752,14 @@ object SystemContactsRepository {
 
       while (!cursor.isAfterLast && lookupKey == cursor.getLookupKey() && cursor.isPhoneMimeType()) {
         val displayNumber: String? = cursor.requireString(ContactsContract.CommonDataKinds.Phone.NUMBER)
+        val formattedNumber: String? = displayNumber?.let { e164Formatter(it) }
 
-        if (displayNumber != null && displayNumber.isNotEmpty()) {
+        if (!displayNumber.isNullOrEmpty() && !formattedNumber.isNullOrEmpty()) {
           phoneDetails += ContactPhoneDetails(
             contactUri = ContactsContract.Contacts.getLookupUri(cursor.requireLong(ContactsContract.CommonDataKinds.Phone._ID), lookupKey),
             displayName = cursor.requireString(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
             photoUri = cursor.requireString(ContactsContract.CommonDataKinds.Phone.PHOTO_URI),
-            number = e164Formatter(displayNumber),
+            number = formattedNumber,
             type = cursor.requireInt(ContactsContract.CommonDataKinds.Phone.TYPE),
             label = cursor.requireString(ContactsContract.CommonDataKinds.Phone.LABEL)
           )
@@ -824,7 +866,7 @@ object SystemContactsRepository {
   )
 
   private data class SystemContactInfo(
-    val displayName: String?,
+    val name: NameDetails,
     val displayPhone: String,
     val siblingRawContactId: Long,
     val type: Int

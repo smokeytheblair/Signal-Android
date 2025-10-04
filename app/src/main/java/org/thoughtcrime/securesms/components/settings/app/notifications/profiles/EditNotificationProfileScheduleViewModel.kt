@@ -60,8 +60,7 @@ class EditNotificationProfileScheduleViewModel(
   }
 
   fun setEndTime(hour: Int, minute: Int) {
-    val adjustedEndHour = if (hour == 0) 24 else hour
-    scheduleSubject.onNext(schedule.copy(end = adjustedEndHour * 100 + minute))
+    scheduleSubject.onNext(schedule.copy(end = hour * 100 + minute))
   }
 
   fun setEnabled(enabled: Boolean) {
@@ -77,6 +76,7 @@ class EditNotificationProfileScheduleViewModel(
       repository.updateSchedule(schedule)
         .toSingleDefault(SaveScheduleResult.Success)
         .flatMap { r ->
+          repository.scheduleNotificationProfileSync(profileId)
           if (schedule.enabled && schedule.coversTime(System.currentTimeMillis())) {
             repository.manuallyEnableProfileForSchedule(profileId, schedule)
               .toSingleDefault(r)

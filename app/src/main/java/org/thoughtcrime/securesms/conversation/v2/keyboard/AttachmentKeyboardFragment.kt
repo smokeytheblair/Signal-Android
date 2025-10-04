@@ -7,6 +7,7 @@ package org.thoughtcrime.securesms.conversation.v2.keyboard
 
 import android.os.Bundle
 import android.view.View
+import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.viewModels
@@ -19,12 +20,14 @@ import org.thoughtcrime.securesms.LoggingFragment
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.conversation.AttachmentKeyboard
 import org.thoughtcrime.securesms.conversation.AttachmentKeyboardButton
+import org.thoughtcrime.securesms.conversation.ManageContextMenu
 import org.thoughtcrime.securesms.conversation.v2.ConversationViewModel
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.mediasend.Media
 import org.thoughtcrime.securesms.permissions.PermissionCompat
 import org.thoughtcrime.securesms.permissions.Permissions
 import org.thoughtcrime.securesms.recipients.Recipient
+import org.thoughtcrime.securesms.util.RemoteConfig
 import java.util.function.Predicate
 
 /**
@@ -46,6 +49,7 @@ class AttachmentKeyboardFragment : LoggingFragment(R.layout.attachment_keyboard_
 
   private val lifecycleDisposable = LifecycleDisposable()
   private val removePaymentFilter: Predicate<AttachmentKeyboardButton> = Predicate { button -> button != AttachmentKeyboardButton.PAYMENT }
+  private val removePollFilter: Predicate<AttachmentKeyboardButton> = Predicate { button -> button != AttachmentKeyboardButton.POLL }
 
   @Suppress("ReplaceGetOrSet")
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -55,7 +59,7 @@ class AttachmentKeyboardFragment : LoggingFragment(R.layout.attachment_keyboard_
     attachmentKeyboardView = view.findViewById(R.id.attachment_keyboard)
     attachmentKeyboardView.apply {
       setCallback(this@AttachmentKeyboardFragment)
-      if (!SignalStore.paymentsValues().paymentsAvailability.isSendAllowed) {
+      if (!SignalStore.payments.paymentsAvailability.isSendAllowed) {
         filterAttachmentKeyboardButtons(removePaymentFilter)
       }
     }
@@ -70,15 +74,15 @@ class AttachmentKeyboardFragment : LoggingFragment(R.layout.attachment_keyboard_
 
     val snapshot = conversationViewModel.recipientSnapshot
     if (snapshot != null) {
-      updatePaymentsAvailable(snapshot)
+      updateButtonsAvailable(snapshot)
     }
 
     conversationViewModel
       .recipient
       .observeOn(AndroidSchedulers.mainThread())
       .subscribeBy {
-        attachmentKeyboardView.setWallpaperEnabled(it.hasWallpaper())
-        updatePaymentsAvailable(it)
+        attachmentKeyboardView.setWallpaperEnabled(it.hasWallpaper)
+        updateButtonsAvailable(it)
       }
       .addTo(lifecycleDisposable)
   }
@@ -94,21 +98,49 @@ class AttachmentKeyboardFragment : LoggingFragment(R.layout.attachment_keyboard_
   override fun onAttachmentPermissionsRequested() {
     Permissions.with(requireParentFragment())
       .request(*PermissionCompat.forImagesAndVideos())
-      .onAllGranted { viewModel.refreshRecentMedia() }
-      .withPermanentDenialDialog(getString(R.string.AttachmentManager_signal_requires_the_external_storage_permission_in_order_to_attach_photos_videos_or_audio))
+      .ifNecessary()
+      .onAnyResult { viewModel.refreshRecentMedia() }
+      .withPermanentDenialDialog(getString(R.string.AttachmentManager_signal_requires_the_external_storage_permission_in_order_to_attach_photos_videos_or_audio), null, R.string.AttachmentManager_signal_allow_storage, R.string.AttachmentManager_signal_to_show_photos, true, parentFragmentManager)
+      .onSomeDenied {
+        val deniedPermissions = PermissionCompat.getRequiredPermissionsForDenial()
+        if (it.containsAll(deniedPermissions.toList())) {
+          Toast.makeText(requireContext(), R.string.AttachmentManager_signal_needs_storage_access, Toast.LENGTH_LONG).show()
+        }
+      }
       .execute()
   }
 
-  private fun updatePaymentsAvailable(recipient: Recipient) {
-    val paymentsValues = SignalStore.paymentsValues()
-    if (paymentsValues.paymentsAvailability.isSendAllowed &&
-      !recipient.isSelf &&
-      !recipient.isGroup &&
-      recipient.isRegistered
-    ) {
-      attachmentKeyboardView.filterAttachmentKeyboardButtons(null)
-    } else {
+  override fun onDisplayMoreContextMenu(v: View, showAbove: Boolean, showAtStart: Boolean) {
+    ManageContextMenu.show(
+      context = requireContext(),
+      anchorView = v,
+      showAbove = showAbove,
+      showAtStart = showAtStart,
+      onSelectMore = { selectMorePhotos() },
+      onSettings = { requireContext().startActivity(Permissions.getApplicationSettingsIntent(requireContext())) }
+    )
+  }
+
+  private fun selectMorePhotos() {
+    Permissions.with(requireParentFragment())
+      .request(*PermissionCompat.forImagesAndVideos())
+      .onAnyResult { viewModel.refreshRecentMedia() }
+      .execute()
+  }
+
+  private fun updateButtonsAvailable(recipient: Recipient) {
+    val paymentsValues = SignalStore.payments
+    val isPaymentsAvailable = paymentsValues.paymentsAvailability.isSendAllowed && !recipient.isSelf && !recipient.isGroup && recipient.isRegistered
+    val isPollsAvailable = recipient.isPushV2Group && RemoteConfig.polls
+
+    if (!isPaymentsAvailable && !isPollsAvailable) {
+      attachmentKeyboardView.filterAttachmentKeyboardButtons(removePaymentFilter.and(removePollFilter))
+    } else if (!isPaymentsAvailable) {
       attachmentKeyboardView.filterAttachmentKeyboardButtons(removePaymentFilter)
+    } else if (!isPollsAvailable) (
+      attachmentKeyboardView.filterAttachmentKeyboardButtons(removePollFilter)
+      ) else {
+      attachmentKeyboardView.filterAttachmentKeyboardButtons(null)
     }
   }
 }

@@ -14,10 +14,20 @@ public final class PlayStoreUtil {
   private PlayStoreUtil() {}
 
   public static void openPlayStoreOrOurApkDownloadPage(@NonNull Context context) {
-    if (BuildConfig.PLAY_STORE_DISABLED) {
+    if (BuildConfig.MANAGES_APP_UPDATES) {
       CommunicationActions.openBrowserLink(context, "https://signal.org/android/apk");
     } else {
       openPlayStore(context);
+    }
+  }
+
+  public static void openPlayStoreHome(@NonNull Context context) {
+    try {
+      Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.android.vending"));
+      intent.setPackage("com.android.vending");
+      context.startActivity(intent);
+    } catch (android.content.ActivityNotFoundException e) {
+      CommunicationActions.openBrowserLink(context, "https://play.google.com/store/apps/");
     }
   }
 

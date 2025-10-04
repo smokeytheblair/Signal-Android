@@ -14,7 +14,7 @@ import org.thoughtcrime.securesms.util.livedata.Store
 
 class EditReactionsViewModel : ViewModel() {
 
-  private val emojiValues: EmojiValues = SignalStore.emojiValues()
+  private val emojiValues: EmojiValues = SignalStore.emoji
   private val store: Store<State> = Store(State(reactions = emojiValues.reactions.map { emojiValues.getPreferredVariation(it) }))
 
   val reactions: LiveData<List<String>> = LiveDataUtil.mapDistinct(store.stateLiveData, State::reactions)
@@ -27,9 +27,7 @@ class EditReactionsViewModel : ViewModel() {
   fun onEmojiSelected(emoji: String) {
     store.update { state ->
       if (state.selection != NO_SELECTION && state.selection in state.reactions.indices) {
-        if (emoji != EmojiUtil.getCanonicalRepresentation(emoji)) {
-          emojiValues.setPreferredVariation(emoji)
-        }
+        emojiValues.setPreferredVariation(emoji)
         val preferredEmoji: String = emojiValues.getPreferredVariation(emoji)
         val newReactions: List<String> = state.reactions.toMutableList().apply { set(state.selection, preferredEmoji) }
         state.copy(reactions = newReactions)
@@ -40,6 +38,10 @@ class EditReactionsViewModel : ViewModel() {
   }
 
   fun resetToDefaults() {
+    EmojiValues.DEFAULT_REACTIONS_LIST.forEach { emoji ->
+      emojiValues.removePreferredVariation(EmojiUtil.getCanonicalRepresentation(emoji))
+    }
+
     store.update { it.copy(reactions = EmojiValues.DEFAULT_REACTIONS_LIST) }
   }
 

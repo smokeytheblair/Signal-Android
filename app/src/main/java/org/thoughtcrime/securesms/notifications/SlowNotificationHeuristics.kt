@@ -10,17 +10,18 @@ import android.text.TextUtils
 import androidx.annotation.WorkerThread
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.database.LocalMetricsDatabase
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.util.DeviceProperties
-import org.thoughtcrime.securesms.util.FeatureFlags
 import org.thoughtcrime.securesms.util.JsonUtils
-import org.thoughtcrime.securesms.util.LocaleFeatureFlags
+import org.thoughtcrime.securesms.util.LocaleRemoteConfig
 import org.thoughtcrime.securesms.util.PowerManagerCompat
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.SignalLocalMetrics
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * Heuristic for estimating if a user has been experiencing issues with delayed notifications.
@@ -35,7 +36,7 @@ object SlowNotificationHeuristics {
   private val TAG = Log.tag(SlowNotificationHeuristics::class.java)
 
   fun getConfiguration(): Configuration {
-    val json = FeatureFlags.delayedNotificationsPromptConfig()
+    val json = RemoteConfig.delayedNotificationsPromptConfig
     return if (TextUtils.isEmpty(json)) {
       getDefaultConfiguration()
     } else {
@@ -52,19 +53,21 @@ object SlowNotificationHeuristics {
       minimumEventAgeMs = 3.days.inWholeMilliseconds,
       minimumServiceEventCount = 10,
       serviceStartFailurePercentage = 0.5f,
-      messageLatencyPercentage = 75,
-      messageLatencyThreshold = 6.hours.inWholeMilliseconds,
       minimumMessageLatencyEvents = 50,
-      weeklyFailedQueueDrains = 5
+      weeklyFailedQueueDrains = 5,
+      messageLatencyPercentiles = mapOf(
+        90 to 2.hours.inWholeMilliseconds,
+        50 to 30.minutes.inWholeMilliseconds
+      )
     )
   }
 
   @JvmStatic
-  fun shouldPromptUserForLogs(): Boolean {
-    if (!LocaleFeatureFlags.isDelayedNotificationPromptEnabled() || SignalStore.uiHints().hasDeclinedToShareNotificationLogs()) {
+  fun shouldPromptUserForDelayedNotificationLogs(): Boolean {
+    if (!LocaleRemoteConfig.isDelayedNotificationPromptEnabled() || SignalStore.uiHints.hasDeclinedToShareNotificationLogs()) {
       return false
     }
-    if (System.currentTimeMillis() - SignalStore.uiHints().lastNotificationLogsPrompt < TimeUnit.DAYS.toMillis(7)) {
+    if (System.currentTimeMillis() - SignalStore.uiHints.lastNotificationLogsPrompt < TimeUnit.DAYS.toMillis(7)) {
       return false
     }
 
@@ -76,10 +79,13 @@ object SlowNotificationHeuristics {
     if (Build.VERSION.SDK_INT < 23) {
       return false
     }
-    if (!LocaleFeatureFlags.isBatterySaverPromptEnabled() || SignalStore.uiHints().hasDismissedBatterySaverPrompt()) {
+
+    val remoteEnabled = LocaleRemoteConfig.isBatterySaverPromptEnabled() || LocaleRemoteConfig.isDelayedNotificationPromptEnabled()
+    if (!remoteEnabled || SignalStore.uiHints.hasDismissedBatterySaverPrompt()) {
       return false
     }
-    if (System.currentTimeMillis() - SignalStore.uiHints().lastBatterySaverPrompt < TimeUnit.DAYS.toMillis(7)) {
+
+    if (System.currentTimeMillis() - SignalStore.uiHints.lastBatterySaverPrompt < TimeUnit.DAYS.toMillis(7)) {
       return false
     }
 
@@ -89,20 +95,20 @@ object SlowNotificationHeuristics {
   @WorkerThread
   @JvmStatic
   fun isHavingDelayedNotifications(): Boolean {
-    if (!SignalStore.settings().isMessageNotificationsEnabled ||
+    if (!SignalStore.settings.isMessageNotificationsEnabled ||
       !NotificationChannels.getInstance().areNotificationsEnabled()
     ) {
       // If user does not have notifications enabled, we shouldn't bother them about delayed notifications
       return false
     }
     val configuration = getConfiguration()
-    val db = LocalMetricsDatabase.getInstance(ApplicationDependencies.getApplication())
+    val db = LocalMetricsDatabase.getInstance(AppDependencies.application)
 
     val metrics = db.getMetrics()
 
     val failedServiceStarts = hasRepeatedFailedServiceStarts(metrics, configuration.minimumEventAgeMs, configuration.minimumServiceEventCount, configuration.serviceStartFailurePercentage)
     val failedQueueDrains = isFailingToDrainQueue(metrics, configuration.minimumEventAgeMs, configuration.weeklyFailedQueueDrains)
-    val longMessageLatency = hasLongMessageLatency(metrics, configuration.minimumEventAgeMs, configuration.messageLatencyPercentage, configuration.minimumMessageLatencyEvents, configuration.messageLatencyThreshold)
+    val longMessageLatency = hasLongMessageLatency(metrics, configuration.minimumEventAgeMs, configuration.minimumMessageLatencyEvents, configuration.messageLatencyPercentiles)
 
     if (failedServiceStarts || failedQueueDrains || longMessageLatency) {
       Log.w(TAG, "User seems to be having delayed notifications: failed-service-starts=$failedServiceStarts failedQueueDrains=$failedQueueDrains longMessageLatency=$longMessageLatency")
@@ -126,8 +132,8 @@ object SlowNotificationHeuristics {
    * true can most definitely be at fault.
    */
   @JvmStatic
-  fun isPotentiallyCausedByBatteryOptimizations(): Boolean {
-    val applicationContext = ApplicationDependencies.getApplication()
+  fun isBatteryOptimizationsOn(): Boolean {
+    val applicationContext = AppDependencies.application
     if (DeviceProperties.getDataSaverState(applicationContext) == DeviceProperties.DataSaverState.ENABLED) {
       return false
     }
@@ -135,6 +141,14 @@ object SlowNotificationHeuristics {
       return false
     }
     return true
+  }
+
+  fun getDeviceSpecificShowCondition(): DeviceSpecificNotificationConfig.ShowCondition {
+    return DeviceSpecificNotificationConfig.currentConfig.showCondition
+  }
+
+  fun shouldShowDeviceSpecificDialog(): Boolean {
+    return LocaleRemoteConfig.isDeviceSpecificNotificationEnabled() && SignalStore.uiHints.lastSupportVersionSeen < DeviceSpecificNotificationConfig.currentConfig.version
   }
 
   private fun hasRepeatedFailedServiceStarts(metrics: List<LocalMetricsDatabase.EventMetrics>, minimumEventAgeMs: Long, minimumEventCount: Int, failurePercentage: Float): Boolean {
@@ -171,28 +185,30 @@ object SlowNotificationHeuristics {
     return true
   }
 
-  private fun hasLongMessageLatency(metrics: List<LocalMetricsDatabase.EventMetrics>, minimumEventAgeMs: Long, percentage: Int, messageThreshold: Int, durationThreshold: Long): Boolean {
+  private fun hasLongMessageLatency(metrics: List<LocalMetricsDatabase.EventMetrics>, minimumEventAgeMs: Long, messageThreshold: Int, percentiles: Map<Int, Long>): Boolean {
     if (!haveEnoughData(SignalLocalMetrics.MessageLatency.NAME_HIGH, minimumEventAgeMs)) {
       Log.d(TAG, "insufficient data for message latency")
       return false
     }
-    val eventCount = metrics.count { it.name == SignalLocalMetrics.MessageLatency.NAME_HIGH }
+    val eventCount = metrics.find { it.name == SignalLocalMetrics.MessageLatency.NAME_HIGH }?.count ?: 0
     if (eventCount < messageThreshold) {
       Log.d(TAG, "not enough messages for message latency")
       return false
     }
-    val db = LocalMetricsDatabase.getInstance(ApplicationDependencies.getApplication())
-    val averageLatency = db.eventPercent(SignalLocalMetrics.MessageLatency.NAME_HIGH, percentage.coerceAtMost(100).coerceAtLeast(0))
+    val db = LocalMetricsDatabase.getInstance(AppDependencies.application)
+    for ((percentage, threshold) in percentiles.entries) {
+      val averageLatency = db.eventPercent(SignalLocalMetrics.MessageLatency.NAME_HIGH, percentage.coerceAtMost(100).coerceAtLeast(0))
 
-    val longMessageLatency = averageLatency > durationThreshold
-    if (longMessageLatency) {
-      Log.w(TAG, "User has high average message latency of $averageLatency ms over $eventCount events")
+      if (averageLatency > threshold) {
+        Log.w(TAG, "User has high average message latency of $averageLatency ms over $eventCount events over threshold of $threshold ms")
+        return true
+      }
     }
-    return longMessageLatency
+    return false
   }
 
   private fun haveEnoughData(eventName: String, minimumEventAgeMs: Long): Boolean {
-    val db = LocalMetricsDatabase.getInstance(ApplicationDependencies.getApplication())
+    val db = LocalMetricsDatabase.getInstance(AppDependencies.application)
 
     val oldestEvent = db.getOldestMetricTime(eventName)
 
@@ -206,6 +222,5 @@ data class Configuration(
   val serviceStartFailurePercentage: Float,
   val weeklyFailedQueueDrains: Int,
   val minimumMessageLatencyEvents: Int,
-  val messageLatencyThreshold: Long,
-  val messageLatencyPercentage: Int
+  val messageLatencyPercentiles: Map<Int, Long>
 )

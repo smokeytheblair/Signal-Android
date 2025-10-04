@@ -1,39 +1,58 @@
 package org.thoughtcrime.securesms.conversation;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ObjectAnimator;
 import android.content.Context;
+import android.graphics.PorterDuff;
+import android.graphics.drawable.Drawable;
+import android.os.Handler;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
 import android.util.AttributeSet;
 import android.view.View;
-import android.widget.TextView;
 
+import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
+import androidx.appcompat.content.res.AppCompatResources;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewKt;
 
+import com.bumptech.glide.RequestManager;
+
+import org.signal.core.util.DimensionUnit;
 import org.signal.core.util.concurrent.SignalExecutors;
+import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.badges.BadgeImageView;
-import org.thoughtcrime.securesms.components.AvatarImageView;
 import org.thoughtcrime.securesms.components.emoji.EmojiTextView;
-import org.thoughtcrime.securesms.contacts.avatars.FallbackContactPhoto;
-import org.thoughtcrime.securesms.contacts.avatars.ResourceContactPhoto;
+import org.thoughtcrime.securesms.conversation.colors.AvatarGradientColors;
+import org.thoughtcrime.securesms.conversation.v2.data.AvatarDownloadStateCache;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.mms.GlideRequests;
+import org.thoughtcrime.securesms.databinding.ConversationHeaderViewBinding;
+import org.thoughtcrime.securesms.fonts.SignalSymbols;
+import org.thoughtcrime.securesms.jobs.AvatarGroupsV2DownloadJob;
+import org.thoughtcrime.securesms.jobs.RetrieveProfileAvatarJob;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.util.ContextUtil;
 import org.thoughtcrime.securesms.util.LongClickMovementMethod;
 import org.thoughtcrime.securesms.util.SpanUtil;
+import org.thoughtcrime.securesms.util.ViewUtil;
+import org.whispersystems.signalservice.api.util.Preconditions;
 
 public class ConversationHeaderView extends ConstraintLayout {
 
-  private AvatarImageView contactAvatar;
-  private TextView        contactTitle;
-  private TextView        contactAbout;
-  private TextView        contactSubtitle;
-  private EmojiTextView   contactDescription;
-  private View            tapToView;
-  private BadgeImageView  contactBadge;
+  private static final String TAG           = Log.tag(ConversationHeaderView.class);
+  private static final int    FADE_DURATION = 150;
+  private static final int    LOADING_DELAY = 800;
+
+  private final ConversationHeaderViewBinding binding;
+
+  private boolean inProgress = false;
+  private Handler handler    = new Handler();
 
   public ConversationHeaderView(Context context) {
     this(context, null);
@@ -46,114 +65,280 @@ public class ConversationHeaderView extends ConstraintLayout {
   public ConversationHeaderView(Context context, AttributeSet attrs, int defStyleAttr) {
     super(context, attrs, defStyleAttr);
 
-    inflate(getContext(), R.layout.conversation_banner_view, this);
+    inflate(getContext(), R.layout.conversation_header_view, this);
 
-    contactAvatar      = findViewById(R.id.message_request_avatar);
-    contactBadge       = findViewById(R.id.message_request_badge);
-    contactTitle       = findViewById(R.id.message_request_title);
-    contactAbout       = findViewById(R.id.message_request_about);
-    contactSubtitle    = findViewById(R.id.message_request_subtitle);
-    contactDescription = findViewById(R.id.message_request_description);
-    tapToView          = findViewById(R.id.message_request_avatar_tap_to_view);
+    binding = ConversationHeaderViewBinding.bind(this);
+  }
 
-    contactAvatar.setFallbackPhotoProvider(new FallbackPhotoProvider());
+  public void showProgressBar(@NonNull Recipient recipient) {
+    if (!inProgress) {
+      inProgress = true;
+      animateAvatarLoading(recipient);
+      binding.messageRequestAvatarTapToView.setVisibility(GONE);
+      binding.messageRequestAvatarTapToView.setOnClickListener(null);
+      handler.postDelayed(() -> {
+        boolean isDownloading = AvatarDownloadStateCache.getDownloadState(recipient) == AvatarDownloadStateCache.DownloadState.IN_PROGRESS;
+        binding.progressBar.setVisibility(isDownloading ? View.VISIBLE : View.GONE);
+      }, LOADING_DELAY);
+    }
+  }
+
+  public void hideProgressBar() {
+    inProgress = false;
+    binding.progressBar.setVisibility(View.GONE);
+  }
+
+  public void showFailedAvatarDownload(@NonNull Recipient recipient) {
+    AvatarDownloadStateCache.set(recipient, AvatarDownloadStateCache.DownloadState.NONE);
+    binding.progressBar.setVisibility(View.GONE);
+    binding.messageRequestAvatar.setImageDrawable(AvatarGradientColors.getGradientDrawable(recipient));
   }
 
   public void setBadge(@Nullable Recipient recipient) {
     if (recipient == null || recipient.isSelf()) {
-      contactBadge.setBadge(null);
+      binding.messageRequestBadge.setBadge(null);
     } else {
-      contactBadge.setBadgeFromRecipient(recipient);
+      binding.messageRequestBadge.setBadgeFromRecipient(recipient);
     }
   }
 
-  public void setAvatar(@NonNull GlideRequests requests, @Nullable Recipient recipient) {
-    contactAvatar.setAvatar(requests, recipient, false);
+  public void setAvatar(@NonNull RequestManager requestManager, @Nullable Recipient recipient) {
+    if (recipient == null) {
+      return;
+    }
 
-    if (recipient != null && recipient.shouldBlurAvatar() && recipient.getContactPhoto() != null) {
-      tapToView.setVisibility(VISIBLE);
-      tapToView.setOnClickListener(v -> {
-        SignalExecutors.BOUNDED.execute(() -> SignalDatabase.recipients().manuallyShowAvatar(recipient.getId()));
+    if (AvatarDownloadStateCache.getDownloadState(recipient) != AvatarDownloadStateCache.DownloadState.IN_PROGRESS) {
+      binding.messageRequestAvatar.setAvatar(requestManager, recipient, false, false, true);
+      hideProgressBar();
+    }
+
+    if (recipient.getShouldBlurAvatar() && recipient.getHasAvatar()) {
+      binding.messageRequestAvatarTapToView.setVisibility(VISIBLE);
+      binding.messageRequestAvatarTapToView.setOnClickListener(v -> {
+        AvatarDownloadStateCache.set(recipient, AvatarDownloadStateCache.DownloadState.IN_PROGRESS);
+        SignalExecutors.BOUNDED.execute(() -> SignalDatabase.recipients().manuallyUpdateShowAvatar(recipient.getId(), true));
+        if (recipient.isPushV2Group()) {
+          AvatarGroupsV2DownloadJob.enqueueUnblurredAvatar(recipient.requireGroupId().requireV2());
+        } else {
+          RetrieveProfileAvatarJob.enqueueUnblurredAvatar(recipient);
+        }
       });
     } else {
-      tapToView.setVisibility(GONE);
-      tapToView.setOnClickListener(null);
+      binding.messageRequestAvatarTapToView.setVisibility(GONE);
+      binding.messageRequestAvatarTapToView.setOnClickListener(null);
     }
   }
 
-  public String setTitle(@NonNull Recipient recipient) {
-    SpannableStringBuilder title = new SpannableStringBuilder(recipient.isSelf() ? getContext().getString(R.string.note_to_self) : recipient.getDisplayNameOrUsername(getContext()));
-    if (recipient.showVerified()) {
+  public String setTitle(@NonNull Recipient recipient, @NonNull Runnable onTitleClicked) {
+    SpannableStringBuilder title = new SpannableStringBuilder(recipient.isSelf() ? getContext().getString(R.string.note_to_self) : recipient.getDisplayName(getContext()));
+    if (recipient.getShowVerified()) {
       SpanUtil.appendCenteredImageSpan(title, ContextUtil.requireDrawable(getContext(), R.drawable.ic_official_28), 28, 28);
     }
-    contactTitle.setText(title);
+
+    if (recipient.isIndividual() && !recipient.isSelf()) {
+      boolean isLtr = ViewUtil.isLtr(this);
+      CharSequence chevron = SignalSymbols.getSpannedString(getContext(), SignalSymbols.Weight.BOLD, isLtr ? SignalSymbols.Glyph.CHEVRON_RIGHT : SignalSymbols.Glyph.CHEVRON_LEFT, R.color.signal_colorOutline);
+
+      if (isLtr) {
+        title.append(" ");
+        title.append(SpanUtil.ofSize(chevron, 24));
+      } else {
+        title.insert(0, " ");
+        title.insert(0, SpanUtil.ofSize(chevron, 24));
+      }
+
+      binding.messageRequestTitle.setOnClickListener(v -> onTitleClicked.run());
+    } else {
+      binding.messageRequestTitle.setOnClickListener(null);
+    }
+
+    binding.messageRequestTitle.setText(title);
     return title.toString();
   }
 
+  public void showReleaseNoteHeader() {
+    binding.messageRequestInfo.setVisibility(View.GONE);
+    binding.releaseHeaderContainer.setVisibility(View.VISIBLE);
+    binding.releaseHeaderDescription1.setText(prependIcon(getContext().getString(R.string.ReleaseNotes__this_is_official_chat_period), R.drawable.symbol_official_20));
+    binding.releaseHeaderDescription2.setText(prependIcon(getContext().getString(R.string.ReleaseNotes__keep_up_to_date_period), R.drawable.symbol_bell_20));
+  }
+
   public void setAbout(@NonNull Recipient recipient) {
-    String about;
-    if (recipient.isReleaseNotes()) {
-      about = getContext().getString(R.string.ReleaseNotes__signal_release_notes_and_news);
-    } else {
-      about = recipient.getCombinedAboutAndEmoji();
+    String about = recipient.getCombinedAboutAndEmoji();
+    binding.messageRequestAbout.setText(about);
+    binding.messageRequestAbout.setVisibility(TextUtils.isEmpty(about) || recipient.isReleaseNotes() ? GONE : VISIBLE);
+  }
+
+  public void setSubtitle(@NonNull CharSequence subtitle, @DrawableRes int iconRes, @Nullable String substring, @Nullable Runnable onClick) {
+    if (TextUtils.isEmpty(subtitle)) {
+      hideSubtitle();
+      return;
     }
 
-    contactAbout.setText(about);
-    contactAbout.setVisibility(TextUtils.isEmpty(about) ? GONE : VISIBLE);
+    if (onClick != null && substring != null) {
+      binding.messageRequestSubtitle.setMovementMethod(LinkMovementMethod.getInstance());
+      CharSequence builder = SpanUtil.clickSubstring(
+          subtitle,
+          substring,
+          listener -> onClick.run(),
+          ContextCompat.getColor(getContext(), R.color.signal_colorOnSurface),
+          true
+      );
+      binding.messageRequestSubtitle.setText(prependIcon(builder, iconRes));
+    } else {
+      binding.messageRequestSubtitle.setText(prependIcon(subtitle, iconRes));
+    }
+
+    binding.messageRequestSubtitle.setVisibility(View.VISIBLE);
   }
 
-  public void setSubtitle(@Nullable CharSequence subtitle) {
-    contactSubtitle.setText(subtitle);
-    contactSubtitle.setVisibility(TextUtils.isEmpty(subtitle) ? GONE : VISIBLE);
-  }
+  public void setDescription(@Nullable CharSequence description, @DrawableRes int iconRes) {
+    if (TextUtils.isEmpty(description)) {
+      hideDescription();
+      return;
+    }
 
-  public void setDescription(@Nullable CharSequence description) {
-    contactDescription.setText(description);
-    contactDescription.setVisibility(TextUtils.isEmpty(description) ? GONE : VISIBLE);
+    binding.messageRequestDescription.setText(prependIcon(description, iconRes));
+    binding.messageRequestDescription.setVisibility(View.VISIBLE);
+    updateOutlineVisibility();
   }
 
   public @NonNull EmojiTextView getDescription() {
-    return contactDescription;
+    return binding.messageRequestDescription;
+  }
+
+  public void setButton(@NonNull CharSequence button, Runnable onClick) {
+    binding.messageRequestButton.setText(button);
+    binding.messageRequestButton.setOnClickListener(v -> onClick.run());
+    binding.messageRequestButton.setVisibility(View.VISIBLE);
+  }
+
+  public void showWarningSubtitle() {
+    binding.messageRequestReviewCarefully.setVisibility(View.VISIBLE);
+  }
+
+  public void hideWarningSubtitle() {
+    binding.messageRequestReviewCarefully.setVisibility(View.GONE);
+  }
+
+  public void setUnverifiedNameSubtitle(@DrawableRes int iconRes, boolean forGroup, @NonNull Runnable onClick) {
+    binding.messageRequestProfileNameUnverified.setVisibility(View.VISIBLE);
+    binding.messageRequestProfileNameUnverified.setOnClickListener(view -> onClick.run());
+
+    String substring  = forGroup ? getContext().getString(R.string.ConversationFragment_group_names)
+                                 : getContext().getString(R.string.ConversationFragment_profile_names);
+
+    String fullString = forGroup ? getContext().getString(R.string.ConversationFragment_group_names_not_verified, substring)
+                                 : getContext().getString(R.string.ConversationFragment_profile_names_not_verified, substring);
+
+    CharSequence builder = SpanUtil.underlineSubstring(fullString, substring);
+    binding.messageRequestProfileNameUnverified.setText(prependIcon(builder, iconRes, forGroup));
+  }
+
+  public void hideUnverifiedNameSubtitle() {
+    binding.messageRequestProfileNameUnverified.setVisibility(View.GONE);
   }
 
   public void showBackgroundBubble(boolean enabled) {
     if (enabled) {
-      setBackgroundResource(R.drawable.wallpaper_bubble_background_12);
+      setBackgroundResource(R.drawable.wallpaper_bubble_background_18);
     } else {
       setBackground(null);
     }
+
+    updateOutlineVisibility();
   }
 
   public void hideSubtitle() {
-    contactSubtitle.setVisibility(View.GONE);
+    binding.messageRequestSubtitle.setVisibility(View.GONE);
+    updateOutlineVisibility();
   }
 
   public void showDescription() {
-    contactDescription.setVisibility(View.VISIBLE);
+    binding.messageRequestDescription.setVisibility(View.VISIBLE);
+    updateOutlineVisibility();
   }
 
   public void hideDescription() {
-    contactDescription.setVisibility(View.GONE);
+    binding.messageRequestDescription.setVisibility(View.GONE);
+    updateOutlineVisibility();
+  }
+
+  public void hideButton() {
+    binding.messageRequestButton.setVisibility(View.GONE);
   }
 
   public void setLinkifyDescription(boolean enable) {
-    contactDescription.setMovementMethod(enable ? LongClickMovementMethod.getInstance(getContext()) : null);
+    binding.messageRequestDescription.setMovementMethod(enable ? LongClickMovementMethod.getInstance(getContext()) : null);
   }
 
-  private static final class FallbackPhotoProvider extends Recipient.FallbackPhotoProvider {
-    @Override
-    public @NonNull FallbackContactPhoto getPhotoForRecipientWithoutName() {
-      return new ResourceContactPhoto(R.drawable.ic_profile_64);
+  private void animateAvatarLoading(@NonNull Recipient recipient) {
+    Drawable loadingProfile = AppCompatResources.getDrawable(getContext(), R.drawable.circle_profile_photo);
+    ObjectAnimator animator = ObjectAnimator.ofFloat(binding.messageRequestAvatar, "alpha", 1f, 0f).setDuration(FADE_DURATION);
+    animator.addListener(new AnimatorListenerAdapter() {
+      @Override
+      public void onAnimationEnd(Animator animation) {
+        if (AvatarDownloadStateCache.getDownloadState(recipient) == AvatarDownloadStateCache.DownloadState.IN_PROGRESS) {
+          binding.messageRequestAvatar.setImageDrawable(loadingProfile);
+        }
+        ObjectAnimator.ofFloat(binding.messageRequestAvatar, "alpha", 0f, 1f).setDuration(FADE_DURATION).start();
+      }
+    });
+
+    animator.start();
+  }
+
+  private void updateOutlineVisibility() {
+    if (ViewKt.isVisible(binding.messageRequestSubtitle) || ViewKt.isVisible(binding.messageRequestDescription)) {
+      if (getBackground() != null) {
+        binding.messageRequestInfoOutline.setVisibility(View.GONE);
+        binding.messageRequestDivider.setVisibility(View.VISIBLE);
+      } else {
+        binding.messageRequestInfoOutline.setVisibility(View.VISIBLE);
+        binding.messageRequestDivider.setVisibility(View.GONE);
+      }
+    } else {
+      binding.messageRequestInfoOutline.setVisibility(View.GONE);
+      binding.messageRequestDivider.setVisibility(View.GONE);
+    }
+  }
+
+  public void updateOutlineBoxSize() {
+    int visibleCount = 0;
+    for (int i = 0; i < binding.messageRequestInfo.getChildCount(); i++) {
+      if (ViewKt.isVisible(binding.messageRequestInfo.getChildAt(i))) {
+        visibleCount++;
+      }
     }
 
-    @Override
-    public @NonNull FallbackContactPhoto getPhotoForGroup() {
-      return new ResourceContactPhoto(R.drawable.ic_group_64);
+    if (getBackground() != null) {
+      ViewUtil.setPaddingTop(binding.messageRequestInfo, 0);
+      ViewUtil.setPaddingBottom(binding.messageRequestInfo, getContext().getResources().getDimensionPixelOffset(R.dimen.conversation_header_padding));
+      int margin = getContext().getResources().getDimensionPixelOffset(R.dimen.conversation_header_margin);
+      ViewUtil.setLeftMargin(this, margin);
+      ViewUtil.setRightMargin(this, margin);
     }
 
-    @Override
-    public @NonNull FallbackContactPhoto getPhotoForLocalNumber() {
-      return new ResourceContactPhoto(R.drawable.ic_note_64);
-    }
+    int padding = visibleCount == 1 ? getContext().getResources().getDimensionPixelOffset(R.dimen.conversation_header_padding) : getContext().getResources().getDimensionPixelOffset(R.dimen.conversation_header_padding_expanded);
+    ViewUtil.setPaddingStart(binding.messageRequestInfo, padding);
+    ViewUtil.setPaddingEnd(binding.messageRequestInfo, padding);
+  }
+
+  private @NonNull CharSequence prependIcon(@NonNull CharSequence input, @DrawableRes int iconRes) {
+    return prependIcon(input, iconRes, false);
+  }
+
+
+  private @NonNull CharSequence prependIcon(@NonNull CharSequence input, @DrawableRes int iconRes, boolean useIntrinsicWidth) {
+    Drawable drawable = ContextCompat.getDrawable(getContext(), iconRes);
+    Preconditions.checkNotNull(drawable);
+    int width = useIntrinsicWidth ? drawable.getIntrinsicWidth() : (int) DimensionUnit.SP.toPixels(16);
+    drawable.setBounds(0, 0, width, (int) DimensionUnit.SP.toPixels(16));
+    drawable.setColorFilter(ContextCompat.getColor(getContext(), R.color.signal_colorOnSurface), PorterDuff.Mode.SRC_ATOP);
+
+    return new SpannableStringBuilder()
+        .append(SpanUtil.buildCenteredImageSpan(drawable))
+        .append(SpanUtil.space(8, DimensionUnit.SP))
+        .append(input);
   }
 }

@@ -1,6 +1,5 @@
 package org.thoughtcrime.securesms
 
-import org.thoughtcrime.securesms.util.FeatureFlags
 import org.whispersystems.signalservice.api.account.AccountAttributes
 
 object AppCapabilities {
@@ -12,13 +11,9 @@ object AppCapabilities {
   fun getCapabilities(storageCapable: Boolean): AccountAttributes.Capabilities {
     return AccountAttributes.Capabilities(
       storage = storageCapable,
-      senderKey = true,
-      announcementGroup = true,
-      changeNumber = true,
-      stories = true,
-      giftBadges = true,
-      pni = FeatureFlags.phoneNumberPrivacy(),
-      paymentActivation = true
+      versionedExpirationTimer = true,
+      attachmentBackfill = true,
+      spqr = true
     )
   }
 }

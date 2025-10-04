@@ -2,6 +2,7 @@ package org.thoughtcrime.securesms.profiles.manage;
 
 import android.os.Bundle;
 import android.text.Editable;
+import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,10 +18,10 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.Navigation;
 
 import org.signal.core.util.EditTextUtil;
+import org.signal.core.util.StringUtil;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.profiles.ProfileName;
 import org.thoughtcrime.securesms.recipients.Recipient;
-import org.signal.core.util.StringUtil;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.text.AfterTextChanged;
 import org.thoughtcrime.securesms.util.views.CircularProgressMaterialButton;
@@ -136,7 +137,7 @@ public class EditProfileNameFragment extends Fragment {
     text.setEnabled(enabled);
     text.setFocusable(enabled);
     if (enabled) {
-      text.setInputType(EditorInfo.TYPE_TEXT_VARIATION_PERSON_NAME);
+      text.setInputType(EditorInfo.TYPE_TEXT_VARIATION_PERSON_NAME | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
     } else {
       text.clearFocus();
       text.setInputType(EditorInfo.TYPE_NULL);

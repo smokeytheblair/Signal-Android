@@ -4,7 +4,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.AsyncTask
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
@@ -12,26 +11,28 @@ import androidx.core.app.ShareCompat
 import androidx.fragment.app.Fragment
 import com.bumptech.glide.load.Options
 import io.reactivex.rxjava3.core.Single
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.signal.core.util.Base64
 import org.signal.core.util.DimensionUnit
-import org.signal.core.util.concurrent.SimpleTask
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.attachments.Attachment
+import org.thoughtcrime.securesms.attachments.AttachmentSaver
 import org.thoughtcrime.securesms.components.menu.ActionItem
 import org.thoughtcrime.securesms.components.menu.SignalContextMenu
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
 import org.thoughtcrime.securesms.database.model.MessageRecord
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.databaseprotos.StoryTextPost
 import org.thoughtcrime.securesms.providers.BlobProvider
 import org.thoughtcrime.securesms.stories.StoryTextPostModel
 import org.thoughtcrime.securesms.stories.landing.StoriesLandingItem
 import org.thoughtcrime.securesms.stories.viewer.page.StoryPost
 import org.thoughtcrime.securesms.stories.viewer.page.StoryViewerPageState
-import org.thoughtcrime.securesms.util.Base64
 import org.thoughtcrime.securesms.util.BitmapUtil
 import org.thoughtcrime.securesms.util.DeleteDialog
 import org.thoughtcrime.securesms.util.MediaUtil
-import org.thoughtcrime.securesms.util.SaveAttachmentTask
+import org.thoughtcrime.securesms.util.SaveAttachmentUtil
 import java.io.ByteArrayInputStream
 
 object StoryContextMenu {
@@ -48,51 +49,49 @@ object StoryContextMenu {
     ).map { (_, deletedThread) -> deletedThread }
   }
 
-  fun save(context: Context, messageRecord: MessageRecord) {
-    val mediaMessageRecord = messageRecord as? MediaMmsMessageRecord
+  suspend fun save(fragment: Fragment, messageRecord: MessageRecord) {
+    val mediaMessageRecord = messageRecord as? MmsMessageRecord
     val uri: Uri? = mediaMessageRecord?.slideDeck?.firstSlide?.uri
     val contentType: String? = mediaMessageRecord?.slideDeck?.firstSlide?.contentType
 
-    if (mediaMessageRecord?.storyType?.isTextStory == true) {
-      SimpleTask.run({
-        val model = StoryTextPostModel.parseFrom(messageRecord)
-        val decoder = StoryTextPostModel.Decoder()
-        val bitmap = decoder.decode(model, 1080, 1920, Options()).get()
-        val jpeg: ByteArrayInputStream = BitmapUtil.toCompressedJpeg(bitmap)
-
-        bitmap.recycle()
-
-        SaveAttachmentTask.Attachment(
-          BlobProvider.getInstance().forData(jpeg.readBytes()).createForSingleUseInMemory(),
-          MediaUtil.IMAGE_JPEG,
-          mediaMessageRecord.dateSent,
-          null
-        )
-      }, { saveAttachment ->
-        SaveAttachmentTask(context)
-          .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, saveAttachment)
-      })
-      return
+    when {
+      mediaMessageRecord?.storyType?.isTextStory == true -> saveTextStory(fragment, mediaMessageRecord)
+      uri == null || contentType == null -> showErrorCantSaveStory(fragment, uri, contentType)
+      else -> saveMediaStory(fragment, uri, contentType, mediaMessageRecord)
     }
-
-    if (uri == null || contentType == null) {
-      Log.w(TAG, "Unable to save story media uri: $uri contentType: $contentType")
-      Toast.makeText(context, R.string.MyStories__unable_to_save, Toast.LENGTH_SHORT).show()
-      return
-    }
-
-    val saveAttachment = SaveAttachmentTask.Attachment(
-      uri,
-      contentType,
-      mediaMessageRecord.dateSent,
-      null
-    )
-
-    SaveAttachmentTask(context)
-      .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, saveAttachment)
   }
 
-  fun share(fragment: Fragment, messageRecord: MediaMmsMessageRecord) {
+  private suspend fun saveTextStory(fragment: Fragment, messageRecord: MmsMessageRecord) {
+    val saveAttachment = withContext(Dispatchers.Main) {
+      val model = StoryTextPostModel.parseFrom(messageRecord)
+      val decoder = StoryTextPostModel.Decoder()
+      val bitmap = decoder.decode(model, 1080, 1920, Options()).get()
+      val jpeg: ByteArrayInputStream = BitmapUtil.toCompressedJpeg(bitmap)
+
+      bitmap.recycle()
+
+      SaveAttachmentUtil.SaveAttachment(
+        uri = BlobProvider.getInstance().forData(jpeg.readBytes()).createForSingleUseInMemory(),
+        contentType = MediaUtil.IMAGE_JPEG,
+        date = messageRecord.dateSent,
+        fileName = null
+      )
+    }
+
+    AttachmentSaver(fragment).saveAttachments(setOf(saveAttachment))
+  }
+
+  private suspend fun saveMediaStory(fragment: Fragment, uri: Uri, contentType: String, mediaMessageRecord: MmsMessageRecord) {
+    val saveAttachment = SaveAttachmentUtil.SaveAttachment(uri = uri, contentType = contentType, date = mediaMessageRecord.dateSent, fileName = null)
+    AttachmentSaver(fragment).saveAttachments(setOf(saveAttachment))
+  }
+
+  private fun showErrorCantSaveStory(fragment: Fragment, uri: Uri?, contentType: String?) {
+    Log.w(TAG, "Unable to save story media uri: $uri contentType: $contentType")
+    Toast.makeText(fragment.requireContext(), R.string.MyStories__unable_to_save, Toast.LENGTH_LONG).show()
+  }
+
+  fun share(fragment: Fragment, messageRecord: MmsMessageRecord) {
     val intent = if (messageRecord.storyType.isTextStory) {
       val textStoryBody = StoryTextPost.ADAPTER.decode(Base64.decode(messageRecord.body)).body
       val linkUrl = messageRecord.linkPreviews.firstOrNull()?.url ?: ""
@@ -100,6 +99,7 @@ object StoryContextMenu {
 
       ShareCompat.IntentBuilder(fragment.requireContext())
         .setText(shareText)
+        .setType("text/plain")
         .createChooserIntent()
     } else {
       val attachment: Attachment = messageRecord.slideDeck.firstSlide!!.asAttachment()
@@ -152,6 +152,7 @@ object StoryContextMenu {
     anchorView: View,
     storyViewerPageState: StoryViewerPageState,
     onHide: (StoryPost) -> Unit,
+    onUnhide: (StoryPost) -> Unit,
     onForward: (StoryPost) -> Unit,
     onShare: (StoryPost) -> Unit,
     onGoToChat: (StoryPost) -> Unit,
@@ -168,10 +169,10 @@ object StoryContextMenu {
       isFromSelf = selectedStory.sender.isSelf,
       isToGroup = selectedStory.group != null,
       isFromReleaseChannel = selectedStory.sender.isReleaseNotes,
-      canHide = true,
+      canHide = !selectedStory.sender.shouldHideStory,
       callbacks = object : Callbacks {
         override fun onHide() = onHide(selectedStory)
-        override fun onUnhide() = throw NotImplementedError()
+        override fun onUnhide() = onUnhide(selectedStory)
         override fun onForward() = onForward(selectedStory)
         override fun onShare() = onShare(selectedStory)
         override fun onGoToChat() = onGoToChat(selectedStory)

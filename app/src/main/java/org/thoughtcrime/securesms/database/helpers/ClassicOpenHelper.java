@@ -39,12 +39,12 @@ import org.thoughtcrime.securesms.database.MessageTable;
 import org.thoughtcrime.securesms.database.MessageTypes;
 import org.thoughtcrime.securesms.database.RecipientTable;
 import org.thoughtcrime.securesms.database.ThreadTable;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.migrations.LegacyMigrationJob;
 import org.thoughtcrime.securesms.permissions.Permissions;
 import org.thoughtcrime.securesms.phonenumbers.NumberUtil;
-import org.thoughtcrime.securesms.util.Base64;
+import org.signal.core.util.Base64;
 import org.thoughtcrime.securesms.util.DelimiterUtil;
 import org.thoughtcrime.securesms.util.JsonUtils;
 import org.thoughtcrime.securesms.util.MediaUtil;
@@ -379,8 +379,8 @@ public class ClassicOpenHelper extends SQLiteOpenHelper {
 
               if (identityKey != null) {
                 MasterCipher masterCipher = new MasterCipher(masterSecret);
-                String identityKeyString  = Base64.encodeBytes(identityKey.serialize());
-                String macString          = Base64.encodeBytes(masterCipher.getMacFor(recipientId +
+                String identityKeyString  = Base64.encodeWithPadding(identityKey.serialize());
+                String macString          = Base64.encodeWithPadding(masterCipher.getMacFor(recipientId +
                                                                                           identityKeyString));
 
                 db.execSQL("REPLACE INTO identities (recipient, key, mac) VALUES (?, ?, ?)",
@@ -431,7 +431,7 @@ public class ClassicOpenHelper extends SQLiteOpenHelper {
     db.endTransaction();
 
 //    DecryptingQueue.schedulePendingDecrypts(context, masterSecret);
-    ApplicationDependencies.getMessageNotifier().updateNotification(context);
+    AppDependencies.getMessageNotifier().updateNotification(context);
   }
 
   @Override

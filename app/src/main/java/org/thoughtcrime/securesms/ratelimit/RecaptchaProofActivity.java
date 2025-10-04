@@ -10,19 +10,22 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import androidx.activity.result.contract.ActivityResultContract;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
+import org.signal.core.util.concurrent.SimpleTask;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.PassphraseRequiredActivity;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
+import org.thoughtcrime.securesms.net.SignalNetwork;
 import org.thoughtcrime.securesms.util.DynamicTheme;
+import org.thoughtcrime.securesms.util.ExceptionHelper;
 import org.thoughtcrime.securesms.util.Util;
-import org.signal.core.util.concurrent.SimpleTask;
 import org.thoughtcrime.securesms.util.views.SimpleProgressDialog;
-import org.whispersystems.signalservice.api.push.exceptions.PushNetworkException;
+import org.whispersystems.signalservice.api.NetworkResultUtil;
 
 import java.io.IOException;
 
@@ -35,10 +38,6 @@ public class RecaptchaProofActivity extends PassphraseRequiredActivity {
   private static final String RECAPTCHA_SCHEME = "signalcaptcha://";
 
   private final DynamicTheme dynamicTheme = new DynamicTheme();
-
-  public static @NonNull Intent getIntent(@NonNull Context context) {
-    return new Intent(context, RecaptchaProofActivity.class);
-  }
 
   @Override
   protected void onPreCreate() {
@@ -100,12 +99,16 @@ public class RecaptchaProofActivity extends PassphraseRequiredActivity {
       try {
         for (int i = 0; i < 3; i++) {
           try {
-            ApplicationDependencies.getSignalServiceAccountManager().submitRateLimitRecaptchaChallenge(challenge, token);
+            NetworkResultUtil.toBasicLegacy(SignalNetwork.rateLimitChallenge().submitCaptchaChallenge(challenge, token));
             RateLimitUtil.retryAllRateLimitedMessages(this);
             Log.i(TAG, "Successfully completed reCAPTCHA.");
             return new TokenResult(true, true);
-          } catch (PushNetworkException e) {
-            Log.w(TAG, "Network error during submission. Retrying.", e);
+          } catch (IOException e) {
+            if (ExceptionHelper.isRetryableIOException(e)) {
+              Log.w(TAG, "Network error during submission. Retrying.", e);
+            } else {
+              throw e;
+            }
           }
         }
       } catch (IOException e) {
@@ -120,6 +123,7 @@ public class RecaptchaProofActivity extends PassphraseRequiredActivity {
       if (result.clearState) {
         Log.i(TAG, "Considering the response sufficient to clear the slate.");
         SignalStore.rateLimit().onProofAccepted();
+        setResult(RESULT_OK);
       }
 
       if (!result.success) {
@@ -138,6 +142,19 @@ public class RecaptchaProofActivity extends PassphraseRequiredActivity {
     private TokenResult(boolean clearState, boolean success) {
       this.clearState = clearState;
       this.success    = success;
+    }
+  }
+
+  public static class RecaptchaProofContract extends ActivityResultContract<Void, Boolean> {
+
+    @Override
+    public @NonNull Intent createIntent(@NonNull Context context, Void unused) {
+      return new Intent(context, RecaptchaProofActivity.class);
+    }
+
+    @Override
+    public Boolean parseResult(int resultCode, @Nullable Intent intent) {
+      return resultCode == RESULT_OK;
     }
   }
 }

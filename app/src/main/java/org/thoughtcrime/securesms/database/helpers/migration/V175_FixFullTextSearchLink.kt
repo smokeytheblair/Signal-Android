@@ -1,8 +1,8 @@
 package org.thoughtcrime.securesms.database.helpers.migration
 
 import android.app.Application
-import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.signal.core.util.SqlUtil
+import org.thoughtcrime.securesms.database.SQLiteDatabase
 
 /**
  * Turns out renaming a table will automatically update all of your indexes, foreign keys, triggers, basically everything... except full-text search tables.
@@ -22,6 +22,10 @@ object V175_FixFullTextSearchLink : SignalDatabaseMigration {
     }
 
     db.execSQL("CREATE VIRTUAL TABLE message_fts USING fts5(body, thread_id UNINDEXED, content=message, content_rowid=_id)")
+
+    // The newly created search table is empty, while its content-table (message) is not. To get the search
+    // table in a consistent state, it needs to be rebuilt.
+    db.execSQL("INSERT INTO message_fts(message_fts) VALUES ('rebuild')")
 
     db.execSQL(
       """

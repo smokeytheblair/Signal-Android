@@ -3,9 +3,7 @@ package org.thoughtcrime.securesms.megaphone;
 import androidx.annotation.VisibleForTesting;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
-import org.thoughtcrime.securesms.util.TextSecurePreferences;
 
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -55,7 +53,7 @@ class PinsForAllSchedule implements MegaphoneSchedule {
       return true;
     }
 
-    if (SignalStore.registrationValues().pinWasRequiredAtRegistration()) {
+    if (SignalStore.registration().pinWasRequiredAtRegistration()) {
       return false;
     }
 
@@ -63,7 +61,7 @@ class PinsForAllSchedule implements MegaphoneSchedule {
   }
 
   private static boolean pinCreationFailedDuringRegistration() {
-    return SignalStore.registrationValues().pinWasRequiredAtRegistration() &&
+    return SignalStore.registration().pinWasRequiredAtRegistration() &&
            !SignalStore.svr().hasPin();
   }
 }

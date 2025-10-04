@@ -8,20 +8,20 @@ import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.protocol.message.DecryptionErrorMessage
 import org.signal.libsignal.zkgroup.groups.GroupSecretParams
+import org.thoughtcrime.securesms.database.MessageType
 import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.model.GroupRecord
 import org.thoughtcrime.securesms.database.model.MessageLogEntry
 import org.thoughtcrime.securesms.database.model.MessageRecord
 import org.thoughtcrime.securesms.database.model.PendingRetryReceiptModel
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.groups.BadGroupIdException
 import org.thoughtcrime.securesms.groups.GroupChangeBusyException
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.groups.GroupManager
 import org.thoughtcrime.securesms.groups.GroupNotAMemberException
-import org.thoughtcrime.securesms.groups.GroupsV1MigratedCache
-import org.thoughtcrime.securesms.groups.GroupsV1MigrationUtil
-import org.thoughtcrime.securesms.groups.v2.processing.GroupsV2StateProcessor
+import org.thoughtcrime.securesms.groups.v2.processing.GroupUpdateResult
+import org.thoughtcrime.securesms.groups.v2.processing.GroupUpdateResult.UpdateStatus
 import org.thoughtcrime.securesms.jobs.AutomaticSessionResetJob
 import org.thoughtcrime.securesms.jobs.NullMessageSendJob
 import org.thoughtcrime.securesms.jobs.ResendMessageJob
@@ -37,13 +37,12 @@ import org.thoughtcrime.securesms.messages.SignalServiceProtoUtil.isMediaMessage
 import org.thoughtcrime.securesms.messages.SignalServiceProtoUtil.isValid
 import org.thoughtcrime.securesms.messages.SignalServiceProtoUtil.signedGroupChange
 import org.thoughtcrime.securesms.messages.SignalServiceProtoUtil.toDecryptionErrorMessage
+import org.thoughtcrime.securesms.mms.IncomingMessage
 import org.thoughtcrime.securesms.notifications.v2.ConversationId
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.thoughtcrime.securesms.sms.IncomingEncryptedMessage
-import org.thoughtcrime.securesms.sms.IncomingTextMessage
 import org.thoughtcrime.securesms.util.EarlyMessageCacheEntry
-import org.thoughtcrime.securesms.util.FeatureFlags
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.SignalLocalMetrics
 import org.thoughtcrime.securesms.util.TextSecurePreferences
 import org.thoughtcrime.securesms.util.Util
@@ -72,7 +71,7 @@ open class MessageContentProcessor(private val context: Context) {
 
     @JvmStatic
     @JvmOverloads
-    fun create(context: Context = ApplicationDependencies.getApplication()): MessageContentProcessor {
+    fun create(context: Context = AppDependencies.application): MessageContentProcessor {
       return MessageContentProcessor(context)
     }
 
@@ -125,11 +124,11 @@ open class MessageContentProcessor(private val context: Context) {
     @Throws(BadGroupIdException::class)
     private fun getMessageDestination(content: Content, sender: Recipient): Recipient {
       return if (content.storyMessage != null && content.storyMessage!!.group.isValid) {
-        getGroupRecipient(content.storyMessage!!.group, sender)
+        getGroupRecipient(content.storyMessage?.group, sender)
       } else if (content.dataMessage.hasGroupContext) {
-        getGroupRecipient(content.dataMessage!!.groupV2, sender)
+        getGroupRecipient(content.dataMessage?.groupV2, sender)
       } else if (content.editMessage?.dataMessage.hasGroupContext) {
-        getGroupRecipient(content.editMessage!!.dataMessage!!.groupV2, sender)
+        getGroupRecipient(content.editMessage?.dataMessage?.groupV2, sender)
       } else {
         sender
       }
@@ -202,7 +201,7 @@ open class MessageContentProcessor(private val context: Context) {
         val threadId = SignalDatabase.threads.getThreadIdFor(destination.id)
         if (threadId != null) {
           val lastSeen = SignalDatabase.threads.getConversationMetadata(threadId).lastSeen
-          val visibleThread = ApplicationDependencies.getMessageNotifier().visibleThread.map(ConversationId::threadId).orElse(-1L)
+          val visibleThread = AppDependencies.messageNotifier.visibleThread.map(ConversationId::threadId).orElse(-1L)
 
           if (threadId != visibleThread && lastSeen > 0 && lastSeen < pending.receivedTimestamp) {
             receivedTime = pending.receivedTimestamp
@@ -230,20 +229,17 @@ open class MessageContentProcessor(private val context: Context) {
       groupId: GroupId.V2,
       groupV2: GroupContextV2,
       senderRecipient: Recipient,
-      groupSecretParams: GroupSecretParams? = null
+      groupSecretParams: GroupSecretParams? = null,
+      serverGuid: String? = null
     ): Gv2PreProcessResult {
-      val v1Group = GroupsV1MigratedCache.getV1GroupByV2Id(groupId)
-      if (v1Group != null) {
-        GroupsV1MigrationUtil.performLocalMigration(context, v1Group.id.requireV1())
-      }
       val preUpdateGroupRecord = SignalDatabase.groups.getGroup(groupId)
-      val groupUpdateResult = updateGv2GroupFromServerOrP2PChange(context, timestamp, groupV2, preUpdateGroupRecord, groupSecretParams)
+      val groupUpdateResult = updateGv2GroupFromServerOrP2PChange(context, timestamp, groupV2, preUpdateGroupRecord, groupSecretParams, serverGuid)
       if (groupUpdateResult == null) {
         log(timestamp, "Ignoring GV2 message for group we are not currently in $groupId")
         return Gv2PreProcessResult.IGNORE
       }
 
-      val groupRecord = if (groupUpdateResult.groupState == GroupsV2StateProcessor.GroupState.GROUP_CONSISTENT_OR_AHEAD) {
+      val groupRecord = if (groupUpdateResult.updateStatus == UpdateStatus.GROUP_CONSISTENT_OR_AHEAD) {
         preUpdateGroupRecord
       } else {
         SignalDatabase.groups.getGroup(groupId)
@@ -266,9 +262,9 @@ open class MessageContentProcessor(private val context: Context) {
         }
       }
 
-      return when (groupUpdateResult.groupState) {
-        GroupsV2StateProcessor.GroupState.GROUP_UPDATED -> Gv2PreProcessResult.GROUP_UPDATE
-        GroupsV2StateProcessor.GroupState.GROUP_CONSISTENT_OR_AHEAD -> Gv2PreProcessResult.GROUP_UP_TO_DATE
+      return when (groupUpdateResult.updateStatus) {
+        UpdateStatus.GROUP_UPDATED -> Gv2PreProcessResult.GROUP_UPDATE
+        UpdateStatus.GROUP_CONSISTENT_OR_AHEAD -> Gv2PreProcessResult.GROUP_UP_TO_DATE
       }
     }
 
@@ -278,13 +274,14 @@ open class MessageContentProcessor(private val context: Context) {
       timestamp: Long,
       groupV2: GroupContextV2,
       localRecord: Optional<GroupRecord>,
-      groupSecretParams: GroupSecretParams? = null
-    ): GroupsV2StateProcessor.GroupUpdateResult? {
+      groupSecretParams: GroupSecretParams? = null,
+      serverGuid: String? = null
+    ): GroupUpdateResult? {
       return try {
         val signedGroupChange: ByteArray? = if (groupV2.hasSignedGroupChange) groupV2.signedGroupChange else null
         val updatedTimestamp = if (signedGroupChange != null) timestamp else timestamp - 1
         if (groupV2.revision != null) {
-          GroupManager.updateGroupFromServer(context, groupV2.groupMasterKey, localRecord, groupSecretParams, groupV2.revision!!, updatedTimestamp, signedGroupChange)
+          GroupManager.updateGroupFromServer(context, groupV2.groupMasterKey, localRecord, groupSecretParams, groupV2.revision!!, updatedTimestamp, signedGroupChange, serverGuid)
         } else {
           warn(timestamp, "Ignore group update message without a revision")
           null
@@ -295,26 +292,22 @@ open class MessageContentProcessor(private val context: Context) {
       }
     }
 
-    private fun insertErrorMessage(context: Context, sender: Recipient, senderDevice: Int, timestamp: Long, groupId: Optional<GroupId>, marker: (Long) -> Unit) {
-      val textMessage = IncomingTextMessage(
-        sender.id,
-        senderDevice,
-        timestamp,
-        -1,
-        System.currentTimeMillis(),
-        "",
-        groupId,
-        0,
-        false,
-        null
+    private fun insertErrorMessage(context: Context, sender: Recipient, timestamp: Long, groupId: Optional<GroupId>, marker: (Long) -> Unit) {
+      val textMessage = IncomingMessage(
+        type = MessageType.NORMAL,
+        from = sender.id,
+        sentTimeMillis = timestamp,
+        serverTimeMillis = -1,
+        receivedTimeMillis = System.currentTimeMillis(),
+        groupId = groupId.orNull()
       )
 
       SignalDatabase
         .messages
-        .insertMessageInbox(IncomingEncryptedMessage(textMessage, ""))
+        .insertMessageInbox(textMessage)
         .ifPresent {
           marker(it.messageId)
-          ApplicationDependencies.getMessageNotifier().updateNotification(context, ConversationId.forConversation(it.threadId))
+          AppDependencies.messageNotifier.updateNotification(context, ConversationId.forConversation(it.threadId))
         }
     }
   }
@@ -335,8 +328,8 @@ open class MessageContentProcessor(private val context: Context) {
 
     handleMessage(senderRecipient, envelope, content, metadata, serverDeliveredTimestamp, processingEarlyContent, localMetric)
 
-    val earlyCacheEntries: List<EarlyMessageCacheEntry>? = ApplicationDependencies
-      .getEarlyMessageCache()
+    val earlyCacheEntries: List<EarlyMessageCacheEntry>? = AppDependencies
+      .earlyMessageCache
       .retrieve(senderRecipient.id, envelope.timestamp!!)
       .orNull()
 
@@ -349,7 +342,12 @@ open class MessageContentProcessor(private val context: Context) {
   }
 
   fun processException(messageState: MessageState, exceptionMetadata: ExceptionMetadata, timestamp: Long) {
-    val sender = Recipient.external(context, exceptionMetadata.sender)
+    val sender = Recipient.external(exceptionMetadata.sender)
+
+    if (sender == null) {
+      warn("Failed to create Recipient for identifier: $messageState")
+      return
+    }
 
     if (sender.isBlocked) {
       warn("Ignoring exception content from blocked sender, message state: $messageState")
@@ -361,34 +359,40 @@ open class MessageContentProcessor(private val context: Context) {
         warn(timestamp, "Handling encryption error.")
 
         val threadRecipient = if (exceptionMetadata.groupId != null) Recipient.externalPossiblyMigratedGroup(exceptionMetadata.groupId) else sender
-        SignalDatabase
-          .messages
-          .insertBadDecryptMessage(
-            recipientId = sender.id,
-            senderDevice = exceptionMetadata.senderDevice,
-            sentTimestamp = timestamp,
-            receivedTimestamp = System.currentTimeMillis(),
-            threadId = SignalDatabase.threads.getOrCreateThreadIdFor(threadRecipient)
-          )
+        val threadId: Long? = SignalDatabase.threads.getThreadIdFor(threadRecipient.id)
+
+        if (threadId != null) {
+          SignalDatabase
+            .messages
+            .insertBadDecryptMessage(
+              recipientId = sender.id,
+              senderDevice = exceptionMetadata.senderDevice,
+              sentTimestamp = timestamp,
+              receivedTimestamp = System.currentTimeMillis(),
+              threadId = threadId
+            )
+        } else {
+          warn(timestamp, "Could not find a thread for the target recipient. Skipping.")
+        }
       }
 
       MessageState.INVALID_VERSION -> {
         warn(timestamp, "Handling invalid version.")
-        insertErrorMessage(context, sender, exceptionMetadata.senderDevice, timestamp, exceptionMetadata.groupId.toOptional()) { messageId ->
+        insertErrorMessage(context, sender, timestamp, exceptionMetadata.groupId.toOptional()) { messageId ->
           SignalDatabase.messages.markAsInvalidVersionKeyExchange(messageId)
         }
       }
 
       MessageState.LEGACY_MESSAGE -> {
         warn(timestamp, "Handling legacy message.")
-        insertErrorMessage(context, sender, exceptionMetadata.senderDevice, timestamp, exceptionMetadata.groupId.toOptional()) { messageId ->
+        insertErrorMessage(context, sender, timestamp, exceptionMetadata.groupId.toOptional()) { messageId ->
           SignalDatabase.messages.markAsLegacyVersion(messageId)
         }
       }
 
       MessageState.UNSUPPORTED_DATA_MESSAGE -> {
         warn(timestamp, "Handling unsupported data message.")
-        insertErrorMessage(context, sender, exceptionMetadata.senderDevice, timestamp, exceptionMetadata.groupId.toOptional()) { messageId ->
+        insertErrorMessage(context, sender, timestamp, exceptionMetadata.groupId.toOptional()) { messageId ->
           SignalDatabase.messages.markAsUnsupportedProtocolVersion(messageId)
         }
       }
@@ -396,7 +400,7 @@ open class MessageContentProcessor(private val context: Context) {
       MessageState.CORRUPT_MESSAGE,
       MessageState.NO_SESSION -> {
         warn(timestamp, "Discovered old enqueued bad encrypted message. Scheduling reset.")
-        ApplicationDependencies.getJobManager().add(AutomaticSessionResetJob(sender.id, exceptionMetadata.senderDevice, timestamp))
+        AppDependencies.jobManager.add(AutomaticSessionResetJob(sender.id, exceptionMetadata.senderDevice, timestamp))
       }
 
       MessageState.DUPLICATE_MESSAGE -> warn(timestamp, "Duplicate message. Dropping.")
@@ -421,7 +425,7 @@ open class MessageContentProcessor(private val context: Context) {
       return
     }
 
-    val pending: PendingRetryReceiptModel? = ApplicationDependencies.getPendingRetryReceiptCache().get(senderRecipient.id, envelope.timestamp!!)
+    val pending: PendingRetryReceiptModel? = AppDependencies.pendingRetryReceiptCache.get(senderRecipient.id, envelope.timestamp!!)
     val receivedTime: Long = handlePendingRetry(pending, envelope.timestamp!!, threadRecipient)
 
     log(envelope.timestamp!!, "Beginning message processing. Sender: " + formatSender(senderRecipient.id, metadata.sourceServiceId, metadata.sourceDeviceId))
@@ -442,11 +446,12 @@ open class MessageContentProcessor(private val context: Context) {
       }
 
       content.syncMessage != null -> {
-        TextSecurePreferences.setMultiDevice(context, true)
+        SignalStore.account.isMultiDevice = true
 
         SyncMessageProcessor.process(
           context,
           senderRecipient,
+          threadRecipient,
           envelope,
           content,
           metadata,
@@ -459,8 +464,8 @@ open class MessageContentProcessor(private val context: Context) {
 
         val message: CallMessage = content.callMessage!!
 
-        if (message.destinationDeviceId != null && message.destinationDeviceId != SignalStore.account().deviceId) {
-          log(envelope.timestamp!!, "Ignoring call message that is not for this device! intended: ${message.destinationDeviceId}, this: ${SignalStore.account().deviceId}")
+        if (message.destinationDeviceId != null && message.destinationDeviceId != SignalStore.account.deviceId) {
+          log(envelope.timestamp!!, "Ignoring call message that is not for this device! intended: ${message.destinationDeviceId}, this: ${SignalStore.account.deviceId}")
           return
         }
 
@@ -519,7 +524,7 @@ open class MessageContentProcessor(private val context: Context) {
 
     if (pending != null) {
       warn(envelope.timestamp!!, "Pending retry was processed. Deleting.")
-      ApplicationDependencies.getPendingRetryReceiptCache().delete(pending)
+      AppDependencies.pendingRetryReceiptCache.delete(pending)
     }
   }
 
@@ -554,27 +559,27 @@ open class MessageContentProcessor(private val context: Context) {
 
     if (typingMessage.hasStarted) {
       Log.d(TAG, "Typing started on thread $threadId")
-      ApplicationDependencies.getTypingStatusRepository().onTypingStarted(context, threadId, senderRecipient, metadata.sourceDeviceId)
+      AppDependencies.typingStatusRepository.onTypingStarted(context, threadId, senderRecipient, metadata.sourceDeviceId)
     } else {
       Log.d(TAG, "Typing stopped on thread $threadId")
-      ApplicationDependencies.getTypingStatusRepository().onTypingStopped(threadId, senderRecipient, metadata.sourceDeviceId, false)
+      AppDependencies.typingStatusRepository.onTypingStopped(threadId, senderRecipient, metadata.sourceDeviceId, false)
     }
   }
 
   private fun handleRetryReceipt(envelope: Envelope, metadata: EnvelopeMetadata, decryptionErrorMessage: DecryptionErrorMessage, senderRecipient: Recipient) {
-    if (!FeatureFlags.retryReceipts()) {
+    if (!RemoteConfig.retryReceipts) {
       warn(envelope.timestamp!!, "[RetryReceipt] Feature flag disabled, skipping retry receipt.")
       return
     }
 
-    if (decryptionErrorMessage.deviceId != SignalStore.account().deviceId) {
+    if (decryptionErrorMessage.deviceId != SignalStore.account.deviceId) {
       log(envelope.timestamp!!, "[RetryReceipt] Received a DecryptionErrorMessage targeting a linked device. Ignoring.")
       return
     }
 
     val sentTimestamp = decryptionErrorMessage.timestamp
     warn(envelope.timestamp!!, "[RetryReceipt] Received a retry receipt from ${formatSender(senderRecipient.id, metadata.sourceServiceId, metadata.sourceDeviceId)} for message with timestamp $sentTimestamp.")
-    if (!senderRecipient.hasServiceId()) {
+    if (!senderRecipient.hasServiceId) {
       warn(envelope.timestamp!!, "[RetryReceipt] Requester ${senderRecipient.id} somehow has no UUID! timestamp: $sentTimestamp")
       return
     }
@@ -634,7 +639,7 @@ open class MessageContentProcessor(private val context: Context) {
 
     if (messageLogEntry != null) {
       warn(envelope.timestamp!!, "[RetryReceipt-SK] Found MSL entry for ${requester.id} ($requesterAddress) with timestamp $sentTimestamp. Scheduling a resend.")
-      ApplicationDependencies.getJobManager().add(
+      AppDependencies.jobManager.add(
         ResendMessageJob(
           messageLogEntry.recipientId,
           messageLogEntry.dateSent,
@@ -647,25 +652,33 @@ open class MessageContentProcessor(private val context: Context) {
       )
     } else {
       warn(envelope.timestamp!!, "[RetryReceipt-SK] Unable to find MSL entry for ${requester.id} ($requesterAddress) with timestamp $sentTimestamp for ${if (groupId != null) "group $groupId" else "distribution list"}. Scheduling a job to send them the SenderKeyDistributionMessage. Membership will be checked there.")
-      ApplicationDependencies.getJobManager().add(SenderKeyDistributionSendJob(requester.id, threadRecipient.id))
+      AppDependencies.jobManager.add(SenderKeyDistributionSendJob(requester.id, threadRecipient.id))
     }
   }
 
   private fun handleIndividualRetryReceipt(requester: Recipient, messageLogEntry: MessageLogEntry?, envelope: Envelope, metadata: EnvelopeMetadata, decryptionErrorMessage: DecryptionErrorMessage) {
     var archivedSession = false
 
-    // TODO [pnp] Ignore retry receipts that have a PNI destinationUuid
-    if (decryptionErrorMessage.ratchetKey.isPresent &&
-      ratchetKeyMatches(requester, metadata.sourceDeviceId, decryptionErrorMessage.ratchetKey.get())
-    ) {
-      warn(envelope.timestamp!!, "[RetryReceipt-I] Ratchet key matches. Archiving the session.")
-      ApplicationDependencies.getProtocolStore().aci().sessions().archiveSession(requester.requireServiceId(), metadata.sourceDeviceId)
-      archivedSession = true
+    if (ServiceId.parseOrNull(envelope.destinationServiceId) is ServiceId.PNI) {
+      warn(envelope.timestamp!!, "[RetryReceipt-I] Destination is our PNI. Ignoring.")
+      return
+    }
+
+    if (decryptionErrorMessage.ratchetKey.isPresent) {
+      if (ratchetKeyMatches(requester, metadata.sourceDeviceId, decryptionErrorMessage.ratchetKey.get())) {
+        warn(envelope.timestamp!!, "[RetryReceipt-I] Ratchet key matches. Archiving the session.")
+        AppDependencies.protocolStore.aci().sessions().archiveSession(requester.requireServiceId(), metadata.sourceDeviceId)
+        archivedSession = true
+      } else {
+        log(envelope.timestamp!!, "[RetryReceipt-I] Ratchet key does not match. Leaving the session as-is.")
+      }
+    } else {
+      warn(envelope.timestamp!!, "[RetryReceipt-I] Missing ratchet key! Can't archive session.")
     }
 
     if (messageLogEntry != null) {
       warn(envelope.timestamp!!, "[RetryReceipt-I] Found an entry in the MSL. Resending.")
-      ApplicationDependencies.getJobManager().add(
+      AppDependencies.jobManager.add(
         ResendMessageJob(
           messageLogEntry.recipientId,
           messageLogEntry.dateSent,
@@ -678,7 +691,7 @@ open class MessageContentProcessor(private val context: Context) {
       )
     } else if (archivedSession) {
       warn(envelope.timestamp!!, "[RetryReceipt-I] Could not find an entry in the MSL, but we archived the session, so we're sending a null message to complete the reset.")
-      ApplicationDependencies.getJobManager().add(NullMessageSendJob(requester.id))
+      AppDependencies.jobManager.add(NullMessageSendJob(requester.id))
     } else {
       warn(envelope.timestamp!!, "[RetryReceipt-I] Could not find an entry in the MSL. Skipping.")
     }
@@ -695,7 +708,7 @@ open class MessageContentProcessor(private val context: Context) {
 
   private fun ratchetKeyMatches(recipient: Recipient, deviceId: Int, ratchetKey: ECPublicKey): Boolean {
     val address = recipient.resolve().requireAci().toProtocolAddress(deviceId)
-    val session = ApplicationDependencies.getProtocolStore().aci().loadSession(address)
+    val session = AppDependencies.protocolStore.aci().loadSession(address)
     return session.currentRatchetKeyMatches(ratchetKey)
   }
 }

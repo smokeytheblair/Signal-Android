@@ -8,26 +8,29 @@
 package org.thoughtcrime.securesms.components.settings.app.internal.search
 
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
-import org.signal.core.ui.theme.SignalTheme
+import org.signal.core.ui.compose.DayNightPreviews
+import org.signal.core.ui.compose.theme.SignalTheme
 import org.thoughtcrime.securesms.compose.ComposeFragment
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.recipients.ui.bottomsheet.RecipientBottomSheetDialogFragment
@@ -52,15 +55,21 @@ class InternalSearchFragment : ComposeFragment() {
 
 @Composable
 fun InternalSearchFragmentScreen(query: String, results: ImmutableList<InternalSearchResult>, onSearchUpdated: (String) -> Unit, modifier: Modifier = Modifier) {
-  LazyColumn(
-    modifier = modifier.fillMaxWidth()
-  ) {
-    item(key = -1) {
-      SearchBar(query, onSearchUpdated)
-    }
-    results.forEach { recipient ->
-      item(key = recipient.id) {
-        ResultItem(recipient)
+  val backgroundColor = MaterialTheme.colorScheme.surface
+
+  CompositionLocalProvider(LocalContentColor provides contentColorFor(backgroundColor = backgroundColor)) {
+    LazyColumn(
+      modifier = modifier
+        .fillMaxWidth()
+        .background(backgroundColor)
+    ) {
+      item(key = -1) {
+        SearchBar(query, onSearchUpdated)
+      }
+      results.forEach { recipient ->
+        item(key = recipient.id) {
+          ResultItem(recipient)
+        }
       }
     }
   }
@@ -85,7 +94,8 @@ fun ResultItem(result: InternalSearchResult, modifier: Modifier = Modifier) {
       .fillMaxWidth()
       .clickable {
         if (activity != null) {
-          RecipientBottomSheetDialogFragment.create(result.id, result.groupId).show(activity.supportFragmentManager, "TAG")
+          RecipientBottomSheetDialogFragment
+            .show(activity.supportFragmentManager, result.id, result.groupId)
         }
       }
       .padding(8.dp)
@@ -97,44 +107,27 @@ fun ResultItem(result: InternalSearchResult, modifier: Modifier = Modifier) {
   }
 }
 
-@Preview
-@Composable
-fun InternalSearchScreenPreviewLightTheme() {
-  SignalTheme(isDarkMode = false) {
-    Surface {
-      InternalSearchScreenPreview()
-    }
-  }
-}
-
-@Preview
-@Composable
-fun InternalSearchScreenPreviewDarkTheme() {
-  SignalTheme(isDarkMode = true) {
-    Surface {
-      InternalSearchScreenPreview()
-    }
-  }
-}
-
+@DayNightPreviews
 @Composable
 fun InternalSearchScreenPreview() {
-  InternalSearchFragmentScreen(
-    query = "",
-    results = persistentListOf(
-      InternalSearchResult(
-        name = "Peter Parker",
-        id = RecipientId.from(1),
-        aci = UUID.randomUUID().toString(),
-        pni = UUID.randomUUID().toString()
+  SignalTheme {
+    InternalSearchFragmentScreen(
+      query = "",
+      results = persistentListOf(
+        InternalSearchResult(
+          name = "Peter Parker",
+          id = RecipientId.from(1),
+          aci = UUID.randomUUID().toString(),
+          pni = UUID.randomUUID().toString()
+        ),
+        InternalSearchResult(
+          name = "Mary Jane",
+          id = RecipientId.from(2),
+          aci = UUID.randomUUID().toString(),
+          pni = null
+        )
       ),
-      InternalSearchResult(
-        name = "Mary Jane",
-        id = RecipientId.from(2),
-        aci = UUID.randomUUID().toString(),
-        pni = null
-      )
-    ),
-    onSearchUpdated = {}
-  )
+      onSearchUpdated = {}
+    )
+  }
 }

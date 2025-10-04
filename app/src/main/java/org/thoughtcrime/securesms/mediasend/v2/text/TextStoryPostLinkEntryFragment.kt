@@ -7,6 +7,7 @@ import android.view.View
 import android.widget.EditText
 import androidx.constraintlayout.widget.Group
 import androidx.core.widget.addTextChangedListener
+import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import com.google.android.material.snackbar.Snackbar
 import org.thoughtcrime.securesms.R
@@ -20,7 +21,7 @@ import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.setIncognitoKeyboardEnabled
 import org.thoughtcrime.securesms.util.visible
 
-class TextStoryPostLinkEntryFragment : KeyboardEntryDialogFragment(
+class TextStoryPostLinkEntryFragment(private val shouldPreset: Boolean = false) : KeyboardEntryDialogFragment(
   contentLayoutId = R.layout.stories_text_post_link_entry_fragment
 ) {
 
@@ -30,14 +31,16 @@ class TextStoryPostLinkEntryFragment : KeyboardEntryDialogFragment(
     factoryProducer = { LinkPreviewViewModel.Factory(LinkPreviewRepository(), true) }
   )
 
-  private val viewModel: TextStoryPostCreationViewModel by viewModels(
-    ownerProducer = {
-      requireActivity()
-    }
-  )
+  private val viewModel: TextStoryPostCreationViewModel by activityViewModels()
 
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     input = view.findViewById(R.id.input)
+    if (shouldPreset) {
+      viewModel.getLinkInputPreset()?.let {
+        input.text.append(it)
+        linkPreviewViewModel.onTextChanged(it, 0, it.length - 1)
+      }
+    }
 
     val linkPreview: StoryLinkPreviewView = view.findViewById(R.id.link_preview)
     val confirmButton: View = view.findViewById(R.id.confirm_button)
@@ -53,7 +56,7 @@ class TextStoryPostLinkEntryFragment : KeyboardEntryDialogFragment(
           Triple("$scheme$it", input.selectionStart + scheme.length, input.selectionEnd + scheme.length)
         }
 
-        linkPreviewViewModel.onTextChanged(requireContext(), uriString.toString(), selectionStart, selectionEnd)
+        linkPreviewViewModel.onTextChanged(uriString.toString(), selectionStart, selectionEnd)
       }
     )
 

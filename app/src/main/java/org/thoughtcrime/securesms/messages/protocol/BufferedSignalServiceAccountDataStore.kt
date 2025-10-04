@@ -1,14 +1,18 @@
 package org.thoughtcrime.securesms.messages.protocol
 
+import org.signal.core.util.withinTransaction
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.SignalProtocolAddress
+import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord
 import org.signal.libsignal.protocol.state.IdentityKeyStore
+import org.signal.libsignal.protocol.state.IdentityKeyStore.IdentityChange
 import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.SessionRecord
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord
+import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.whispersystems.signalservice.api.SignalServiceAccountDataStore
 import org.whispersystems.signalservice.api.push.DistributionId
@@ -21,10 +25,10 @@ import java.util.UUID
  */
 class BufferedSignalServiceAccountDataStore(selfServiceId: ServiceId) : SignalServiceAccountDataStore {
 
-  private val identityStore: BufferedIdentityKeyStore = if (selfServiceId == SignalStore.account().pni) {
-    BufferedIdentityKeyStore(selfServiceId, SignalStore.account().pniIdentityKey, SignalStore.account().pniRegistrationId)
+  private val identityStore: BufferedIdentityKeyStore = if (selfServiceId == SignalStore.account.pni) {
+    BufferedIdentityKeyStore(selfServiceId, SignalStore.account.pniIdentityKey, SignalStore.account.pniRegistrationId)
   } else {
-    BufferedIdentityKeyStore(selfServiceId, SignalStore.account().aciIdentityKey, SignalStore.account().registrationId)
+    BufferedIdentityKeyStore(selfServiceId, SignalStore.account.aciIdentityKey, SignalStore.account.registrationId)
   }
 
   private val oneTimePreKeyStore: BufferedOneTimePreKeyStore = BufferedOneTimePreKeyStore(selfServiceId)
@@ -41,7 +45,7 @@ class BufferedSignalServiceAccountDataStore(selfServiceId: ServiceId) : SignalSe
     return identityStore.localRegistrationId
   }
 
-  override fun saveIdentity(address: SignalProtocolAddress, identityKey: IdentityKey): Boolean {
+  override fun saveIdentity(address: SignalProtocolAddress, identityKey: IdentityKey): IdentityChange {
     return identityStore.saveIdentity(address, identityKey)
   }
 
@@ -137,8 +141,8 @@ class BufferedSignalServiceAccountDataStore(selfServiceId: ServiceId) : SignalSe
     return kyberPreKeyStore.containsKyberPreKey(kyberPreKeyId)
   }
 
-  override fun markKyberPreKeyUsed(kyberPreKeyId: Int) {
-    return kyberPreKeyStore.markKyberPreKeyUsed(kyberPreKeyId)
+  override fun markKyberPreKeyUsed(kyberPreKeyId: Int, signedPreKeyId: Int, publicKey: ECPublicKey) {
+    return kyberPreKeyStore.markKyberPreKeyUsed(kyberPreKeyId, signedPreKeyId, publicKey)
   }
 
   override fun deleteAllStaleOneTimeEcPreKeys(threshold: Long, minCount: Int) {
@@ -177,7 +181,7 @@ class BufferedSignalServiceAccountDataStore(selfServiceId: ServiceId) : SignalSe
     sessionStore.archiveSession(address)
   }
 
-  override fun getAllAddressesWithActiveSessions(addressNames: MutableList<String>): Set<SignalProtocolAddress> {
+  override fun getAllAddressesWithActiveSessions(addressNames: MutableList<String>): Map<SignalProtocolAddress, SessionRecord> {
     return sessionStore.getAllAddressesWithActiveSessions(addressNames)
   }
 
@@ -198,10 +202,13 @@ class BufferedSignalServiceAccountDataStore(selfServiceId: ServiceId) : SignalSe
   }
 
   fun flushToDisk(persistentStore: SignalServiceAccountDataStore) {
-    identityStore.flushToDisk(persistentStore)
-    oneTimePreKeyStore.flushToDisk(persistentStore)
-    signedPreKeyStore.flushToDisk(persistentStore)
-    sessionStore.flushToDisk(persistentStore)
-    senderKeyStore.flushToDisk(persistentStore)
+    SignalDatabase.writableDatabase.withinTransaction {
+      identityStore.flushToDisk(persistentStore)
+      oneTimePreKeyStore.flushToDisk(persistentStore)
+      kyberPreKeyStore.flushToDisk(persistentStore)
+      signedPreKeyStore.flushToDisk(persistentStore)
+      sessionStore.flushToDisk(persistentStore)
+      senderKeyStore.flushToDisk(persistentStore)
+    }
   }
 }

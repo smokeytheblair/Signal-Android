@@ -9,6 +9,7 @@ import android.os.Bundle;
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
 import org.greenrobot.eventbus.EventBus;
@@ -17,18 +18,21 @@ import org.signal.core.util.tracing.Tracer;
 import org.signal.devicetransfer.TransferStatus;
 import org.thoughtcrime.securesms.components.settings.app.changenumber.ChangeNumberLockActivity;
 import org.thoughtcrime.securesms.crypto.MasterSecretUtil;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.devicetransfer.olddevice.OldDeviceTransferActivity;
+import org.thoughtcrime.securesms.keyvalue.RestoreDecisionStateUtil;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.lock.v2.CreateSvrPinActivity;
 import org.thoughtcrime.securesms.migrations.ApplicationMigrationActivity;
 import org.thoughtcrime.securesms.migrations.ApplicationMigrations;
 import org.thoughtcrime.securesms.pin.PinRestoreActivity;
-import org.thoughtcrime.securesms.profiles.edit.EditProfileActivity;
+import org.thoughtcrime.securesms.profiles.edit.CreateProfileActivity;
 import org.thoughtcrime.securesms.push.SignalServiceNetworkAccess;
 import org.thoughtcrime.securesms.recipients.Recipient;
-import org.thoughtcrime.securesms.registration.RegistrationNavigationActivity;
+import org.thoughtcrime.securesms.registration.ui.RegistrationActivity;
+import org.thoughtcrime.securesms.restore.RestoreActivity;
 import org.thoughtcrime.securesms.service.KeyCachingService;
+import org.thoughtcrime.securesms.util.AppForegroundObserver;
 import org.thoughtcrime.securesms.util.AppStartup;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 
@@ -51,6 +55,7 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
   private static final int STATE_TRANSFER_ONGOING    = 8;
   private static final int STATE_TRANSFER_LOCKED     = 9;
   private static final int STATE_CHANGE_NUMBER_LOCK  = 10;
+  private static final int STATE_TRANSFER_OR_RESTORE = 11;
 
   private SignalServiceNetworkAccess networkAccess;
   private BroadcastReceiver          clearKeyReceiver;
@@ -59,7 +64,7 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
   protected final void onCreate(Bundle savedInstanceState) {
     Tracer.getInstance().start(Log.tag(getClass()) + "#onCreate()");
     AppStartup.getInstance().onCriticalRenderEventStart();
-    this.networkAccess = ApplicationDependencies.getSignalServiceNetworkAccess();
+    this.networkAccess = AppDependencies.getSignalServiceNetworkAccess();
     onPreCreate();
 
     final boolean locked = KeyCachingService.isLocked(this);
@@ -88,8 +93,8 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
   @Override
   public void onMasterSecretCleared() {
     Log.d(TAG, "onMasterSecretCleared()");
-    if (ApplicationDependencies.getAppForegroundObserver().isForegrounded()) routeApplicationState(true);
-    else                                                                     finish();
+    if (AppForegroundObserver.isForegrounded()) routeApplicationState(true);
+    else                                        finish();
   }
 
   protected <T extends Fragment> T initFragment(@IdRes int target,
@@ -125,8 +130,10 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
   }
 
   private void routeApplicationState(boolean locked) {
-    Intent intent = getIntentForState(getApplicationState(locked));
+    final int applicationState = getApplicationState(locked);
+    Intent    intent           = getIntentForState(applicationState);
     if (intent != null) {
+      Log.d(TAG, "routeApplicationState(), intent: " + intent.getComponent());
       startActivity(intent);
       finish();
     }
@@ -146,6 +153,7 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
       case STATE_TRANSFER_ONGOING:    return getOldDeviceTransferIntent();
       case STATE_TRANSFER_LOCKED:     return getOldDeviceTransferLockedIntent();
       case STATE_CHANGE_NUMBER_LOCK:  return getChangeNumberLockIntent();
+      case STATE_TRANSFER_OR_RESTORE: return getTransferOrRestoreIntent();
       default:                        return null;
     }
   }
@@ -159,10 +167,10 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
       return STATE_UI_BLOCKING_UPGRADE;
     } else if (!TextSecurePreferences.hasPromptedPushRegistration(this)) {
       return STATE_WELCOME_PUSH_SCREEN;
-    } else if (SignalStore.storageService().needsAccountRestore()) {
+    } else if (userCanTransferOrRestore()) {
+      return STATE_TRANSFER_OR_RESTORE;
+    } else if (SignalStore.storageService().getNeedsAccountRestore()) {
       return STATE_ENTER_SIGNAL_PIN;
-    } else if (userHasSkippedOrForgottenPin()) {
-      return STATE_CREATE_SIGNAL_PIN;
     } else if (userMustSetProfileName()) {
       return STATE_CREATE_PROFILE_NAME;
     } else if (userMustCreateSignalPin()) {
@@ -178,16 +186,20 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
     }
   }
 
-  private boolean userMustCreateSignalPin() {
-    return !SignalStore.registrationValues().isRegistrationComplete() && !SignalStore.svr().hasPin() && !SignalStore.svr().lastPinCreateFailed() && !SignalStore.svr().hasOptedOut();
+  private boolean userCanTransferOrRestore() {
+    return !SignalStore.registration().isRegistrationComplete() &&
+           RestoreDecisionStateUtil.isDecisionPending(SignalStore.registration().getRestoreDecisionState());
   }
 
-  private boolean userHasSkippedOrForgottenPin() {
-    return !SignalStore.registrationValues().isRegistrationComplete() && !SignalStore.svr().hasPin() && !SignalStore.svr().hasOptedOut() && SignalStore.svr().isPinForgottenOrSkipped();
+  private boolean userMustCreateSignalPin() {
+    return !SignalStore.registration().isRegistrationComplete() &&
+           !SignalStore.svr().hasPin() &&
+           !SignalStore.svr().lastPinCreateFailed() &&
+           !SignalStore.svr().hasOptedOut();
   }
 
   private boolean userMustSetProfileName() {
-    return !SignalStore.registrationValues().isRegistrationComplete() && Recipient.self().getProfileName().isEmpty();
+    return !SignalStore.registration().isRegistrationComplete() && Recipient.self().getProfileName().isEmpty();
   }
 
   private Intent getCreatePassphraseIntent() {
@@ -196,7 +208,7 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
 
   private Intent getPromptPassphraseIntent() {
     Intent intent = getRoutedIntent(PassphrasePromptActivity.class, getIntent());
-    intent.putExtra(PassphrasePromptActivity.FROM_FOREGROUND, ApplicationDependencies.getAppForegroundObserver().isForegrounded());
+    intent.putExtra(PassphrasePromptActivity.FROM_FOREGROUND, AppForegroundObserver.isForegrounded());
     return intent;
   }
 
@@ -208,7 +220,7 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
   }
 
   private Intent getPushRegistrationIntent() {
-    return RegistrationNavigationActivity.newIntentForNewRegistration(this, getIntent());
+    return RegistrationActivity.newIntentForNewRegistration(this, getIntent());
   }
 
   private Intent getEnterSignalPinIntent() {
@@ -227,8 +239,13 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
     return getRoutedIntent(CreateSvrPinActivity.class, intent);
   }
 
+  private Intent getTransferOrRestoreIntent() {
+    Intent intent = RestoreActivity.getRestoreIntent(this);
+    return getRoutedIntent(intent, MainActivity.clearTop(this));
+  }
+
   private Intent getCreateProfileNameIntent() {
-    Intent intent = EditProfileActivity.getIntentForUserProfile(this);
+    Intent intent = CreateProfileActivity.getIntentForUserProfile(this);
     return getRoutedIntent(intent, getIntent());
   }
 
@@ -250,13 +267,13 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
   }
 
   private Intent getRoutedIntent(Intent destination, @Nullable Intent nextIntent) {
-    if (nextIntent != null)   destination.putExtra("next_intent", nextIntent);
+    if (nextIntent != null)   destination.putExtra(NEXT_INTENT_EXTRA, nextIntent);
     return destination;
   }
 
   private Intent getRoutedIntent(Class<?> destination, @Nullable Intent nextIntent) {
     final Intent intent = new Intent(this, destination);
-    if (nextIntent != null)   intent.putExtra("next_intent", nextIntent);
+    if (nextIntent != null)   intent.putExtra(NEXT_INTENT_EXTRA, nextIntent);
     return intent;
   }
 
@@ -269,15 +286,15 @@ public abstract class PassphraseRequiredActivity extends BaseActivity implements
     this.clearKeyReceiver = new BroadcastReceiver() {
       @Override
       public void onReceive(Context context, Intent intent) {
-        Log.i(TAG, "onReceive() for clear key event. PasswordDisabled: " + TextSecurePreferences.isPasswordDisabled(context) + ", ScreenLock: " + TextSecurePreferences.isScreenLockEnabled(context));
-        if (TextSecurePreferences.isScreenLockEnabled(context) || !TextSecurePreferences.isPasswordDisabled(context)) {
+        Log.i(TAG, "onReceive() for clear key event. PasswordDisabled: " + SignalStore.settings().getPassphraseDisabled() + ", ScreenLock: " + SignalStore.settings().getScreenLockEnabled());
+        if (SignalStore.settings().getScreenLockEnabled() || !SignalStore.settings().getPassphraseDisabled()) {
           onMasterSecretCleared();
         }
       }
     };
 
     IntentFilter filter = new IntentFilter(KeyCachingService.CLEAR_KEY_EVENT);
-    registerReceiver(clearKeyReceiver, filter, KeyCachingService.KEY_PERMISSION, null);
+    ContextCompat.registerReceiver(this, clearKeyReceiver, filter, KeyCachingService.KEY_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED);
   }
 
   private void removeClearKeyReceiver(Context context) {

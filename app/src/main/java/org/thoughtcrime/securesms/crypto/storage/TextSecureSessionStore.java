@@ -17,6 +17,7 @@ import org.whispersystems.signalservice.api.SignalSessionLock;
 import org.whispersystems.signalservice.api.push.ServiceId;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -104,14 +105,13 @@ public class TextSecureSessionStore implements SignalServiceSessionStore {
   }
 
   @Override
-  public Set<SignalProtocolAddress> getAllAddressesWithActiveSessions(List<String> addressNames) {
+  public Map<SignalProtocolAddress, SessionRecord> getAllAddressesWithActiveSessions(List<String> addressNames) {
     try (SignalSessionLock.Lock unused = ReentrantSessionLock.INSTANCE.acquire()) {
       return SignalDatabase.sessions()
                            .getAllFor(accountId, addressNames)
                            .stream()
                            .filter(row -> isActive(row.getRecord()))
-                           .map(row -> new SignalProtocolAddress(row.getAddress(), row.getDeviceId()))
-                           .collect(Collectors.toSet());
+                           .collect(Collectors.toMap(row -> new SignalProtocolAddress(row.getAddress(), row.getDeviceId()), SessionTable.SessionRow::getRecord));
     }
   }
 
@@ -136,16 +136,40 @@ public class TextSecureSessionStore implements SignalServiceSessionStore {
     try (SignalSessionLock.Lock unused = ReentrantSessionLock.INSTANCE.acquire()) {
       Recipient recipient = Recipient.resolved(recipientId);
 
-      if (recipient.hasAci()) {
+      if (recipient.getHasAci()) {
         archiveSession(new SignalProtocolAddress(recipient.requireAci().toString(), deviceId));
       }
 
-      if (recipient.hasPni()) {
+      if (recipient.getHasPni()) {
         archiveSession(new SignalProtocolAddress(recipient.requirePni().toString(), deviceId));
       }
 
-      if (recipient.hasE164()) {
+      if (recipient.getHasE164()) {
         archiveSession(new SignalProtocolAddress(recipient.requireE164(), deviceId));
+      }
+    }
+  }
+
+  public void archiveSessions(@NonNull RecipientId recipientId) {
+    try (SignalSessionLock.Lock unused = ReentrantSessionLock.INSTANCE.acquire()) {
+      Recipient recipient = Recipient.resolved(recipientId);
+
+      if (recipient.getHasAci()) {
+        SignalProtocolAddress address = new SignalProtocolAddress(recipient.requireAci().toString(), 1);
+        archiveSiblingSessions(address);
+        archiveSession(address);
+      }
+
+      if (recipient.getHasPni()) {
+        SignalProtocolAddress address = new SignalProtocolAddress(recipient.requirePni().toString(), 1);
+        archiveSiblingSessions(address);
+        archiveSession(address);
+      }
+
+      if (recipient.getHasE164()) {
+        SignalProtocolAddress address = new SignalProtocolAddress(recipient.requireE164(), 1);
+        archiveSiblingSessions(address);
+        archiveSession(address);
       }
     }
   }

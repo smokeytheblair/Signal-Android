@@ -18,11 +18,11 @@ import org.signal.core.util.CursorUtil;
 import org.signal.core.util.SQLiteDatabaseExtensionsKt;
 import org.signal.core.util.SqlUtil;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord;
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord;
 import org.thoughtcrime.securesms.database.model.MessageId;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.databaseprotos.CryptoValue;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.payments.CryptoValueUtil;
 import org.thoughtcrime.securesms.payments.Direction;
 import org.thoughtcrime.securesms.payments.FailureReason;
@@ -32,7 +32,7 @@ import org.thoughtcrime.securesms.payments.Payment;
 import org.thoughtcrime.securesms.payments.State;
 import org.thoughtcrime.securesms.payments.proto.PaymentMetaData;
 import org.thoughtcrime.securesms.recipients.RecipientId;
-import org.thoughtcrime.securesms.util.Base64;
+import org.signal.core.util.Base64;
 import org.thoughtcrime.securesms.util.livedata.LiveDataUtil;
 import org.whispersystems.signalservice.api.payments.Money;
 import org.whispersystems.signalservice.api.util.UuidUtil;
@@ -183,6 +183,35 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
   }
 
   @WorkerThread
+  public UUID restoreFromBackup(@NonNull RecipientId recipientId,
+                                long timestamp,
+                                long blockIndex,
+                                long blockTimestamp,
+                                @NonNull String note,
+                                @NonNull Direction direction,
+                                @NonNull State state,
+                                @NonNull Money amount,
+                                @NonNull Money fee,
+                                @Nullable byte[] transaction,
+                                @Nullable byte[] receipt,
+                                @Nullable PaymentMetaData metaData,
+                                boolean seen,
+                                @Nullable FailureReason failureReason)
+  {
+    UUID uuid = UUID.randomUUID();
+    try {
+      create(uuid, recipientId, null, timestamp, blockIndex, note, direction, state, amount, fee, transaction, receipt, metaData, seen);
+      updateBlockDetails(uuid, blockIndex, blockTimestamp);
+      if (failureReason != null) {
+        markPaymentFailed(uuid, failureReason);
+      }
+    } catch (SerializationException | PublicKeyConflictException e) {
+      return null;
+    }
+    return uuid;
+  }
+
+  @WorkerThread
   private void create(@NonNull UUID uuid,
                       @Nullable RecipientId recipientId,
                       @Nullable MobileCoinPublicAddress publicAddress,
@@ -239,7 +268,7 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
     }
     if (receipt != null) {
       values.put(RECEIPT, receipt);
-      values.put(PUBLIC_KEY, Base64.encodeBytes(PaymentMetaDataUtil.receiptPublic(PaymentMetaDataUtil.fromReceipt(receipt))));
+      values.put(PUBLIC_KEY, Base64.encodeWithPadding(PaymentMetaDataUtil.receiptPublic(PaymentMetaDataUtil.fromReceipt(receipt))));
     } else {
       values.putNull(RECEIPT);
       values.putNull(PUBLIC_KEY);
@@ -436,10 +465,10 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
   public @NonNull MessageRecord updateMessageWithPayment(@NonNull MessageRecord record) {
     if (record.isPaymentNotification()) {
       Payment payment = getPayment(UuidUtil.parseOrThrow(record.getBody()));
-      if (payment != null && record instanceof MediaMmsMessageRecord) {
-        return ((MediaMmsMessageRecord) record).withPayment(payment);
+      if (payment != null && record instanceof MmsMessageRecord) {
+        return ((MmsMessageRecord) record).withPayment(payment);
       } else {
-        throw new AssertionError("Payment not found for message");
+        Log.w(TAG, "Payment not found for message");
       }
     }
     return record;
@@ -449,7 +478,9 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
   public void remapRecipient(@NonNull RecipientId fromId, @NonNull RecipientId toId) {
     ContentValues values = new ContentValues();
     values.put(RECIPIENT_ID, toId.serialize());
-    getWritableDatabase().update(TABLE_NAME, values, RECIPIENT_ID + " = ?", SqlUtil.buildArgs(fromId));
+    int count = getWritableDatabase().update(TABLE_NAME, values, RECIPIENT_ID + " = ?", SqlUtil.buildArgs(fromId));
+
+    Log.d(TAG, "Remapped " + fromId + " to " + toId + ". count: " + count);
   }
 
   public boolean markPaymentSubmitted(@NonNull UUID uuid,
@@ -468,7 +499,7 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
     values.put(TRANSACTION, transaction);
     values.put(RECEIPT, receipt);
     try {
-      values.put(PUBLIC_KEY, Base64.encodeBytes(PaymentMetaDataUtil.receiptPublic(PaymentMetaDataUtil.fromReceipt(receipt))));
+      values.put(PUBLIC_KEY, Base64.encodeWithPadding(PaymentMetaDataUtil.receiptPublic(PaymentMetaDataUtil.fromReceipt(receipt))));
       values.put(META_DATA, PaymentMetaDataUtil.fromReceiptAndTransaction(receipt, transaction).encode());
     } catch (SerializationException e) {
       throw new IllegalArgumentException(e);
@@ -597,13 +628,20 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
   }
 
   private static @NonNull PaymentTransaction readPayment(@NonNull Cursor cursor) {
+    State         state         = State.deserialize(CursorUtil.requireInt(cursor, STATE));
+    FailureReason failureReason = null;
+
+    if (state == State.FAILED) {
+      failureReason = FailureReason.deserialize(CursorUtil.requireInt(cursor, FAILURE));
+    }
+
     return new PaymentTransaction(UUID.fromString(CursorUtil.requireString(cursor, PAYMENT_UUID)),
                                   getRecipientId(cursor),
                                   MobileCoinPublicAddress.fromBase58NullableOrThrow(CursorUtil.requireString(cursor, ADDRESS)),
                                   CursorUtil.requireLong(cursor, TIMESTAMP),
                                   Direction.deserialize(CursorUtil.requireInt(cursor, DIRECTION)),
-                                  State.deserialize(CursorUtil.requireInt(cursor, STATE)),
-                                  FailureReason.deserialize(CursorUtil.requireInt(cursor, FAILURE)),
+                                  state,
+                                  failureReason,
                                   CursorUtil.requireString(cursor, NOTE),
                                   getMoneyValue(CursorUtil.requireBlob(cursor, AMOUNT)),
                                   getMoneyValue(CursorUtil.requireBlob(cursor, FEE)),
@@ -648,7 +686,7 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
    */
   private void notifyChanged() {
     changeSignal.postValue(new Object());
-    ApplicationDependencies.getDatabaseObserver().notifyAllPaymentsListeners();
+    AppDependencies.getDatabaseObserver().notifyAllPaymentsListeners();
   }
 
   /**
@@ -657,10 +695,10 @@ public final class PaymentTable extends DatabaseTable implements RecipientIdData
    */
   private void notifyUuidChanged(@Nullable UUID uuid) {
     if (uuid != null) {
-      ApplicationDependencies.getDatabaseObserver().notifyPaymentListeners(uuid);
+      AppDependencies.getDatabaseObserver().notifyPaymentListeners(uuid);
       MessageId messageId = SignalDatabase.messages().getPaymentMessage(uuid);
       if (messageId != null) {
-        ApplicationDependencies.getDatabaseObserver().notifyMessageUpdateObservers(messageId);
+        AppDependencies.getDatabaseObserver().notifyMessageUpdateObservers(messageId);
       }
     }
   }

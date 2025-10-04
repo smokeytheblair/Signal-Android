@@ -24,8 +24,10 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.navigation.Navigation;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
@@ -60,6 +62,7 @@ public class DeleteAccountFragment extends Fragment {
   public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
     Spinner countrySpinner = view.findViewById(R.id.delete_account_fragment_country_spinner);
     View    confirm        = view.findViewById(R.id.delete_account_fragment_delete);
+    Toolbar toolbar        = view.findViewById(R.id.toolbar);
 
     bullets     = view.findViewById(R.id.delete_account_fragment_bullets);
     countryCode = view.findViewById(R.id.delete_account_fragment_country_code);
@@ -76,6 +79,7 @@ public class DeleteAccountFragment extends Fragment {
     countryCode.getInput().addTextChangedListener(new AfterTextChanged(this::afterCountryCodeChanged));
     countryCode.getInput().setImeOptions(EditorInfo.IME_ACTION_NEXT);
     confirm.setOnClickListener(unused -> viewModel.submit());
+    toolbar.setNavigationOnClickListener(v -> Navigation.findNavController(v).popBackStack());
 
     initializeSpinner(countrySpinner);
   }
@@ -85,13 +89,13 @@ public class DeleteAccountFragment extends Fragment {
   }
 
   private @NonNull CharSequence buildBulletsText(@NonNull Optional<String> formattedBalance) {
-    SpannableStringBuilder builder =  new SpannableStringBuilder().append(SpanUtil.bullet(getString(R.string.DeleteAccountFragment__delete_your_account_info_and_profile_photo)))
+    SpannableStringBuilder builder =  new SpannableStringBuilder().append(SpanUtil.bullet(getString(R.string.DeleteAccountFragment__delete_your_account_info_and_profile_photo),8))
                                                                   .append("\n")
-                                                                  .append(SpanUtil.bullet(getString(R.string.DeleteAccountFragment__delete_all_your_messages)));
+                                                                  .append(SpanUtil.bullet(getString(R.string.DeleteAccountFragment__delete_all_your_messages),8));
 
     if (formattedBalance.isPresent()) {
       builder.append("\n");
-      builder.append(SpanUtil.bullet(getString(R.string.DeleteAccountFragment__delete_s_in_your_payments_account, formattedBalance.get())));
+      builder.append(SpanUtil.bullet(getString(R.string.DeleteAccountFragment__delete_s_in_your_payments_account, formattedBalance.get()),8));
     }
 
     return builder;
@@ -263,6 +267,7 @@ public class DeleteAccountFragment extends Fragment {
       case LEAVE_GROUPS_FINISHED:
         ensureDeletionProgressDialog();
         deletionProgressDialog.presentDeletingAccount();
+        break;
       case CANCELING_SUBSCRIPTION:
         ensureDeletionProgressDialog();
         deletionProgressDialog.presentCancelingSubscription();

@@ -1,23 +1,26 @@
 package org.thoughtcrime.securesms.gcm
 
+import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import org.signal.core.util.PendingIntentFlags.mutable
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.MainActivity
 import org.thoughtcrime.securesms.R
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.jobs.MessageFetchJob
 import org.thoughtcrime.securesms.messages.WebSocketDrainer
 import org.thoughtcrime.securesms.notifications.NotificationChannels
 import org.thoughtcrime.securesms.notifications.NotificationIds
-import org.thoughtcrime.securesms.util.FeatureFlags
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.SignalLocalMetrics
 import org.thoughtcrime.securesms.util.concurrent.SerialMonoLifoExecutor
 import kotlin.time.Duration.Companion.minutes
@@ -45,7 +48,14 @@ object FcmFetchManager {
 
   private val KEEP_ALIVE_TOKEN = "FcmFetch"
 
-  val WEBSOCKET_DRAIN_TIMEOUT = 5.minutes.inWholeMilliseconds
+  val WEBSOCKET_DRAIN_TIMEOUT: Long
+    get() {
+      return if (AppDependencies.signalServiceNetworkAccess.isCensored()) {
+        2.minutes.inWholeMilliseconds
+      } else {
+        5.minutes.inWholeMilliseconds
+      }
+    }
 
   @Volatile
   private var activeCount = 0
@@ -71,10 +81,18 @@ object FcmFetchManager {
   }
 
   private fun postMayHaveMessagesNotification(context: Context) {
-    if (FeatureFlags.fcmMayHaveMessagesNotificationKillSwitch()) {
+    if (RemoteConfig.fcmMayHaveMessagesNotificationKillSwitch) {
       Log.w(TAG, "May have messages notification kill switch")
       return
     }
+
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+      Log.w(TAG, "Missing permission to post notifications.")
+      return
+    }
+
+    Log.w(TAG, "Notifying the user that they may have new messages.")
+
     val mayHaveMessagesNotification: Notification = NotificationCompat.Builder(context, NotificationChannels.getInstance().ADDITIONAL_MESSAGE_NOTIFICATIONS)
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(context.getString(R.string.FcmFetchManager__you_may_have_messages))
@@ -88,7 +106,8 @@ object FcmFetchManager {
       .notify(NotificationIds.MAY_HAVE_MESSAGES_NOTIFICATION_ID, mayHaveMessagesNotification)
   }
 
-  private fun cancelMayHaveMessagesNotification(context: Context) {
+  @JvmStatic
+  fun cancelMayHaveMessagesNotification(context: Context) {
     NotificationManagerCompat.from(context).cancel(NotificationIds.MAY_HAVE_MESSAGES_NOTIFICATION_ID)
   }
 
@@ -152,7 +171,7 @@ object FcmFetchManager {
         FcmJobService.schedule(context)
       } else {
         Log.w(TAG, "[API ${Build.VERSION.SDK_INT}] Failed to retrieve messages. Scheduling on JobManager (API " + Build.VERSION.SDK_INT + ").")
-        ApplicationDependencies.getJobManager().add(MessageFetchJob())
+        AppDependencies.jobManager.add(MessageFetchJob())
       }
     }
 

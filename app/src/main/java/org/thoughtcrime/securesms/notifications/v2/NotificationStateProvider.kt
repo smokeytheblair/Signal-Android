@@ -7,11 +7,12 @@ import org.thoughtcrime.securesms.database.MessageTable
 import org.thoughtcrime.securesms.database.NoSuchMessageException
 import org.thoughtcrime.securesms.database.RecipientTable
 import org.thoughtcrime.securesms.database.SignalDatabase
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
 import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.database.model.MessageRecord
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.ReactionRecord
 import org.thoughtcrime.securesms.notifications.profiles.NotificationProfile
+import org.thoughtcrime.securesms.polls.PollVote
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.util.isStoryReaction
 
@@ -37,6 +38,7 @@ object NotificationStateProvider {
           val threadRecipient: Recipient? = SignalDatabase.threads.getRecipientForThreadId(record.threadId)
           if (threadRecipient != null) {
             val hasUnreadReactions = CursorUtil.requireInt(unreadMessages, MessageTable.REACTIONS_UNREAD) == 1
+            val hasUnreadVotes = CursorUtil.requireInt(unreadMessages, MessageTable.VOTES_UNREAD) == 1
             val conversationId = ConversationId.fromMessageRecord(record)
 
             val parentRecord = conversationId.groupStoryId?.let {
@@ -51,22 +53,29 @@ object NotificationStateProvider {
               SignalDatabase.messages.hasGroupReplyOrReactionInStory(it)
             }
 
-            if (record is MediaMmsMessageRecord) {
+            if (record is MmsMessageRecord) {
               val attachments = SignalDatabase.attachments.getAttachmentsForMessage(record.id)
               if (attachments.isNotEmpty()) {
                 record = record.withAttachments(attachments)
+              }
+              val poll = SignalDatabase.polls.getPoll(record.id)
+              if (poll != null) {
+                record = record.withPoll(poll)
               }
             }
 
             messages += NotificationMessage(
               messageRecord = record,
               reactions = if (hasUnreadReactions) SignalDatabase.reactions.getReactions(MessageId(record.id)) else emptyList(),
+              pollVotes = if (hasUnreadVotes) SignalDatabase.polls.getAllVotes(record.id) else emptyList(),
               threadRecipient = threadRecipient,
               thread = conversationId,
               stickyThread = stickyThreads.containsKey(conversationId),
               isUnreadMessage = CursorUtil.requireInt(unreadMessages, MessageTable.READ) == 0,
               hasUnreadReactions = hasUnreadReactions,
+              hasUnreadVotes = hasUnreadVotes,
               lastReactionRead = CursorUtil.requireLong(unreadMessages, MessageTable.REACTIONS_LAST_SEEN),
+              lastVoteRead = CursorUtil.requireLong(unreadMessages, MessageTable.VOTES_LAST_SEEN),
               isParentStorySentBySelf = parentRecord?.isOutgoing ?: false,
               hasSelfRepliedToStory = hasSelfRepliedToGroupStory ?: false
             )
@@ -108,6 +117,17 @@ object NotificationStateProvider {
               }
             }
           }
+
+          if (notification.hasUnreadVotes) {
+            notification.pollVotes.forEach {
+              when (notification.shouldIncludeVote(it, notificationProfile)) {
+                MessageInclusion.INCLUDE -> notificationItems.add(VoteNotification(notification.threadRecipient, notification.messageRecord, it))
+                MessageInclusion.EXCLUDE -> Unit
+                MessageInclusion.MUTE_FILTERED -> muteFilteredMessages += NotificationState.FilteredMessage(notification.messageRecord.id, notification.messageRecord.isMms)
+                MessageInclusion.PROFILE_FILTERED -> profileFilteredMessages += NotificationState.FilteredMessage(notification.messageRecord.id, notification.messageRecord.isMms)
+              }
+            }
+          }
         }
 
         notificationItems.sort()
@@ -127,17 +147,21 @@ object NotificationStateProvider {
   private data class NotificationMessage(
     val messageRecord: MessageRecord,
     val reactions: List<ReactionRecord>,
+    val pollVotes: List<PollVote>,
     val threadRecipient: Recipient,
     val thread: ConversationId,
     val stickyThread: Boolean,
     val isUnreadMessage: Boolean,
     val hasUnreadReactions: Boolean,
+    val hasUnreadVotes: Boolean,
     val lastReactionRead: Long,
+    val lastVoteRead: Long,
     val isParentStorySentBySelf: Boolean,
     val hasSelfRepliedToStory: Boolean
   ) {
     private val isGroupStoryReply: Boolean = thread.groupStoryId != null
     private val isUnreadIncoming: Boolean = isUnreadMessage && !messageRecord.isOutgoing && !isGroupStoryReply
+    private val isIncomingMissedCall: Boolean = !messageRecord.isOutgoing && (messageRecord.isMissedAudioCall || messageRecord.isMissedVideoCall)
 
     private val isNotifiableGroupStoryMessage: Boolean =
       isUnreadMessage &&
@@ -146,7 +170,7 @@ object NotificationStateProvider {
         (isParentStorySentBySelf || messageRecord.hasSelfMention() || (hasSelfRepliedToStory && !messageRecord.isStoryReaction()))
 
     fun includeMessage(notificationProfile: NotificationProfile?): MessageInclusion {
-      return if (isUnreadIncoming || stickyThread || isNotifiableGroupStoryMessage) {
+      return if (isUnreadIncoming || stickyThread || isNotifiableGroupStoryMessage || isIncomingMissedCall) {
         if (threadRecipient.isMuted && (threadRecipient.isDoNotNotifyMentions || !messageRecord.hasSelfMention())) {
           MessageInclusion.MUTE_FILTERED
         } else if (notificationProfile != null && !notificationProfile.isRecipientAllowed(threadRecipient.id) && !(notificationProfile.allowAllMentions && messageRecord.hasSelfMention())) {
@@ -165,6 +189,18 @@ object NotificationStateProvider {
       } else if (notificationProfile != null && !notificationProfile.isRecipientAllowed(threadRecipient.id)) {
         MessageInclusion.PROFILE_FILTERED
       } else if (reaction.author != Recipient.self().id && messageRecord.isOutgoing && reaction.dateReceived > lastReactionRead) {
+        MessageInclusion.INCLUDE
+      } else {
+        MessageInclusion.EXCLUDE
+      }
+    }
+
+    fun shouldIncludeVote(vote: PollVote, notificationProfile: NotificationProfile?): MessageInclusion {
+      return if (threadRecipient.isMuted) {
+        MessageInclusion.MUTE_FILTERED
+      } else if (notificationProfile != null && !notificationProfile.isRecipientAllowed(threadRecipient.id)) {
+        MessageInclusion.PROFILE_FILTERED
+      } else if (vote.voterId != Recipient.self().id && messageRecord.isOutgoing && vote.dateReceived > lastVoteRead) {
         MessageInclusion.INCLUDE
       } else {
         MessageInclusion.EXCLUDE

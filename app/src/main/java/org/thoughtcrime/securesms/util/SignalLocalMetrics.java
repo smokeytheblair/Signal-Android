@@ -1,8 +1,12 @@
 package org.thoughtcrime.securesms.util;
 
+import android.os.SystemClock;
+
 import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import org.thoughtcrime.securesms.attachments.AttachmentId;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -152,8 +156,13 @@ public final class SignalLocalMetrics {
       split(messageId, SPLIT_JOB_ENQUEUE);
     }
 
-    public static void onDeliveryStarted(long messageId) {
+    public static void onDeliveryStarted(long messageId, long sentTimestamp) {
       split(messageId, SPLIT_JOB_PRE_NETWORK);
+
+      String splitId = ID_MAP.get(messageId);
+      if (splitId != null) {
+        LocalMetrics.getInstance().setLabel(splitId, String.valueOf(sentTimestamp));
+      }
     }
 
     public static void onMessageEncrypted(long messageId) {
@@ -212,6 +221,11 @@ public final class SignalLocalMetrics {
     public static void onMessageReceived(long serverReceiveTimestamp, long serverDeliverTimestamp, boolean highPriority) {
       String name    = highPriority ? NAME_HIGH : NAME_LOW;
       long   latency = serverDeliverTimestamp - serverReceiveTimestamp;
+
+      if (latency > SystemClock.elapsedRealtime()) {
+        // Ignore messages with latency that would be before device boot time
+        return;
+      }
 
       String id = name + System.currentTimeMillis();
       LocalMetrics.getInstance().start(id, name);
@@ -328,6 +342,13 @@ public final class SignalLocalMetrics {
 
     public static void onJobStarted(long messageId) {
       split(messageId, SPLIT_JOB_ENQUEUE);
+    }
+
+    public static void setSentTimestamp(long messageId, long sentTimestamp) {
+      String splitId = ID_MAP.get(messageId);
+      if (splitId != null) {
+        LocalMetrics.getInstance().setLabel(splitId, String.valueOf(sentTimestamp));
+      }
     }
 
     public static void onSenderKeyStarted(long messageId) {
@@ -476,6 +497,40 @@ public final class SignalLocalMetrics {
         LocalMetrics.getInstance().cancel(groupMetricId);
         LocalMetrics.getInstance().end(individualMetricId);
       }
+    }
+  }
+
+  /**
+   * Tracks how long it took to upload an attachment to the archive CDN.
+   */
+  public static final class ArchiveAttachmentUpload {
+    private static final String NAME = "archive-attachment-upload";
+
+    /** When the attachment begins uploading. */
+    public static void start(AttachmentId id) {
+      LocalMetrics.getInstance().start(NAME, NAME + id);
+    }
+
+    /** When the attachment finishes uploading. */
+    public static void end(AttachmentId id) {
+      LocalMetrics.getInstance().end(NAME + id);
+    }
+  }
+
+  /**
+   * Tracks how long it took to restore an attachment.
+   */
+  public static final class ArchiveAttachmentRestore {
+    private static final String NAME = "archive-attachment-restore";
+
+    /** When the attachment begins uploading. */
+    public static void start(AttachmentId id) {
+      LocalMetrics.getInstance().start(NAME, NAME + id);
+    }
+
+    /** When the attachment finishes uploading. */
+    public static void end(AttachmentId id) {
+      LocalMetrics.getInstance().end(NAME + id);
     }
   }
 }

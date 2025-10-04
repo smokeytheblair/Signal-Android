@@ -95,7 +95,8 @@ public class ConnectedCallActionProcessor extends DeviceAwareActionProcessor {
     return ephemeralState.copy(
         CallParticipant.AudioLevel.fromRawAudioLevel(localLevel),
         callParticipantId.map(participantId -> Collections.singletonMap(participantId, CallParticipant.AudioLevel.fromRawAudioLevel(remoteLevel)))
-                         .orElse(Collections.emptyMap())
+                         .orElse(Collections.emptyMap()),
+        ephemeralState.getUnexpiredReactions()
     );
   }
 
@@ -107,6 +108,11 @@ public class ConnectedCallActionProcessor extends DeviceAwareActionProcessor {
                        .changeCallInfoState()
                        .callState(event == CallManager.CallEvent.RECONNECTING ? WebRtcViewModel.State.CALL_RECONNECTING : WebRtcViewModel.State.CALL_CONNECTED)
                        .build();
+  }
+
+  @Override
+  protected @NonNull WebRtcServiceState handleRemoteAudioEnable(@NonNull WebRtcServiceState currentState, boolean enable) {
+    return activeCallDelegate.handleRemoteAudioEnable(currentState, enable);
   }
 
   @Override

@@ -13,9 +13,7 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 object MessageConstraintsUtil {
   private val RECEIVE_THRESHOLD = TimeUnit.DAYS.toMillis(2)
-
-  private val REMOTE_DELETE_SEND_THRESHOLD = TimeUnit.HOURS.toMillis(3)
-  private val EDIT_SEND_THRESHOLD = TimeUnit.DAYS.toMillis(1)
+  private val SEND_THRESHOLD = TimeUnit.DAYS.toMillis(1)
 
   const val MAX_EDIT_COUNT = 10
 
@@ -51,7 +49,7 @@ object MessageConstraintsUtil {
 
   @JvmStatic
   fun getEditMessageThresholdHours(): Int {
-    return EDIT_SEND_THRESHOLD.milliseconds.inWholeHours.toInt()
+    return SEND_THRESHOLD.milliseconds.inWholeHours.toInt()
   }
 
   /**
@@ -64,11 +62,16 @@ object MessageConstraintsUtil {
     } else {
       targetMessage
     }
-    return isValidRemoteDeleteSend(originalMessage, currentTime, EDIT_SEND_THRESHOLD) &&
-      targetMessage.revisionNumber < MAX_EDIT_COUNT &&
+
+    val isNoteToSelf = targetMessage.toRecipient.isSelf && targetMessage.fromRecipient.isSelf
+
+    return isValidRemoteDeleteSend(originalMessage, currentTime) &&
+      (isNoteToSelf || targetMessage.revisionNumber < MAX_EDIT_COUNT) &&
       !targetMessage.isViewOnceMessage() &&
       !targetMessage.hasAudio() &&
-      !targetMessage.hasSharedContact()
+      !targetMessage.hasSharedContact() &&
+      !targetMessage.hasSticker() &&
+      !targetMessage.hasPoll()
   }
 
   /**
@@ -79,7 +82,7 @@ object MessageConstraintsUtil {
     return isValidEditMessageSend(targetMessage, targetMessage.dateSent)
   }
 
-  private fun isValidRemoteDeleteSend(message: MessageRecord, currentTime: Long, validDuration: Long = REMOTE_DELETE_SEND_THRESHOLD): Boolean {
+  private fun isValidRemoteDeleteSend(message: MessageRecord, currentTime: Long): Boolean {
     return !message.isUpdate &&
       message.isOutgoing &&
       message.isPush &&
@@ -87,10 +90,11 @@ object MessageConstraintsUtil {
       !message.isRemoteDelete &&
       !message.hasGiftBadge() &&
       !message.isPaymentNotification &&
-      (currentTime - message.dateSent < validDuration || message.toRecipient.isSelf)
+      !message.isPaymentTombstone &&
+      (currentTime - message.dateSent < SEND_THRESHOLD || message.toRecipient.isSelf)
   }
 
   private fun isSelf(recipientId: RecipientId): Boolean {
-    return Recipient.isSelfSet() && Recipient.self().id == recipientId
+    return Recipient.isSelfSet && Recipient.self().id == recipientId
   }
 }

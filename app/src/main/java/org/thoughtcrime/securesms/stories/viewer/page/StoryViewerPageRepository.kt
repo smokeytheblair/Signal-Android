@@ -6,6 +6,7 @@ import androidx.annotation.CheckResult
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.schedulers.Schedulers
+import org.signal.core.util.Base64
 import org.signal.core.util.BreakIteratorCompat
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.logging.Log
@@ -18,7 +19,7 @@ import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.database.model.MessageRecord
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.databaseprotos.StoryTextPost
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.jobs.MultiDeviceViewedUpdateJob
 import org.thoughtcrime.securesms.jobs.SendViewedReceiptJob
 import org.thoughtcrime.securesms.keyvalue.SignalStore
@@ -26,7 +27,6 @@ import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.sms.MessageSender
 import org.thoughtcrime.securesms.stories.Stories
-import org.thoughtcrime.securesms.util.Base64
 
 /**
  * Open for testing.
@@ -39,7 +39,7 @@ open class StoryViewerPageRepository(context: Context, private val storyViewStat
 
   private val context = context.applicationContext
 
-  fun isReadReceiptsEnabled(): Boolean = SignalStore.storyValues().viewedReceiptsEnabled
+  fun isReadReceiptsEnabled(): Boolean = SignalStore.story.viewedReceiptsEnabled
 
   private fun getStoryRecords(recipientId: RecipientId, isOutgoingOnly: Boolean): Observable<List<MessageRecord>> {
     return Observable.create { emitter ->
@@ -65,9 +65,9 @@ open class StoryViewerPageRepository(context: Context, private val storyViewStat
         refresh()
       }
 
-      ApplicationDependencies.getDatabaseObserver().registerStoryObserver(recipientId, storyObserver)
+      AppDependencies.databaseObserver.registerStoryObserver(recipientId, storyObserver)
       emitter.setCancellable {
-        ApplicationDependencies.getDatabaseObserver().unregisterObserver(storyObserver)
+        AppDependencies.databaseObserver.unregisterObserver(storyObserver)
       }
 
       refresh()
@@ -90,7 +90,7 @@ open class StoryViewerPageRepository(context: Context, private val storyViewStat
           content = getContent(record as MmsMessageRecord),
           conversationMessage = ConversationMessage.ConversationMessageFactory.createWithUnresolvedData(context, record, recipient),
           allowsReplies = record.storyType.isStoryWithReplies,
-          hasSelfViewed = storyViewStateCache.getOrPut(record.id, if (record.isOutgoing) true else viewedCount > 0)
+          hasSelfViewed = storyViewStateCache.getOrPut(record.id, if (record.isOutgoing) true else record.isViewed())
         )
 
         emitter.onNext(story)
@@ -123,23 +123,23 @@ open class StoryViewerPageRepository(context: Context, private val storyViewStat
         }
       }
 
-      ApplicationDependencies.getDatabaseObserver().registerConversationObserver(threadId, conversationObserver)
-      ApplicationDependencies.getDatabaseObserver().registerMessageUpdateObserver(messageUpdateObserver)
+      AppDependencies.databaseObserver.registerConversationObserver(threadId, conversationObserver)
+      AppDependencies.databaseObserver.registerMessageUpdateObserver(messageUpdateObserver)
 
       val messageInsertObserver = DatabaseObserver.MessageObserver {
         refresh(SignalDatabase.messages.getMessageRecord(recordId))
       }
 
       if (recipient.isGroup) {
-        ApplicationDependencies.getDatabaseObserver().registerMessageInsertObserver(threadId, messageInsertObserver)
+        AppDependencies.databaseObserver.registerMessageInsertObserver(threadId, messageInsertObserver)
       }
 
       emitter.setCancellable {
-        ApplicationDependencies.getDatabaseObserver().unregisterObserver(conversationObserver)
-        ApplicationDependencies.getDatabaseObserver().unregisterObserver(messageUpdateObserver)
+        AppDependencies.databaseObserver.unregisterObserver(conversationObserver)
+        AppDependencies.databaseObserver.unregisterObserver(messageUpdateObserver)
 
         if (recipient.isGroup) {
-          ApplicationDependencies.getDatabaseObserver().unregisterObserver(messageInsertObserver)
+          AppDependencies.databaseObserver.unregisterObserver(messageInsertObserver)
         }
       }
 
@@ -171,18 +171,24 @@ open class StoryViewerPageRepository(context: Context, private val storyViewStat
     }.subscribeOn(Schedulers.io())
   }
 
+  fun unhideStory(recipientId: RecipientId): Completable {
+    return Completable.fromAction {
+      SignalDatabase.recipients.setHideStory(recipientId, false)
+    }.subscribeOn(Schedulers.io())
+  }
+
   fun markViewed(storyPost: StoryPost) {
     if (!storyPost.conversationMessage.messageRecord.isOutgoing) {
       SignalExecutors.SERIAL.execute {
         val markedMessageInfo = SignalDatabase.messages.setIncomingMessageViewed(storyPost.id)
         if (markedMessageInfo != null) {
-          ApplicationDependencies.getDatabaseObserver().notifyConversationListListeners()
+          AppDependencies.databaseObserver.notifyConversationListListeners()
 
           if (storyPost.sender.isReleaseNotes) {
-            SignalStore.storyValues().userHasViewedOnboardingStory = true
+            SignalStore.story.userHasViewedOnboardingStory = true
             Stories.onStorySettingsChanged(Recipient.self().id)
           } else {
-            ApplicationDependencies.getJobManager().add(
+            AppDependencies.jobManager.add(
               SendViewedReceiptJob(
                 markedMessageInfo.threadId,
                 storyPost.sender.id,
@@ -204,7 +210,7 @@ open class StoryViewerPageRepository(context: Context, private val storyViewStat
   @CheckResult
   fun resend(messageRecord: MessageRecord): Completable {
     return Completable.fromAction {
-      MessageSender.resend(ApplicationDependencies.getApplication(), messageRecord)
+      MessageSender.resend(AppDependencies.application, messageRecord)
     }.subscribeOn(Schedulers.io())
   }
 

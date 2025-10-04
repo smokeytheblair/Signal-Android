@@ -15,7 +15,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:navigationContentDescription="@string/DSLSettingsToolbar__navigate_up"
-        app:navigationIcon="@drawable/ic_arrow_left_24"
+        app:navigationIcon="@drawable/symbol_arrow_start_24"
         app:titleTextAppearance="@style/Signal.Text.Title" />
 
     <TextView
@@ -64,8 +64,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="textCapSentences"
-            android:maxLines="1"
-            app:emoji_forceCustom="true" />
+            android:maxLines="1" />
 
     </com.google.android.material.textfield.TextInputLayout>
 

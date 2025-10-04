@@ -1,22 +1,12 @@
 package org.thoughtcrime.securesms.testing
 
-import org.mockito.kotlin.anyOrNull
-import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.stub
-import org.signal.core.util.Hex
 import org.signal.libsignal.protocol.IdentityKeyPair
-import org.signal.libsignal.protocol.ecc.Curve
+import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.util.KeyHelper
 import org.signal.libsignal.protocol.util.Medium
-import org.signal.libsignal.svr2.PinHash
 import org.thoughtcrime.securesms.crypto.PreKeyUtil
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
 import org.thoughtcrime.securesms.keyvalue.SignalStore
-import org.thoughtcrime.securesms.test.BuildConfig
-import org.whispersystems.signalservice.api.KeyBackupService
-import org.whispersystems.signalservice.api.SvrPinData
-import org.whispersystems.signalservice.api.kbs.MasterKey
 import org.whispersystems.signalservice.api.messages.multidevice.DeviceInfo
 import org.whispersystems.signalservice.api.push.ServiceId
 import org.whispersystems.signalservice.api.push.SignedPreKeyEntity
@@ -41,7 +31,7 @@ object MockProvider {
 
   val lockedFailure = PushServiceSocket.RegistrationLockFailure().apply {
     svr1Credentials = AuthCredentials.create("username", "password")
-    svr2Credentials = null
+    svr2Credentials = AuthCredentials.create("username", "password")
   }
 
   val primaryOnlyDeviceList = DeviceInfoList().apply {
@@ -71,28 +61,16 @@ object MockProvider {
   }
 
   fun createWhoAmIResponse(aci: ServiceId, pni: ServiceId, e164: String): WhoAmIResponse {
-    return WhoAmIResponse().apply {
-      this.uuid = aci.toString()
-      this.pni = pni.toString()
-      this.number = e164
-    }
+    return WhoAmIResponse(
+      aci = aci.toString(),
+      pni = pni.toString(),
+      number = e164
+    )
   }
 
-  fun mockGetRegistrationLockStringFlow() {
-    val session: KeyBackupService.RestoreSession = object : KeyBackupService.RestoreSession {
-      override fun hashSalt(): ByteArray = Hex.fromStringCondensed("cba811749042b303a6a7efa5ccd160aea5e3ea243c8d2692bd13d515732f51a8")
-      override fun restorePin(hashedPin: PinHash?): SvrPinData = SvrPinData(MasterKey.createNew(SecureRandom()), null)
-    }
-
-    val kbsService = ApplicationDependencies.getKeyBackupService(BuildConfig.KBS_ENCLAVE)
-    kbsService.stub {
-      on { newRegistrationSession(anyOrNull(), anyOrNull()) } doReturn session
-    }
-  }
-
-  fun createPreKeyResponse(identity: IdentityKeyPair = SignalStore.account().aciIdentityKey, deviceId: Int): PreKeyResponse {
+  fun createPreKeyResponse(identity: IdentityKeyPair = SignalStore.account.aciIdentityKey, deviceId: Int): PreKeyResponse {
     val signedPreKeyRecord = PreKeyUtil.generateSignedPreKey(SecureRandom().nextInt(Medium.MAX_VALUE), identity.privateKey)
-    val oneTimePreKey = PreKeyRecord(SecureRandom().nextInt(Medium.MAX_VALUE), Curve.generateKeyPair())
+    val oneTimePreKey = PreKeyRecord(SecureRandom().nextInt(Medium.MAX_VALUE), ECKeyPair.generate())
 
     val device = PreKeyResponseItem().apply {
       this.deviceId = deviceId

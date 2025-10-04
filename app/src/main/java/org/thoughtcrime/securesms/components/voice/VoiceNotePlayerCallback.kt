@@ -155,6 +155,16 @@ class VoiceNotePlayerCallback(val context: Context, val player: VoiceNotePlayer)
             }
           }
         })
+        player.addListener(
+          object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+              if (playbackState == Player.STATE_READY) {
+                player.seekTo(window, (player.duration * progress).toLong())
+                player.removeListener(this)
+              }
+            }
+          }
+        )
         player.prepare()
         canLoadMore = !singlePlayback
       } else if (latestUri == uri) {
@@ -204,9 +214,11 @@ class VoiceNotePlayerCallback(val context: Context, val player: VoiceNotePlayer)
   @MainThread
   private fun addItemsToPlaylist(mediaItems: List<MediaItem>) {
     var mediaItemsWithNextTone = mediaItems.flatMap { listOf(it, VoiceNoteMediaItemFactory.buildNextVoiceNoteMediaItem(it)) }.toMutableList()
-    mediaItemsWithNextTone = mediaItemsWithNextTone.subList(0, mediaItemsWithNextTone.size - 1).toMutableList()
+    mediaItemsWithNextTone = mediaItemsWithNextTone.subList(0, mediaItemsWithNextTone.lastIndex).toMutableList()
     if (player.mediaItemCount == 0) {
-      mediaItemsWithNextTone += VoiceNoteMediaItemFactory.buildEndVoiceNoteMediaItem(mediaItemsWithNextTone.last())
+      if (mediaItems.size > 1) {
+        mediaItemsWithNextTone += VoiceNoteMediaItemFactory.buildEndVoiceNoteMediaItem(mediaItemsWithNextTone.last())
+      }
       player.addMediaItems(mediaItemsWithNextTone)
     } else {
       player.addMediaItems(player.mediaItemCount, mediaItemsWithNextTone)
@@ -215,7 +227,7 @@ class VoiceNotePlayerCallback(val context: Context, val player: VoiceNotePlayer)
 
   private fun indexOfPlayerMediaItemByUri(uri: Uri): Int {
     for (i in 0 until player.mediaItemCount) {
-      val playbackProperties: LocalConfiguration? = player.getMediaItemAt(i).playbackProperties
+      val playbackProperties: LocalConfiguration? = player.getMediaItemAt(i).localConfiguration
       if (playbackProperties?.uri == uri) {
         return i
       }
@@ -264,6 +276,6 @@ class VoiceNotePlayerCallback(val context: Context, val player: VoiceNotePlayer)
   }
 
   private fun List<MessageRecord>.messageRecordsToVoiceNoteMediaItems(): List<MediaItem> {
-    return this.filter { it.hasAudio() }.mapNotNull { VoiceNoteMediaItemFactory.buildMediaItem(context, it) }
+    return this.takeWhile { it.hasAudio() }.mapNotNull { VoiceNoteMediaItemFactory.buildMediaItem(context, it) }
   }
 }

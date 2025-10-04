@@ -2,8 +2,12 @@ package org.thoughtcrime.securesms
 
 import android.content.ContentValues
 import android.os.Build
+import org.signal.core.util.logging.AndroidLogger
+import org.signal.core.util.logging.Log
 import org.signal.spinner.Spinner
 import org.signal.spinner.Spinner.DatabaseConfig
+import org.signal.spinner.SpinnerLogger
+import org.thoughtcrime.securesms.database.AttachmentTransformer
 import org.thoughtcrime.securesms.database.DatabaseMonitor
 import org.thoughtcrime.securesms.database.GV2Transformer
 import org.thoughtcrime.securesms.database.GV2UpdateTransformer
@@ -20,10 +24,13 @@ import org.thoughtcrime.securesms.database.ProfileKeyCredentialTransformer
 import org.thoughtcrime.securesms.database.QueryMonitor
 import org.thoughtcrime.securesms.database.RecipientTransformer
 import org.thoughtcrime.securesms.database.SignalDatabase
+import org.thoughtcrime.securesms.database.SignalStoreTransformer
 import org.thoughtcrime.securesms.database.TimestampTransformer
 import org.thoughtcrime.securesms.keyvalue.SignalStore
+import org.thoughtcrime.securesms.logging.PersistentLogger
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.util.AppSignatureUtil
+import org.thoughtcrime.securesms.util.RemoteConfig
 import java.util.Locale
 
 class SpinnerApplicationContext : ApplicationContext() {
@@ -44,19 +51,30 @@ class SpinnerApplicationContext : ApplicationContext() {
         "Device" to { "${Build.MODEL} (Android ${Build.VERSION.RELEASE}, API ${Build.VERSION.SDK_INT})" },
         "Package" to { "$packageName (${AppSignatureUtil.getAppSignature(this)})" },
         "App Version" to { "${BuildConfig.VERSION_NAME} (${BuildConfig.CANONICAL_VERSION_CODE}, ${BuildConfig.GIT_HASH})" },
-        "Profile Name" to { (if (SignalStore.account().isRegistered) Recipient.self().profileName.toString() else "none") },
-        "E164" to { SignalStore.account().e164 ?: "none" },
-        "ACI" to { SignalStore.account().aci?.toString() ?: "none" },
-        "PNI" to { SignalStore.account().pni?.toString() ?: "none" },
+        "Profile Name" to { (if (SignalStore.account.isRegistered) Recipient.self().profileName.toString() else "none") },
+        "E164" to { SignalStore.account.e164 ?: "none" },
+        "ACI" to { SignalStore.account.aci?.toString() ?: "none" },
+        "PNI" to { SignalStore.account.pni?.toString() ?: "none" },
         Spinner.KEY_ENVIRONMENT to { BuildConfig.FLAVOR_environment.uppercase(Locale.US) }
       ),
       linkedMapOf(
         "signal" to DatabaseConfig(
           db = { SignalDatabase.rawDatabase },
-          columnTransformers = listOf(MessageBitmaskColumnTransformer, GV2Transformer, GV2UpdateTransformer, IsStoryTransformer, TimestampTransformer, ProfileKeyCredentialTransformer, MessageRangesTransformer, KyberKeyTransformer, RecipientTransformer)
+          columnTransformers = listOf(
+            MessageBitmaskColumnTransformer,
+            GV2Transformer,
+            GV2UpdateTransformer,
+            IsStoryTransformer,
+            TimestampTransformer,
+            ProfileKeyCredentialTransformer,
+            MessageRangesTransformer,
+            KyberKeyTransformer,
+            RecipientTransformer,
+            AttachmentTransformer
+          )
         ),
-        "jobmanager" to DatabaseConfig(db = { JobDatabase.getInstance(this).sqlCipherDatabase }),
-        "keyvalue" to DatabaseConfig(db = { KeyValueDatabase.getInstance(this).sqlCipherDatabase }),
+        "jobmanager" to DatabaseConfig(db = { JobDatabase.getInstance(this).sqlCipherDatabase }, columnTransformers = listOf(TimestampTransformer)),
+        "keyvalue" to DatabaseConfig(db = { KeyValueDatabase.getInstance(this).sqlCipherDatabase }, columnTransformers = listOf(SignalStoreTransformer)),
         "megaphones" to DatabaseConfig(db = { MegaphoneDatabase.getInstance(this).sqlCipherDatabase }),
         "localmetrics" to DatabaseConfig(db = { LocalMetricsDatabase.getInstance(this).sqlCipherDatabase }),
         "logs" to DatabaseConfig(
@@ -68,6 +86,8 @@ class SpinnerApplicationContext : ApplicationContext() {
         StorageServicePlugin.PATH to StorageServicePlugin()
       )
     )
+
+    Log.initialize({ RemoteConfig.internalUser }, AndroidLogger, PersistentLogger.getInstance(this), SpinnerLogger)
 
     DatabaseMonitor.initialize(object : QueryMonitor {
       override fun onSql(sql: String, args: Array<Any>?) {

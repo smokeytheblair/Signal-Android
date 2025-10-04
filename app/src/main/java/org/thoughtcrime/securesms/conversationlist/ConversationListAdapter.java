@@ -13,13 +13,13 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.RequestManager;
+
 import org.signal.paging.PagingController;
 import org.thoughtcrime.securesms.BindableConversationListItem;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.conversationlist.model.Conversation;
-import org.thoughtcrime.securesms.conversationlist.model.ConversationReader;
 import org.thoughtcrime.securesms.conversationlist.model.ConversationSet;
-import org.thoughtcrime.securesms.mms.GlideRequests;
 import org.thoughtcrime.securesms.util.CachedInflater;
 import org.thoughtcrime.securesms.util.ViewUtil;
 
@@ -29,7 +29,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
-class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.ViewHolder> {
+class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.ViewHolder> implements TimestampPayloadSupport {
 
   private static final int TYPE_THREAD              = 1;
   private static final int TYPE_ACTION              = 2;
@@ -38,32 +38,42 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
   private static final int TYPE_EMPTY               = 5;
   private static final int TYPE_CLEAR_FILTER_FOOTER = 6;
   private static final int TYPE_CLEAR_FILTER_EMPTY  = 7;
+  private static final int TYPE_CHAT_FOLDER_EMPTY   = 8;
+  private static final int TYPE_EMPTY_ARCHIVED      = 9;
 
   private enum Payload {
     TYPING_INDICATOR,
-    SELECTION
+    SELECTION,
+    TIMESTAMP,
+    ACTIVE
   }
 
-  private final LifecycleOwner              lifecycleOwner;
-  private final GlideRequests               glideRequests;
-  private final OnConversationClickListener                      onConversationClickListener;
-  private final ClearFilterViewHolder.OnClearFilterClickListener onClearFilterClicked;
-  private       ConversationSet                                  selectedConversations = new ConversationSet();
-  private final Set<Long>                   typingSet             = new HashSet<>();
+  private final LifecycleOwner                                      lifecycleOwner;
+  private final RequestManager                                      requestManager;
+  private final OnConversationClickListener                         onConversationClickListener;
+  private final ClearFilterViewHolder.OnClearFilterClickListener    onClearFilterClicked;
+  private final EmptyFolderViewHolder.OnFolderSettingsClickListener onFolderSettingsClicked;
+  private final Set<Long>                                           typingSet                     = new HashSet<>();
 
-  private PagingController pagingController;
+  private       ConversationSet                                     selectedConversations         = new ConversationSet();
+  private       long                                                activeThreadId                = 0;
+  private       PagingController                                    pagingController;
 
   protected ConversationListAdapter(@NonNull LifecycleOwner lifecycleOwner,
-                                    @NonNull GlideRequests glideRequests,
+                                    @NonNull RequestManager requestManager,
                                     @NonNull OnConversationClickListener onConversationClickListener,
-                                    @NonNull ClearFilterViewHolder.OnClearFilterClickListener onClearFilterClicked)
+                                    @NonNull ClearFilterViewHolder.OnClearFilterClickListener onClearFilterClicked,
+                                    @NonNull EmptyFolderViewHolder.OnFolderSettingsClickListener onFolderSettingsClicked)
   {
     super(new ConversationDiffCallback());
 
     this.lifecycleOwner              = lifecycleOwner;
-    this.glideRequests               = glideRequests;
+    this.requestManager              = requestManager;
     this.onConversationClickListener = onConversationClickListener;
     this.onClearFilterClicked        = onClearFilterClicked;
+    this.onFolderSettingsClicked     = onFolderSettingsClicked;
+
+    setStateRestorationPolicy(StateRestorationPolicy.PREVENT_WHEN_EMPTY);
   }
 
   @Override
@@ -108,6 +118,9 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
     } else if (viewType == TYPE_HEADER) {
       View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.dsl_section_header, parent, false);
       return new HeaderViewHolder(v);
+    } else if (viewType == TYPE_EMPTY_ARCHIVED) {
+      View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.conversation_list_archived_empty_state, parent, false);
+      return new HeaderViewHolder(v);
     } else if (viewType == TYPE_EMPTY) {
       View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.conversation_list_empty_state, parent, false);
       return new HeaderViewHolder(v);
@@ -116,7 +129,12 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
       return new ClearFilterViewHolder(v, onClearFilterClicked);
     } else if (viewType == TYPE_CLEAR_FILTER_EMPTY) {
       View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.conversation_list_item_clear_filter_empty, parent, false);
+      TextView title = v.findViewById(R.id.clear_filter_title);
+      title.setText(R.string.ConversationListFragment__no_unread_chats);
       return new ClearFilterViewHolder(v, onClearFilterClicked);
+    } else if (viewType == TYPE_CHAT_FOLDER_EMPTY) {
+      View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.conversation_list_item_folder_empty, parent, false);
+      return new EmptyFolderViewHolder(v, onFolderSettingsClicked);
     } else {
       throw new IllegalStateException("Unknown type! " + viewType);
     }
@@ -129,12 +147,14 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
     } else if (holder instanceof ConversationViewHolder) {
       for (Object payloadObject : payloads) {
         if (payloadObject instanceof Payload) {
-          Payload payload = (Payload) payloadObject;
+          Payload                payload = (Payload) payloadObject;
+          ConversationViewHolder vh      = (ConversationViewHolder) holder;
 
-          if (payload == Payload.SELECTION) {
-            ((ConversationViewHolder) holder).getConversationListItem().setSelectedConversations(selectedConversations);
-          } else {
-            ((ConversationViewHolder) holder).getConversationListItem().updateTypingIndicator(typingSet);
+          switch (payload) {
+            case TYPING_INDICATOR -> vh.getConversationListItem().updateTypingIndicator(typingSet);
+            case SELECTION -> vh.getConversationListItem().setSelectedConversations(selectedConversations);
+            case TIMESTAMP -> vh.getConversationListItem().updateTimestamp();
+            case ACTIVE -> vh.getConversationListItem().setActiveThreadId(activeThreadId);
           }
         }
       }
@@ -149,10 +169,11 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
 
       casted.getConversationListItem().bind(lifecycleOwner,
                                             conversation.getThreadRecord(),
-                                            glideRequests,
+                                            requestManager,
                                             Locale.getDefault(),
                                             typingSet,
-                                            selectedConversations);
+                                            selectedConversations,
+                                            activeThreadId);
     } else if (holder.getItemViewType() == TYPE_HEADER) {
       HeaderViewHolder casted       = (HeaderViewHolder) holder;
       Conversation     conversation = Objects.requireNonNull(getItem(position));
@@ -190,6 +211,11 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
     return super.getItem(position);
   }
 
+  @Override
+  public void notifyTimestampPayloadUpdate() {
+    notifyItemRangeChanged(0, getItemCount(), Payload.TIMESTAMP);
+  }
+
   public void setPagingController(@Nullable PagingController pagingController) {
     this.pagingController = pagingController;
   }
@@ -204,6 +230,11 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
   void setSelectedConversations(@NonNull ConversationSet conversations) {
     selectedConversations = conversations;
     notifyItemRangeChanged(0, getItemCount(), Payload.SELECTION);
+  }
+
+  void setActiveThreadId(long activeThreadId) {
+    this.activeThreadId = activeThreadId;
+    notifyItemRangeChanged(0, getItemCount(), Payload.ACTIVE);
   }
 
   @Override
@@ -222,8 +253,12 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
         return TYPE_CLEAR_FILTER_FOOTER;
       case CONVERSATION_FILTER_EMPTY:
         return TYPE_CLEAR_FILTER_EMPTY;
+      case CHAT_FOLDER_EMPTY:
+        return TYPE_CHAT_FOLDER_EMPTY;
       case THREAD:
         return TYPE_THREAD;
+      case ARCHIVED_EMPTY:
+        return TYPE_EMPTY_ARCHIVED;
       case EMPTY:
         return TYPE_EMPTY;
       default:
@@ -271,6 +306,18 @@ class ConversationListAdapter extends ListAdapter<Conversation, RecyclerView.Vie
     public HeaderViewHolder(@NonNull View itemView) {
       super(itemView);
       headerText = itemView.findViewById(R.id.section_header);
+    }
+  }
+
+  static class EmptyFolderViewHolder extends RecyclerView.ViewHolder {
+
+    public EmptyFolderViewHolder(@NonNull View itemView, OnFolderSettingsClickListener listener) {
+      super(itemView);
+      itemView.findViewById(R.id.folder_settings).setOnClickListener(v -> listener.onFolderSettingsClick());
+    }
+
+    interface OnFolderSettingsClickListener {
+      void onFolderSettingsClick();
     }
   }
 

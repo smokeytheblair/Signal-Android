@@ -6,13 +6,14 @@ import android.text.Spannable
 import android.text.SpannableString
 import io.reactivex.rxjava3.core.Maybe
 import io.reactivex.rxjava3.schedulers.Schedulers
+import org.signal.core.util.Base64
 import org.signal.core.util.StreamUtil
 import org.signal.core.util.concurrent.MaybeCompat
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.components.location.SignalPlace
 import org.thoughtcrime.securesms.components.mention.MentionAnnotation
-import org.thoughtcrime.securesms.conversation.ConversationIntents
+import org.thoughtcrime.securesms.conversation.ConversationArgs
 import org.thoughtcrime.securesms.conversation.ConversationMessage
 import org.thoughtcrime.securesms.conversation.ConversationMessage.ConversationMessageFactory
 import org.thoughtcrime.securesms.conversation.MessageStyler
@@ -23,16 +24,15 @@ import org.thoughtcrime.securesms.database.MessageTypes
 import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.ThreadTable
 import org.thoughtcrime.securesms.database.adjustBodyRanges
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
 import org.thoughtcrime.securesms.database.model.Mention
 import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.database.model.MessageRecord
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.databaseprotos.BodyRangeList
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.keyboard.KeyboardUtil
 import org.thoughtcrime.securesms.mediasend.Media
 import org.thoughtcrime.securesms.mms.GifSlide
-import org.thoughtcrime.securesms.mms.GlideApp
 import org.thoughtcrime.securesms.mms.ImageSlide
 import org.thoughtcrime.securesms.mms.PartAuthority
 import org.thoughtcrime.securesms.mms.QuoteId
@@ -41,7 +41,6 @@ import org.thoughtcrime.securesms.mms.SlideFactory
 import org.thoughtcrime.securesms.mms.StickerSlide
 import org.thoughtcrime.securesms.providers.BlobProvider
 import org.thoughtcrime.securesms.recipients.Recipient
-import org.thoughtcrime.securesms.util.Base64
 import org.thoughtcrime.securesms.util.MediaUtil
 import org.thoughtcrime.securesms.util.concurrent.SerialMonoLifoExecutor
 import org.thoughtcrime.securesms.util.hasTextSlide
@@ -50,11 +49,11 @@ import java.io.IOException
 import java.util.concurrent.Executor
 
 class DraftRepository(
-  private val context: Context = ApplicationDependencies.getApplication(),
+  private val context: Context = AppDependencies.application,
   private val threadTable: ThreadTable = SignalDatabase.threads,
   private val draftTable: DraftTable = SignalDatabase.drafts,
   private val saveDraftsExecutor: Executor = SerialMonoLifoExecutor(SignalExecutors.BOUNDED),
-  private val conversationArguments: ConversationIntents.Args? = null
+  private val conversationArguments: ConversationArgs? = null
 ) {
 
   companion object {
@@ -97,9 +96,9 @@ class DraftRepository(
     }
 
     if (shareMedia != null && shareContentType != null && borderless) {
-      val details = KeyboardUtil.getImageDetails(GlideApp.with(context), shareMedia)
+      val details = KeyboardUtil.getImageDetails(shareMedia)
 
-      if (details == null || !details.hasTransparency) {
+      if (details == null || !details.isSticker) {
         return ShareOrDraftData.SetMedia(shareMedia, shareMediaType!!, null) to null
       }
 
@@ -116,7 +115,7 @@ class DraftRepository(
     }
 
     if (shareMediaList.isNotEmpty()) {
-      return ShareOrDraftData.StartSendMedia(shareMediaList, shareText) to null
+      return ShareOrDraftData.StartSendMedia(shareMediaList.filterNotNull(), shareText) to null
     }
 
     if (shareMedia != null && shareMediaType != null) {
@@ -132,6 +131,11 @@ class DraftRepository(
 
       val draftText: CharSequence? = drafts.firstOrNull { it.type == DraftTable.Draft.TEXT }?.let { updatedText ?: it.value }
 
+      val messageEdit: ConversationMessage? = drafts.firstOrNull { it.type == DraftTable.Draft.MESSAGE_EDIT }?.let { loadDraftMessageEditInternal(it.value) }
+      if (messageEdit != null) {
+        return ShareOrDraftData.SetEditMessage(messageEdit, draftText, clearQuote = drafts.none { it.type == DraftTable.Draft.QUOTE }) to drafts
+      }
+
       val location: SignalPlace? = drafts.firstOrNull { it.type == DraftTable.Draft.LOCATION }?.let { SignalPlace.deserialize(it.value) }
       if (location != null) {
         return ShareOrDraftData.SetLocation(location, draftText) to drafts
@@ -140,11 +144,6 @@ class DraftRepository(
       val quote: ConversationMessage? = drafts.firstOrNull { it.type == DraftTable.Draft.QUOTE }?.let { loadDraftQuoteInternal(it.value) }
       if (quote != null) {
         return ShareOrDraftData.SetQuote(quote, draftText) to drafts
-      }
-
-      val messageEdit: ConversationMessage? = drafts.firstOrNull { it.type == DraftTable.Draft.MESSAGE_EDIT }?.let { loadDraftMessageEditInternal(it.value) }
-      if (messageEdit != null) {
-        return ShareOrDraftData.SetEditMessage(messageEdit, draftText) to drafts
       }
 
       if (draftText != null) {
@@ -207,7 +206,7 @@ class DraftRepository(
   private fun loadDraftQuoteInternal(serialized: String): ConversationMessage? {
     val quoteId: QuoteId = QuoteId.deserialize(context, serialized) ?: return null
     val messageRecord: MessageRecord = SignalDatabase.messages.getMessageFor(quoteId.id, quoteId.author)?.let {
-      if (it is MediaMmsMessageRecord) {
+      if (it is MmsMessageRecord) {
         it.withAttachments(SignalDatabase.attachments.getAttachmentsForMessage(it.id))
       } else {
         it
@@ -248,6 +247,6 @@ class DraftRepository(
     data class SetText(val text: CharSequence) : ShareOrDraftData
     data class SetLocation(val location: SignalPlace, val draftText: CharSequence?) : ShareOrDraftData
     data class SetQuote(val quote: ConversationMessage, val draftText: CharSequence?) : ShareOrDraftData
-    data class SetEditMessage(val messageEdit: ConversationMessage, val draftText: CharSequence?) : ShareOrDraftData
+    data class SetEditMessage(val messageEdit: ConversationMessage, val draftText: CharSequence?, val clearQuote: Boolean) : ShareOrDraftData
   }
 }

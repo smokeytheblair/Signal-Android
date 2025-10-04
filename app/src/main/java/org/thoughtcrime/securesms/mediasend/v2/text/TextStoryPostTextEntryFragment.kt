@@ -25,6 +25,8 @@ import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.viewModels
 import androidx.transition.TransitionManager
 import com.airbnb.lottie.SimpleColorFilter
+import io.reactivex.rxjava3.kotlin.subscribeBy
+import org.signal.core.util.concurrent.LifecycleDisposable
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.KeyboardEntryDialogFragment
 import org.thoughtcrime.securesms.mediasend.v2.MediaAnimations
@@ -32,7 +34,7 @@ import org.thoughtcrime.securesms.scribbles.HSVColorSlider
 import org.thoughtcrime.securesms.scribbles.HSVColorSlider.getColor
 import org.thoughtcrime.securesms.scribbles.HSVColorSlider.setColor
 import org.thoughtcrime.securesms.scribbles.HSVColorSlider.setUpForColor
-import org.thoughtcrime.securesms.util.FeatureFlags
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.TextSecurePreferences
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.fragments.findListener
@@ -51,6 +53,8 @@ class TextStoryPostTextEntryFragment : KeyboardEntryDialogFragment(
       requireActivity()
     }
   )
+
+  private val lifecycleDisposable = LifecycleDisposable()
 
   private lateinit var scene: ConstraintLayout
   private lateinit var input: EditText
@@ -101,7 +105,7 @@ class TextStoryPostTextEntryFragment : KeyboardEntryDialogFragment(
       backgroundButton
     )
 
-    if (FeatureFlags.storiesTextFunctions()) {
+    if (RemoteConfig.storiesTextFunctions) {
       fadeableViews = fadeableViews + alignmentButton
       alignmentButton.visibility = View.VISIBLE
       scaleBar.visibility = View.VISIBLE
@@ -213,11 +217,13 @@ class TextStoryPostTextEntryFragment : KeyboardEntryDialogFragment(
   }
 
   private fun initializeViewModel() {
-    viewModel.typeface.observe(viewLifecycleOwner) { typeface ->
+    lifecycleDisposable.bindTo(viewLifecycleOwner)
+
+    lifecycleDisposable += viewModel.typeface.subscribeBy { typeface ->
       input.typeface = typeface
     }
 
-    viewModel.state.observe(viewLifecycleOwner) { state ->
+    lifecycleDisposable += viewModel.state.subscribeBy { state ->
       input.setTextColor(state.textForegroundColor)
       input.setHintTextColor(state.textForegroundColor)
 

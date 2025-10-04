@@ -1,4 +1,4 @@
-# Signal Android 
+# Signal Android
 
 Signal is a simple, powerful, and secure messenger.
 
@@ -23,7 +23,7 @@ If you're interested in a life of peace and tranquility, stick with the standard
 
 ## Contributing Code
 
-If you're new to the Signal codebase, we recommend going through our issues and picking out a simple bug to fix (check the "easy" label in our issues) in order to get yourself familiar. Also please have a look at the [CONTRIBUTING.md](https://github.com/signalapp/Signal-Android/blob/main/CONTRIBUTING.md), that might answer some of your questions.
+If you're new to the Signal codebase, we recommend going through our issues and picking out a simple bug to fix in order to get yourself familiar. Also please have a look at the [CONTRIBUTING.md](https://github.com/signalapp/Signal-Android/blob/main/CONTRIBUTING.md), that might answer some of your questions.
 
 For larger changes and feature ideas, we ask that you propose it on the [unofficial Community Forum](https://community.signalusers.org) for a high-level discussion with the wider community before implementation.
 
@@ -54,7 +54,7 @@ The form and manner of this distribution makes it eligible for export under the 
 
 ## License
 
-Copyright 2013-2023 Signal
+Copyright 2013-2025 Signal Messenger, LLC
 
 Licensed under the GNU AGPLv3: https://www.gnu.org/licenses/agpl-3.0.html
 

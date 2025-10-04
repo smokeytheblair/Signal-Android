@@ -8,11 +8,12 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.lifecycle.LifecycleOwner;
 
+import com.bumptech.glide.RequestManager;
+
 import org.thoughtcrime.securesms.BindableConversationListItem;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.conversationlist.model.ConversationSet;
 import org.thoughtcrime.securesms.database.model.ThreadRecord;
-import org.thoughtcrime.securesms.mms.GlideRequests;
 
 import java.util.Locale;
 import java.util.Set;
@@ -42,16 +43,22 @@ public class ConversationListItemAction extends FrameLayout implements BindableC
   @Override
   public void bind(@NonNull LifecycleOwner lifecycleOwner,
                    @NonNull ThreadRecord thread,
-                   @NonNull GlideRequests glideRequests,
+                   @NonNull RequestManager requestManager,
                    @NonNull Locale locale,
                    @NonNull Set<Long> typingThreads,
-                   @NonNull ConversationSet selectedConversations)
+                   @NonNull ConversationSet selectedConversations,
+                   long activeThreadId)
   {
     this.description.setText(getContext().getString(R.string.ConversationListItemAction_archived_conversations_d, thread.getUnreadCount()));
   }
 
   @Override
   public void unbind() {
+
+  }
+
+  @Override
+  public void setActiveThreadId(long activeThreadId) {
 
   }
 
@@ -63,5 +70,10 @@ public class ConversationListItemAction extends FrameLayout implements BindableC
   @Override
   public void updateTypingIndicator(@NonNull Set<Long> typingThreads) {
 
+  }
+
+  @Override
+  public void updateTimestamp() {
+    // Intentionally left blank.
   }
 }

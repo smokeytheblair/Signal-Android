@@ -3,9 +3,11 @@ package org.thoughtcrime.securesms.database
 import android.app.Application
 import android.content.Context
 import androidx.annotation.VisibleForTesting
+import androidx.sqlite.db.SupportSQLiteDatabase
 import net.zetetic.database.sqlcipher.SQLiteOpenHelper
 import org.signal.core.util.SqlUtil
 import org.signal.core.util.logging.Log
+import org.signal.core.util.withinTransaction
 import org.thoughtcrime.securesms.crypto.AttachmentSecret
 import org.thoughtcrime.securesms.crypto.DatabaseSecret
 import org.thoughtcrime.securesms.crypto.MasterSecret
@@ -14,8 +16,6 @@ import org.thoughtcrime.securesms.database.helpers.PreKeyMigrationHelper
 import org.thoughtcrime.securesms.database.helpers.SQLCipherMigrationHelper
 import org.thoughtcrime.securesms.database.helpers.SessionStoreMigrationHelper
 import org.thoughtcrime.securesms.database.helpers.SignalDatabaseMigrations
-import org.thoughtcrime.securesms.database.helpers.SignalDatabaseMigrations.migrate
-import org.thoughtcrime.securesms.database.helpers.SignalDatabaseMigrations.migratePostTransaction
 import org.thoughtcrime.securesms.database.model.AvatarPickerDatabase
 import org.thoughtcrime.securesms.jobs.PreKeysSyncJob
 import org.thoughtcrime.securesms.migrations.LegacyMigrationJob
@@ -23,16 +23,17 @@ import org.thoughtcrime.securesms.migrations.LegacyMigrationJob.DatabaseUpgradeL
 import org.thoughtcrime.securesms.service.KeyCachingService
 import org.thoughtcrime.securesms.util.TextSecurePreferences
 import java.io.File
+import org.thoughtcrime.securesms.database.SQLiteDatabase as SignalSQLiteDatabase
 
-open class SignalDatabase(private val context: Application, databaseSecret: DatabaseSecret, attachmentSecret: AttachmentSecret) :
+open class SignalDatabase(private val context: Application, databaseSecret: DatabaseSecret, attachmentSecret: AttachmentSecret, name: String = DATABASE_NAME) :
   SQLiteOpenHelper(
     context,
-    DATABASE_NAME,
+    name,
     databaseSecret.asString(),
     null,
     SignalDatabaseMigrations.DATABASE_VERSION,
     0,
-    SqlCipherErrorHandler(DATABASE_NAME),
+    SqlCipherErrorHandler(context, name),
     SqlCipherDatabaseHook(),
     true
   ),
@@ -64,7 +65,7 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
   val messageSendLogTables: MessageSendLogTables = MessageSendLogTables(context, this)
   val avatarPickerDatabase: AvatarPickerDatabase = AvatarPickerDatabase(context, this)
   val reactionTable: ReactionTable = ReactionTable(context, this)
-  val notificationProfileDatabase: NotificationProfileDatabase = NotificationProfileDatabase(context, this)
+  val notificationProfileTables: NotificationProfileTables = NotificationProfileTables(context, this)
   val donationReceiptTable: DonationReceiptTable = DonationReceiptTable(context, this)
   val distributionListTables: DistributionListTables = DistributionListTables(context, this)
   val storySendTable: StorySendTable = StorySendTable(context, this)
@@ -74,12 +75,42 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
   val callTable: CallTable = CallTable(context, this)
   val kyberPreKeyTable: KyberPreKeyTable = KyberPreKeyTable(context, this)
   val callLinkTable: CallLinkTable = CallLinkTable(context, this)
+  val nameCollisionTables: NameCollisionTables = NameCollisionTables(context, this)
+  val inAppPaymentTable: InAppPaymentTable = InAppPaymentTable(context, this)
+  val inAppPaymentSubscriberTable: InAppPaymentSubscriberTable = InAppPaymentSubscriberTable(context, this)
+  val chatFoldersTable: ChatFolderTables = ChatFolderTables(context, this)
+  val backupMediaSnapshotTable: BackupMediaSnapshotTable = BackupMediaSnapshotTable(context, this)
+  val pollTable: PollTables = PollTables(context, this)
+  val lastResortKeyTuples: LastResortKeyTupleTable = LastResortKeyTupleTable(context, this)
 
   override fun onOpen(db: net.zetetic.database.sqlcipher.SQLiteDatabase) {
     db.setForeignKeyConstraintsEnabled(true)
   }
 
   override fun onCreate(db: net.zetetic.database.sqlcipher.SQLiteDatabase) {
+    val signalDb = SignalSQLiteDatabase(db)
+    onCreateTablesIndexesAndTriggers(signalDb)
+
+    // Requires FTS5
+    executeStatements(signalDb, SearchTable.CREATE_TABLE)
+    executeStatements(signalDb, SearchTable.CREATE_TRIGGERS)
+
+    if (context.getDatabasePath(ClassicOpenHelper.NAME).exists()) {
+      val legacyHelper = ClassicOpenHelper(context)
+      val legacyDb = legacyHelper.writableDatabase
+      SQLCipherMigrationHelper.migratePlaintext(context, legacyDb, db)
+      val masterSecret = KeyCachingService.getMasterSecret(context)
+      if (masterSecret != null) SQLCipherMigrationHelper.migrateCiphertext(context, masterSecret, legacyDb, db, null) else TextSecurePreferences.setNeedsSqlCipherMigration(context, true)
+      if (!PreKeyMigrationHelper.migratePreKeys(context, db)) {
+        PreKeysSyncJob.enqueue()
+      }
+      SessionStoreMigrationHelper.migrateSessions(context, db)
+      PreKeyMigrationHelper.cleanUpPreKeys(context)
+    }
+  }
+
+  @VisibleForTesting
+  fun onCreateTablesIndexesAndTriggers(db: SignalSQLiteDatabase) {
     db.execSQL(MessageTable.CREATE_TABLE)
     db.execSQL(AttachmentTable.CREATE_TABLE)
     db.execSQL(ThreadTable.CREATE_TABLE)
@@ -110,11 +141,17 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     db.execSQL(CallLinkTable.CREATE_TABLE)
     db.execSQL(CallTable.CREATE_TABLE)
     db.execSQL(KyberPreKeyTable.CREATE_TABLE)
-    executeStatements(db, SearchTable.CREATE_TABLE)
+    executeStatements(db, NameCollisionTables.CREATE_TABLE)
+    db.execSQL(InAppPaymentTable.CREATE_TABLE)
+    db.execSQL(InAppPaymentSubscriberTable.CREATE_TABLE)
     executeStatements(db, RemappedRecordTables.CREATE_TABLE)
     executeStatements(db, MessageSendLogTables.CREATE_TABLE)
-    executeStatements(db, NotificationProfileDatabase.CREATE_TABLE)
+    executeStatements(db, NotificationProfileTables.CREATE_TABLE)
     executeStatements(db, DistributionListTables.CREATE_TABLE)
+    executeStatements(db, ChatFolderTables.CREATE_TABLE)
+    executeStatements(db, PollTables.CREATE_TABLE)
+    db.execSQL(BackupMediaSnapshotTable.CREATE_TABLE)
+    db.execSQL(LastResortKeyTupleTable.CREATE_TABLE)
 
     executeStatements(db, RecipientTable.CREATE_INDEXS)
     executeStatements(db, MessageTable.CREATE_INDEXS)
@@ -128,7 +165,7 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     executeStatements(db, MentionTable.CREATE_INDEXES)
     executeStatements(db, PaymentTable.CREATE_INDEXES)
     executeStatements(db, MessageSendLogTables.CREATE_INDEXES)
-    executeStatements(db, NotificationProfileDatabase.CREATE_INDEXES)
+    executeStatements(db, NotificationProfileTables.CREATE_INDEXES)
     executeStatements(db, DonationReceiptTable.CREATE_INDEXS)
     executeStatements(db, StorySendTable.CREATE_INDEXS)
     executeStatements(db, DistributionListTables.CREATE_INDEXES)
@@ -136,24 +173,15 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     executeStatements(db, CallTable.CREATE_INDEXES)
     executeStatements(db, ReactionTable.CREATE_INDEXES)
     executeStatements(db, KyberPreKeyTable.CREATE_INDEXES)
+    executeStatements(db, ChatFolderTables.CREATE_INDEXES)
+    executeStatements(db, NameCollisionTables.CREATE_INDEXES)
+    executeStatements(db, BackupMediaSnapshotTable.CREATE_INDEXES)
+    executeStatements(db, PollTables.CREATE_INDEXES)
 
-    executeStatements(db, SearchTable.CREATE_TRIGGERS)
     executeStatements(db, MessageSendLogTables.CREATE_TRIGGERS)
 
     DistributionListTables.insertInitialDistributionListAtCreationTime(db)
-
-    if (context.getDatabasePath(ClassicOpenHelper.NAME).exists()) {
-      val legacyHelper = ClassicOpenHelper(context)
-      val legacyDb = legacyHelper.writableDatabase
-      SQLCipherMigrationHelper.migratePlaintext(context, legacyDb, db)
-      val masterSecret = KeyCachingService.getMasterSecret(context)
-      if (masterSecret != null) SQLCipherMigrationHelper.migrateCiphertext(context, masterSecret, legacyDb, db, null) else TextSecurePreferences.setNeedsSqlCipherMigration(context, true)
-      if (!PreKeyMigrationHelper.migratePreKeys(context, db)) {
-        PreKeysSyncJob.enqueue()
-      }
-      SessionStoreMigrationHelper.migrateSessions(context, db)
-      PreKeyMigrationHelper.cleanUpPreKeys(context)
-    }
+    ChatFolderTables.insertInitialChatFoldersAtCreationTime(db)
   }
 
   override fun onUpgrade(db: net.zetetic.database.sqlcipher.SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -163,59 +191,54 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
 
     Log.i(TAG, "Upgrading database: $oldVersion, $newVersion")
     val startTime = System.currentTimeMillis()
-    db.beginTransaction()
+    db.setForeignKeyConstraintsEnabled(false)
     try {
-      migrate(context, db, oldVersion, newVersion)
-      db.version = newVersion
-      db.setTransactionSuccessful()
+      // Transactions and version bumps are handled in the migrate method
+      SignalDatabaseMigrations.migrate(context, SignalSQLiteDatabase(db), oldVersion, newVersion)
     } finally {
-      if (db.inTransaction()) {
-        db.endTransaction()
-      }
+      db.setForeignKeyConstraintsEnabled(true)
 
       // We have to re-begin the transaction for the calling code (see comment at start of method)
       db.beginTransaction()
     }
 
-    migratePostTransaction(context, oldVersion)
+    SignalDatabaseMigrations.migratePostTransaction(context, oldVersion)
     Log.i(TAG, "Upgrade complete. Took " + (System.currentTimeMillis() - startTime) + " ms.")
   }
 
-  override fun getReadableDatabase(): net.zetetic.database.sqlcipher.SQLiteDatabase {
-    throw UnsupportedOperationException("Call getSignalReadableDatabase() instead!")
-  }
+  override val readableDatabase: net.zetetic.database.sqlcipher.SQLiteDatabase
+    get() = throw UnsupportedOperationException("Call getSignalReadableDatabase() instead!")
 
-  override fun getWritableDatabase(): net.zetetic.database.sqlcipher.SQLiteDatabase {
-    throw UnsupportedOperationException("Call getSignalWritableDatabase() instead!")
-  }
+  override val writableDatabase: net.zetetic.database.sqlcipher.SQLiteDatabase
+    get() = throw UnsupportedOperationException("Call getSignalWritableDatabase() instead!")
 
   open val rawReadableDatabase: net.zetetic.database.sqlcipher.SQLiteDatabase
-    get() = super.getReadableDatabase()
+    get() = super.readableDatabase
 
   open val rawWritableDatabase: net.zetetic.database.sqlcipher.SQLiteDatabase
-    get() = super.getWritableDatabase()
+    get() = super.writableDatabase
 
-  open val signalReadableDatabase: SQLiteDatabase
-    get() = SQLiteDatabase(super.getReadableDatabase())
+  open val signalReadableDatabase: SignalSQLiteDatabase
+    get() = SignalSQLiteDatabase(super.readableDatabase)
 
-  open val signalWritableDatabase: SQLiteDatabase
-    get() = SQLiteDatabase(super.getWritableDatabase())
+  open val signalWritableDatabase: SignalSQLiteDatabase
+    get() = SignalSQLiteDatabase(super.writableDatabase)
 
   override fun getSqlCipherDatabase(): net.zetetic.database.sqlcipher.SQLiteDatabase {
-    return super.getWritableDatabase()
+    return super.writableDatabase
   }
 
   open fun markCurrent(db: net.zetetic.database.sqlcipher.SQLiteDatabase) {
     db.version = SignalDatabaseMigrations.DATABASE_VERSION
   }
 
-  private fun executeStatements(db: net.zetetic.database.sqlcipher.SQLiteDatabase, statements: Array<String>) {
+  private fun executeStatements(db: SupportSQLiteDatabase, statements: Array<String>) {
     for (statement in statements) db.execSQL(statement)
   }
 
   companion object {
     private val TAG = Log.tag(SignalDatabase::class.java)
-    private const val DATABASE_NAME = "signal.db"
+    const val DATABASE_NAME = "signal.db"
 
     @JvmStatic
     @Volatile
@@ -242,6 +265,14 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     @JvmStatic
     val rawDatabase: net.zetetic.database.sqlcipher.SQLiteDatabase
       get() = instance!!.rawWritableDatabase
+
+    @JvmStatic
+    val readableDatabase: SignalSQLiteDatabase
+      get() = instance!!.signalReadableDatabase
+
+    @JvmStatic
+    val writableDatabase: SignalSQLiteDatabase
+      get() = instance!!.signalWritableDatabase
 
     @JvmStatic
     val backupDatabase: net.zetetic.database.sqlcipher.SQLiteDatabase
@@ -282,12 +313,13 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
         database.setForeignKeyConstraintsEnabled(false)
         database.beginTransaction()
         try {
-          instance!!.onUpgrade(database, database.getVersion(), -1)
+          instance!!.onUpgrade(database, database.version, -1)
           instance!!.markCurrent(database)
           instance!!.messageTable.deleteAbandonedMessages()
           instance!!.messageTable.trimEntriesForExpiredMessages()
           instance!!.reactionTable.deleteAbandonedReactions()
-          instance!!.searchTable.fullyResetTables()
+          instance!!.searchTable.fullyResetTables(useTransaction = false)
+          instance!!.recipientTable.clearFileWallpapersPostBackupRestore()
           instance!!.rawWritableDatabase.execSQL("DROP TABLE IF EXISTS key_value")
           instance!!.rawWritableDatabase.execSQL("DROP TABLE IF EXISTS megaphone")
           instance!!.rawWritableDatabase.execSQL("DROP TABLE IF EXISTS job_spec")
@@ -345,13 +377,9 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     }
 
     @JvmStatic
-    fun runInTransaction(operation: Runnable) {
-      instance!!.signalWritableDatabase.beginTransaction()
-      try {
-        operation.run()
-        instance!!.signalWritableDatabase.setTransactionSuccessful()
-      } finally {
-        instance!!.signalWritableDatabase.endTransaction()
+    fun <T> runInTransaction(block: (SignalSQLiteDatabase) -> T): T {
+      return instance!!.signalWritableDatabase.withinTransaction {
+        block(it)
       }
     }
 
@@ -442,8 +470,8 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
 
     @get:JvmStatic
     @get:JvmName("notificationProfiles")
-    val notificationProfiles: NotificationProfileDatabase
-      get() = instance!!.notificationProfileDatabase
+    val notificationProfiles: NotificationProfileTables
+      get() = instance!!.notificationProfileTables
 
     @get:JvmStatic
     @get:JvmName("payments")
@@ -534,5 +562,40 @@ open class SignalDatabase(private val context: Application, databaseSecret: Data
     @get:JvmName("callLinks")
     val callLinks: CallLinkTable
       get() = instance!!.callLinkTable
+
+    @get:JvmStatic
+    @get:JvmName("nameCollisions")
+    val nameCollisions: NameCollisionTables
+      get() = instance!!.nameCollisionTables
+
+    @get:JvmStatic
+    @get:JvmName("inAppPayments")
+    val inAppPayments: InAppPaymentTable
+      get() = instance!!.inAppPaymentTable
+
+    @get:JvmStatic
+    @get:JvmName("inAppPaymentSubscribers")
+    val inAppPaymentSubscribers: InAppPaymentSubscriberTable
+      get() = instance!!.inAppPaymentSubscriberTable
+
+    @get:JvmStatic
+    @get:JvmName("chatFolders")
+    val chatFolders: ChatFolderTables
+      get() = instance!!.chatFoldersTable
+
+    @get:JvmStatic
+    @get:JvmName("backupMediaSnapshots")
+    val backupMediaSnapshots: BackupMediaSnapshotTable
+      get() = instance!!.backupMediaSnapshotTable
+
+    @get:JvmStatic
+    @get:JvmName("polls")
+    val polls: PollTables
+      get() = instance!!.pollTable
+
+    @get:JvmStatic
+    @get:JvmName("lastResortKeyTuples")
+    val lastResortKeyTuples: LastResortKeyTupleTable
+      get() = instance!!.lastResortKeyTuples
   }
 }

@@ -38,10 +38,8 @@ object MessageTableTestUtils {
       isKeyExchangeType:${type and MessageTypes.KEY_EXCHANGE_BIT != 0L}
       isIdentityVerified:${type and MessageTypes.KEY_EXCHANGE_IDENTITY_VERIFIED_BIT != 0L}
       isIdentityDefault:${type and MessageTypes.KEY_EXCHANGE_IDENTITY_DEFAULT_BIT != 0L}
-      isCorruptedKeyExchange:${type and MessageTypes.KEY_EXCHANGE_CORRUPTED_BIT != 0L}
       isInvalidVersionKeyExchange:${type and MessageTypes.KEY_EXCHANGE_INVALID_VERSION_BIT != 0L}
       isBundleKeyExchange:${type and MessageTypes.KEY_EXCHANGE_BUNDLE_BIT != 0L}
-      isContentBundleKeyExchange:${type and MessageTypes.KEY_EXCHANGE_CONTENT_FORMAT != 0L}
       isIdentityUpdate:${type and MessageTypes.KEY_EXCHANGE_IDENTITY_UPDATE_BIT != 0L}
       isRateLimited:${type and MessageTypes.MESSAGE_RATE_LIMITED_BIT != 0L}
       isExpirationTimerUpdate:${type and MessageTypes.EXPIRATION_TIMER_UPDATE_BIT != 0L}
@@ -63,7 +61,7 @@ object MessageTableTestUtils {
       isProfileChange:${type == MessageTypes.PROFILE_CHANGE_TYPE}
       isGroupV1MigrationEvent:${type == MessageTypes.GV1_MIGRATION_TYPE}
       isChangeNumber:${type == MessageTypes.CHANGE_NUMBER_TYPE}
-      isBoostRequest:${type == MessageTypes.BOOST_REQUEST_TYPE}
+      isDonationChannelDonationRequest:${type == MessageTypes.RELEASE_CHANNEL_DONATION_REQUEST_TYPE}
       isThreadMerge:${type == MessageTypes.THREAD_MERGE_TYPE}
       isSmsExport:${type == MessageTypes.SMS_EXPORT_TYPE}
       isGroupV2LeaveOnly:${type and MessageTypes.GROUP_V2_LEAVE_BITS == MessageTypes.GROUP_V2_LEAVE_BITS}

@@ -25,6 +25,7 @@ import androidx.navigation.Navigation;
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 
 import com.airbnb.lottie.SimpleColorFilter;
+import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.transition.Transition;
@@ -38,15 +39,14 @@ import org.thoughtcrime.securesms.components.settings.app.privacy.expire.ExpireT
 import org.thoughtcrime.securesms.groups.ui.GroupMemberListView;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.mediasend.Media;
-import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader;
-import org.thoughtcrime.securesms.mms.GlideApp;
+import org.thoughtcrime.securesms.mms.DecryptableUri;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.ui.disappearingmessages.RecipientDisappearingMessagesActivity;
 import org.thoughtcrime.securesms.util.BitmapUtil;
 import org.thoughtcrime.securesms.util.ExpirationUtil;
-import org.thoughtcrime.securesms.util.FeatureFlags;
+import org.thoughtcrime.securesms.util.RemoteConfig;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.navigation.SafeNavigation;
 import org.thoughtcrime.securesms.util.text.AfterTextChanged;
@@ -116,7 +116,7 @@ public class AddGroupDetailsFragment extends LoggingFragment {
 
     avatar.setOnClickListener(v -> showAvatarPicker());
     members.setRecipientClickListener(this::handleRecipientClick);
-    EditTextUtil.addGraphemeClusterLimitFilter(name, FeatureFlags.getMaxGroupNameGraphemeLength());
+    EditTextUtil.addGraphemeClusterLimitFilter(name, RemoteConfig.getMaxGroupNameGraphemeLength());
     name.addTextChangedListener(new AfterTextChanged(editable -> viewModel.setName(editable.toString())));
     toolbar.setNavigationOnClickListener(unused -> callback.onNavigationButtonPressed());
     create.setOnClickListener(v -> handleCreateClicked());
@@ -136,12 +136,12 @@ public class AddGroupDetailsFragment extends LoggingFragment {
       if (avatarBytes == null) {
         avatar.setImageDrawable(new InsetDrawable(avatarPlaceholder, ViewUtil.dpToPx(AVATAR_PLACEHOLDER_INSET_DP)));
       } else {
-        GlideApp.with(this)
-                .load(avatarBytes)
-                .circleCrop()
-                .skipMemoryCache(true)
-                .diskCacheStrategy(DiskCacheStrategy.NONE)
-                .into(avatar);
+        Glide.with(this)
+             .load(avatarBytes)
+             .circleCrop()
+             .skipMemoryCache(true)
+             .diskCacheStrategy(DiskCacheStrategy.NONE)
+             .into(avatar);
       }
     });
 
@@ -173,28 +173,28 @@ public class AddGroupDetailsFragment extends LoggingFragment {
       return;
     }
 
-    final Media result                                             = data.getParcelable(AvatarPickerFragment.SELECT_AVATAR_MEDIA);
-    final DecryptableStreamUriLoader.DecryptableUri decryptableUri = new DecryptableStreamUriLoader.DecryptableUri(result.getUri());
+    final Media          result         = data.getParcelable(AvatarPickerFragment.SELECT_AVATAR_MEDIA);
+    final DecryptableUri decryptableUri = new DecryptableUri(result.getUri());
 
     viewModel.setAvatarMedia(result);
 
-    GlideApp.with(this)
-            .asBitmap()
-            .load(decryptableUri)
-            .skipMemoryCache(true)
-            .diskCacheStrategy(DiskCacheStrategy.NONE)
-            .centerCrop()
-            .override(AvatarHelper.AVATAR_DIMENSIONS, AvatarHelper.AVATAR_DIMENSIONS)
-            .into(new CustomTarget<Bitmap>() {
-              @Override
-              public void onResourceReady(@NonNull Bitmap resource, Transition<? super Bitmap> transition) {
-                viewModel.setAvatar(Objects.requireNonNull(BitmapUtil.toByteArray(resource)));
-              }
+    Glide.with(this)
+         .asBitmap()
+         .load(decryptableUri)
+         .skipMemoryCache(true)
+         .diskCacheStrategy(DiskCacheStrategy.NONE)
+         .centerCrop()
+         .override(AvatarHelper.AVATAR_DIMENSIONS, AvatarHelper.AVATAR_DIMENSIONS)
+         .into(new CustomTarget<Bitmap>() {
+           @Override
+           public void onResourceReady(@NonNull Bitmap resource, Transition<? super Bitmap> transition) {
+             viewModel.setAvatar(Objects.requireNonNull(BitmapUtil.toByteArray(resource)));
+           }
 
-              @Override
-              public void onLoadCleared(@Nullable Drawable placeholder) {
-              }
-            });
+           @Override
+           public void onLoadCleared(@Nullable Drawable placeholder) {
+           }
+         });
   }
 
   private void initializeViewModel() {
@@ -252,6 +252,8 @@ public class AddGroupDetailsFragment extends LoggingFragment {
       default:
         throw new IllegalStateException("Unexpected error: " + error.getErrorType().name());
     }
+
+    create.cancelSpinning();
   }
 
   private void toast(@StringRes int toastStringId) {
@@ -260,11 +262,8 @@ public class AddGroupDetailsFragment extends LoggingFragment {
   }
 
   private void setCreateEnabled(boolean isEnabled) {
-    if (create.isClickable() == isEnabled) {
-      return;
-    }
-
     create.setClickable(isEnabled);
+    create.setEnabled(isEnabled);
   }
 
   private void showAvatarPicker() {

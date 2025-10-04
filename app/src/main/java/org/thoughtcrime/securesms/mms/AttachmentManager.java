@@ -17,18 +17,13 @@
 package org.thoughtcrime.securesms.mms;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
-import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.PorterDuff;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.provider.ContactsContract;
-import android.provider.OpenableColumns;
-import android.util.Pair;
 import android.view.View;
 import android.widget.Toast;
 
@@ -38,13 +33,17 @@ import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.signal.core.util.ThreadUtil;
+import org.signal.core.util.concurrent.ListenableFuture;
+import org.signal.core.util.concurrent.ListenableFuture.Listener;
+import org.signal.core.util.concurrent.SettableFuture;
 import org.signal.core.util.concurrent.SimpleTask;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.components.AudioView;
 import org.thoughtcrime.securesms.components.DocumentView;
 import org.thoughtcrime.securesms.components.RemovableEditableMediaView;
@@ -52,7 +51,6 @@ import org.thoughtcrime.securesms.components.ThumbnailView;
 import org.thoughtcrime.securesms.components.location.SignalMapView;
 import org.thoughtcrime.securesms.components.location.SignalPlace;
 import org.thoughtcrime.securesms.conversation.MessageSendType;
-import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.database.MediaTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.giph.ui.GiphyActivity;
@@ -75,14 +73,11 @@ import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.sms.MessageSender;
 import org.thoughtcrime.securesms.util.BitmapUtil;
-import org.thoughtcrime.securesms.util.FeatureFlags;
+import org.thoughtcrime.securesms.util.RemoteConfig;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.ProfileUtil;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.concurrent.AssertedSuccessListener;
-import org.thoughtcrime.securesms.util.concurrent.ListenableFuture;
-import org.thoughtcrime.securesms.util.concurrent.ListenableFuture.Listener;
-import org.thoughtcrime.securesms.util.concurrent.SettableFuture;
 import org.thoughtcrime.securesms.util.views.Stub;
 import org.whispersystems.signalservice.api.util.ExpiringProfileCredentialUtil;
 
@@ -136,14 +131,14 @@ public class AttachmentManager {
 
   }
 
-  public void clear(@NonNull GlideRequests glideRequests, boolean animate) {
+  public void clear(@NonNull RequestManager requestManager, boolean animate) {
     if (attachmentViewStub.resolved()) {
 
       if (animate) {
         ViewUtil.fadeOut(attachmentViewStub.get(), 200).addListener(new Listener<Boolean>() {
           @Override
           public void onSuccess(Boolean result) {
-            thumbnail.clear(glideRequests);
+            thumbnail.clear(requestManager);
             attachmentViewStub.get().setVisibility(View.GONE);
             attachmentListener.onAttachmentChanged();
           }
@@ -153,7 +148,7 @@ public class AttachmentManager {
           }
         });
       } else {
-        thumbnail.clear(glideRequests);
+        thumbnail.clear(requestManager);
         attachmentViewStub.get().setVisibility(View.GONE);
         attachmentListener.onAttachmentChanged();
       }
@@ -253,145 +248,6 @@ public class AttachmentManager {
     attachmentListener.onAttachmentChanged();
   }
 
-  @SuppressLint("StaticFieldLeak")
-  public ListenableFuture<Boolean> setMedia(@NonNull final GlideRequests glideRequests,
-                                            @NonNull final Uri uri,
-                                            @NonNull final SlideFactory.MediaType mediaType,
-                                            @NonNull final MediaConstraints constraints,
-                                                     final int width,
-                                                     final int height)
-  {
-    inflateStub();
-
-    final SettableFuture<Boolean> result = new SettableFuture<>();
-
-    new AsyncTask<Void, Void, Slide>() {
-      @Override
-      protected void onPreExecute() {
-        thumbnail.clear(glideRequests);
-        thumbnail.showProgressSpinner();
-        attachmentViewStub.get().setVisibility(View.VISIBLE);
-      }
-
-      @Override
-      protected @Nullable Slide doInBackground(Void... params) {
-        try {
-          if (PartAuthority.isLocalUri(uri)) {
-            return getManuallyCalculatedSlideInfo(uri, width, height);
-          } else {
-            Slide result = getContentResolverSlideInfo(uri, width, height);
-
-            if (result == null) return getManuallyCalculatedSlideInfo(uri, width, height);
-            else                return result;
-          }
-        } catch (IOException e) {
-          Log.w(TAG, e);
-          return null;
-        }
-      }
-
-      @Override
-      protected void onPostExecute(@Nullable final Slide slide) {
-        if (slide == null) {
-          attachmentViewStub.get().setVisibility(View.GONE);
-          Toast.makeText(context,
-                         R.string.ConversationActivity_sorry_there_was_an_error_setting_your_attachment,
-                         Toast.LENGTH_SHORT).show();
-          result.set(false);
-        } else if (!areConstraintsSatisfied(context, slide, constraints)) {
-          attachmentViewStub.get().setVisibility(View.GONE);
-          Toast.makeText(context,
-                         R.string.ConversationActivity_attachment_exceeds_size_limits,
-                         Toast.LENGTH_SHORT).show();
-          result.set(false);
-        } else {
-          setSlide(slide);
-          attachmentViewStub.get().setVisibility(View.VISIBLE);
-
-          if (slide.hasAudio()) {
-            audioView.setAudio((AudioSlide) slide, null, false, false);
-            removableMediaView.display(audioView, false);
-            result.set(true);
-          } else if (slide.hasDocument()) {
-            documentView.setDocument((DocumentSlide) slide, false);
-            removableMediaView.display(documentView, false);
-            result.set(true);
-          } else {
-            Attachment attachment = slide.asAttachment();
-            result.deferTo(thumbnail.setImageResource(glideRequests, slide, false, true, attachment.getWidth(), attachment.getHeight()));
-            removableMediaView.display(thumbnail, mediaType == SlideFactory.MediaType.IMAGE);
-          }
-
-          attachmentListener.onAttachmentChanged();
-        }
-      }
-
-      private @Nullable Slide getContentResolverSlideInfo(Uri uri, int width, int height) {
-        Cursor cursor = null;
-        long   start  = System.currentTimeMillis();
-
-        try {
-          cursor = context.getContentResolver().query(uri, null, null, null, null);
-
-          if (cursor != null && cursor.moveToFirst()) {
-            String fileName = cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME));
-            long   fileSize = cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE));
-            String mimeType = context.getContentResolver().getType(uri);
-
-            if (width == 0 || height == 0) {
-              Pair<Integer, Integer> dimens = MediaUtil.getDimensions(context, mimeType, uri);
-              width  = dimens.first;
-              height = dimens.second;
-            }
-
-            Log.d(TAG, "remote slide with size " + fileSize + " took " + (System.currentTimeMillis() - start) + "ms");
-            return mediaType.createSlide(context, uri, fileName, mimeType, null, fileSize, width, height, false, null);
-          }
-        } finally {
-          if (cursor != null) cursor.close();
-        }
-
-        return null;
-      }
-
-      private @NonNull Slide getManuallyCalculatedSlideInfo(Uri uri, int width, int height) throws IOException {
-        long                                   start               = System.currentTimeMillis();
-        Long                                   mediaSize           = null;
-        String                                 fileName            = null;
-        String                                 mimeType            = null;
-        boolean                             gif                 = false;
-        AttachmentTable.TransformProperties transformProperties = null;
-
-        if (PartAuthority.isLocalUri(uri)) {
-          mediaSize           = PartAuthority.getAttachmentSize(context, uri);
-          fileName            = PartAuthority.getAttachmentFileName(context, uri);
-          mimeType            = PartAuthority.getAttachmentContentType(context, uri);
-          gif                 = PartAuthority.getAttachmentIsVideoGif(context, uri);
-          transformProperties = PartAuthority.getAttachmentTransformProperties(uri);
-        }
-
-        if (mediaSize == null) {
-          mediaSize = MediaUtil.getMediaSize(context, uri);
-        }
-
-        if (mimeType == null) {
-          mimeType = MediaUtil.getMimeType(context, uri);
-        }
-
-        if (width == 0 || height == 0) {
-          Pair<Integer, Integer> dimens = MediaUtil.getDimensions(context, mimeType, uri);
-          width  = dimens.first;
-          height = dimens.second;
-        }
-
-        Log.d(TAG, "local slide with size " + mediaSize + " took " + (System.currentTimeMillis() - start) + "ms");
-        return mediaType.createSlide(context, uri, fileName, mimeType, null, mediaSize, width, height, gif, transformProperties);
-      }
-    }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
-
-    return result;
-  }
-
   public boolean isAttachmentPresent() {
     return attachmentViewStub.resolved() && attachmentViewStub.get().getVisibility() == View.VISIBLE;
   }
@@ -470,7 +326,7 @@ public class AttachmentManager {
                        intent.putExtra(PaymentsActivity.EXTRA_PAYMENTS_STARTING_ACTION, R.id.action_directly_to_createPayment);
                        intent.putExtra(PaymentsActivity.EXTRA_STARTING_ARGUMENTS, new CreatePaymentFragmentArgs.Builder(new PayeeParcelable(recipient.getId())).setFinishOnConfirm(true).build().toBundle());
                        fragment.startActivity(intent);
-                     } else if (FeatureFlags.paymentsRequestActivateFlow() && recipient.getPaymentActivationCapability().isSupported()) {
+                     } else if (RemoteConfig.paymentsRequestActivateFlow()) {
                        showRequestToActivatePayments(fragment.requireContext(), recipient);
                      } else {
                        RecipientHasNotEnabledPaymentsDialog.show(fragment.requireContext());
@@ -524,15 +380,6 @@ public class AttachmentManager {
     }
   }
 
-  private boolean areConstraintsSatisfied(final @NonNull  Context context,
-                                          final @Nullable Slide slide,
-                                          final @NonNull  MediaConstraints constraints)
-  {
-   return slide == null                                          ||
-          constraints.isSatisfied(context, slide.asAttachment()) ||
-          constraints.canResize(slide.asAttachment());
-  }
-
   private void previewImageDraft(final @NonNull Slide slide) {
     if (MediaPreviewV2Fragment.isContentTypeSupported(slide.getContentType()) && slide.getUri() != null) {
       MediaIntentFactory.MediaPreviewArgs args = new MediaIntentFactory.MediaPreviewArgs(
@@ -540,7 +387,7 @@ public class AttachmentManager {
           MediaIntentFactory.UNKNOWN_TIMESTAMP,
           slide.getUri(),
           slide.getContentType(),
-          slide.asAttachment().getSize(),
+          slide.asAttachment().size,
           slide.getCaption().orElse(null),
           false,
           false,
@@ -574,7 +421,7 @@ public class AttachmentManager {
       });
 
       cleanup();
-      clear(GlideApp.with(context.getApplicationContext()), true);
+      clear(Glide.with(context.getApplicationContext()), true);
     }
   }
 

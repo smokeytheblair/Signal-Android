@@ -8,12 +8,13 @@ import com.annimon.stream.Stream;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.Job;
+import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.impl.DecryptionsDrainedConstraint;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.messages.GroupSendUtil;
 import org.thoughtcrime.securesms.net.NotPushRegisteredException;
+import org.thoughtcrime.securesms.ratelimit.ProofRequiredExceptionHandler;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.recipients.RecipientUtil;
@@ -22,6 +23,7 @@ import org.whispersystems.signalservice.api.crypto.ContentHint;
 import org.whispersystems.signalservice.api.crypto.UntrustedIdentityException;
 import org.whispersystems.signalservice.api.messages.SendMessageResult;
 import org.whispersystems.signalservice.api.messages.SignalServiceDataMessage;
+import org.whispersystems.signalservice.api.push.exceptions.ProofRequiredException;
 import org.whispersystems.signalservice.api.push.exceptions.ServerRejectedException;
 
 import java.io.IOException;
@@ -38,6 +40,21 @@ public class ProfileKeySendJob extends BaseJob {
 
   private final long              threadId;
   private final List<RecipientId> recipients;
+
+  public static ProfileKeySendJob createForCallLinks(List<RecipientId> recipientIds) {
+    return new ProfileKeySendJob(
+        new Parameters.Builder()
+            .setQueue("ProfileKeySendJob__call_links")
+            .setMaxInstancesForQueue(Parameters.UNLIMITED)
+            .addConstraint(NetworkConstraint.KEY)
+            .addConstraint(DecryptionsDrainedConstraint.KEY)
+            .setLifespan(TimeUnit.DAYS.toMillis(1))
+            .setMaxAttempts(Parameters.UNLIMITED)
+            .build(),
+        -1L,
+        recipientIds
+    );
+  }
 
   /**
    * Suitable for a 1:1 conversation or a GV1 group only.
@@ -99,11 +116,13 @@ public class ProfileKeySendJob extends BaseJob {
       throw new NotPushRegisteredException();
     }
 
-    Recipient conversationRecipient = SignalDatabase.threads().getRecipientForThreadId(threadId);
+    if (threadId > 0) {
+      Recipient conversationRecipient = SignalDatabase.threads().getRecipientForThreadId(threadId);
 
-    if (conversationRecipient == null) {
-      Log.w(TAG, "Thread no longer present");
-      return;
+      if (conversationRecipient == null) {
+        Log.w(TAG, "Thread no longer present");
+        return;
+      }
     }
 
     List<Recipient> destinations = Stream.of(recipients).map(Recipient::resolved).toList();
@@ -153,12 +172,18 @@ public class ProfileKeySendJob extends BaseJob {
                                                                            .withTimestamp(System.currentTimeMillis())
                                                                            .withProfileKey(Recipient.self().resolve().getProfileKey());
 
-    List<SendMessageResult> results = GroupSendUtil.sendUnresendableDataMessage(context, null, destinations, false, ContentHint.IMPLICIT, dataMessage.build(), false);
+    List<SendMessageResult>    results       = GroupSendUtil.sendUnresendableDataMessage(context, null, destinations, false, ContentHint.IMPLICIT, dataMessage.build(), false);
+    ProofRequiredException     proofRequired = Stream.of(results).filter(r -> r.getProofRequiredFailure() != null).findLast().map(SendMessageResult::getProofRequiredFailure).orElse(null);
 
     GroupSendJobHelper.SendResult groupResult = GroupSendJobHelper.getCompletedSends(destinations, results);
 
     for (RecipientId unregistered : groupResult.unregistered) {
       SignalDatabase.recipients().markUnregistered(unregistered);
+    }
+
+    if (proofRequired != null) {
+      Log.d(TAG, "Notifying the user they were rate limited.");
+      ProofRequiredExceptionHandler.handle(context, proofRequired, null, -1L, -1L);
     }
 
     return groupResult.completed;

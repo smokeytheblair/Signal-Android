@@ -61,7 +61,7 @@ object DateUtils : android.text.format.DateUtils() {
   @JvmStatic
   fun getBriefRelativeTimeSpanString(c: Context, locale: Locale, timestamp: Long): String {
     return when {
-      timestamp.isWithin(1.minutes) -> {
+      isNow(timestamp) -> {
         c.getString(R.string.DateUtils_just_now)
       }
       timestamp.isWithin(1.hours) -> {
@@ -90,7 +90,7 @@ object DateUtils : android.text.format.DateUtils() {
   @JvmStatic
   fun getExtendedRelativeTimeSpanString(context: Context, locale: Locale, timestamp: Long): String {
     return when {
-      timestamp.isWithin(1.minutes) -> {
+      isNow(timestamp) -> {
         context.getString(R.string.DateUtils_just_now)
       }
       timestamp.isWithin(1.hours) -> {
@@ -131,15 +131,15 @@ object DateUtils : android.text.format.DateUtils() {
   @JvmStatic
   fun getDatelessRelativeTimeSpanFormattedDate(context: Context, locale: Locale, timestamp: Long): FormattedDate {
     return when {
-      timestamp.isWithin(1.minutes) -> {
-        FormattedDate(true, context.getString(R.string.DateUtils_just_now))
+      isNow(timestamp) -> {
+        FormattedDate(isRelative = true, isNow = true, value = context.getString(R.string.DateUtils_just_now))
       }
       timestamp.isWithin(1.hours) -> {
         val minutes = timestamp.convertDeltaTo(DurationUnit.MINUTES)
-        FormattedDate(true, context.resources.getString(R.string.DateUtils_minutes_ago, minutes))
+        FormattedDate(isRelative = true, isNow = false, value = context.resources.getString(R.string.DateUtils_minutes_ago, minutes))
       }
       else -> {
-        FormattedDate(false, getOnlyTimeString(context, locale, timestamp))
+        FormattedDate(isRelative = false, isNow = false, value = getOnlyTimeString(context, timestamp))
       }
     }
   }
@@ -152,9 +152,8 @@ object DateUtils : android.text.format.DateUtils() {
    * For 24 hour locale: 19:23
    */
   @JvmStatic
-  fun getOnlyTimeString(context: Context, locale: Locale, timestamp: Long): String {
-    val format = if (context.is24HourFormat()) "HH:mm" else "hh:mm a"
-    return timestamp.toDateString(format, locale)
+  fun getOnlyTimeString(context: Context, timestamp: Long): String {
+    return timestamp.toLocalTime().formatHours(context)
   }
 
   /**
@@ -181,6 +180,33 @@ object DateUtils : android.text.format.DateUtils() {
     }
 
     return timestamp.toDateString(format.toString(), locale)
+  }
+
+  /**
+   * Given a timestamp, formats as "at time".
+   * Pluralization allows for Romance languages to be translated correctly
+   * eg. at 7:23pm, at 13:20
+   */
+  @JvmStatic
+  fun getOnlyTimeAtString(context: Context, timestamp: Long): String {
+    val time = timestamp.toLocalTime().formatHours(context)
+    val hour = getHour(context, timestamp)
+
+    return context.resources.getQuantityString(R.plurals.DateUtils_time_at, hour, time)
+  }
+
+  /**
+   * Formats the timestamp as a date, without the year, followed by the time.
+   * Pluralization allows for Romance languages to be translated correctly
+   * eg. on Jan 15 at 9:00pm
+   */
+  @JvmStatic
+  fun getDateTimeString(context: Context, locale: Locale, timestamp: Long): String {
+    val date = timestamp.toDateString("MMM d", locale)
+    val time = timestamp.toLocalTime().formatHours(context)
+    val hour = getHour(context, timestamp)
+
+    return context.resources.getQuantityString(R.plurals.DateUtils_date_time_at, hour, date, time)
   }
 
   /**
@@ -212,13 +238,7 @@ object DateUtils : android.text.format.DateUtils() {
     return if (isSameDay(System.currentTimeMillis(), timestamp)) {
       context.getString(R.string.DeviceListItem_today)
     } else {
-      val format: String = when {
-        timestamp.isWithin(6.days) -> "EEE "
-        timestamp.isWithin(365.days) -> "MMM d"
-        else -> "MMM d, yyy"
-      }
-
-      timestamp.toDateString(format, locale)
+      timestamp.toDateString("dd/MM/yy", locale)
     }
   }
 
@@ -260,10 +280,11 @@ object DateUtils : android.text.format.DateUtils() {
     }
   }
 
-  fun getScheduledMessageDateString(context: Context, locale: Locale, timestamp: Long): String {
+  fun getScheduledMessageDateString(context: Context, timestamp: Long): String {
+    val localDateTime = timestamp.toLocalDateTime()
+
     val dayModifier: String = if (isToday(timestamp)) {
-      val calendar = Calendar.getInstance(locale)
-      if (calendar[Calendar.HOUR_OF_DAY] >= 19) {
+      if (localDateTime.hour >= 19) {
         context.getString(R.string.DateUtils_tonight)
       } else {
         context.getString(R.string.DateUtils_today)
@@ -271,8 +292,7 @@ object DateUtils : android.text.format.DateUtils() {
     } else {
       context.getString(R.string.DateUtils_tomorrow)
     }
-    val format = if (context.is24HourFormat()) "HH:mm" else "hh:mm a"
-    val time = timestamp.toDateString(format, locale)
+    val time = localDateTime.toLocalTime().formatHours(context)
     return context.getString(R.string.DateUtils_schedule_at, dayModifier, time)
   }
 
@@ -338,6 +358,16 @@ object DateUtils : android.text.format.DateUtils() {
     }
   }
 
+  /**
+   * This exposes "now" (defined here as a one minute window) to other classes.
+   * This is because certain locales use different linguistic constructions for "modified n minutes ago" and "modified just now",
+   * and therefore the caller will need to load different string resources in these situations.
+   *
+   * @param timestamp a Unix timestamp
+   */
+  @JvmStatic
+  fun isNow(timestamp: Long) = timestamp.isWithin(1.minutes)
+
   private fun Long.isWithin(duration: Duration): Boolean {
     return System.currentTimeMillis() - this <= duration.inWholeMilliseconds
   }
@@ -348,6 +378,16 @@ object DateUtils : android.text.format.DateUtils() {
 
   private fun isYesterday(time: Long): Boolean {
     return isToday(time + TimeUnit.DAYS.toMillis(1))
+  }
+
+  private fun getHour(context: Context, timestamp: Long): Int {
+    val cal = Calendar.getInstance(Locale.getDefault())
+    cal.timeInMillis = timestamp
+    return if (context.is24HourFormat()) {
+      cal[Calendar.HOUR_OF_DAY]
+    } else {
+      cal[Calendar.HOUR]
+    }
   }
 
   private fun Context.is24HourFormat(): Boolean {

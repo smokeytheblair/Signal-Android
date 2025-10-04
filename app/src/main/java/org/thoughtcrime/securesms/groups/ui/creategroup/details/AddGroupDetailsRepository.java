@@ -6,8 +6,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.util.Consumer;
 
-import com.annimon.stream.Stream;
-
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.groups.GroupChangeBusyException;
@@ -21,13 +19,12 @@ import org.thoughtcrime.securesms.recipients.RecipientId;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 final class AddGroupDetailsRepository {
 
-  private static final String TAG = Log.tag(AddGroupDetailsRepository.class);
+  private static String TAG = Log.tag(AddGroupDetailsRepository.class);
 
   private final Context context;
 
@@ -50,29 +47,27 @@ final class AddGroupDetailsRepository {
   void createGroup(@NonNull Set<RecipientId> members,
                    @Nullable byte[] avatar,
                    @Nullable String name,
-                   boolean mms,
                    @Nullable Integer disappearingMessagesTimer,
                    Consumer<GroupCreateResult> resultConsumer)
   {
     SignalExecutors.BOUNDED.execute(() -> {
-      Set<Recipient> recipients = new HashSet<>(Stream.of(members).map(Recipient::resolved).toList());
-
       try {
-        GroupManager.GroupActionResult result = GroupManager.createGroup(SignalStore.account().requireAci(),
-                                                                         context,
-                                                                         recipients,
+        GroupManager.GroupActionResult result = GroupManager.createGroup(context,
+                                                                         members,
                                                                          avatar,
                                                                          name,
-                                                                         mms,
                                                                          disappearingMessagesTimer != null ? disappearingMessagesTimer
                                                                                                            : SignalStore.settings().getUniversalExpireTimer());
 
         resultConsumer.accept(GroupCreateResult.success(result));
       } catch (GroupChangeBusyException e) {
+        Log.w(TAG, "Unable to create group, group busy", e);
         resultConsumer.accept(GroupCreateResult.error(GroupCreateResult.Error.Type.ERROR_BUSY));
       } catch (GroupChangeException e) {
+        Log.w(TAG, "Unable to create group, group change failed", e);
         resultConsumer.accept(GroupCreateResult.error(GroupCreateResult.Error.Type.ERROR_FAILED));
       } catch (IOException e) {
+        Log.w(TAG, "Unable to create group, unknown IO", e);
         resultConsumer.accept(GroupCreateResult.error(GroupCreateResult.Error.Type.ERROR_IO));
       }
     });

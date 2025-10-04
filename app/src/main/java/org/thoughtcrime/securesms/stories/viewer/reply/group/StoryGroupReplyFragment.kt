@@ -3,26 +3,26 @@ package org.thoughtcrime.securesms.stories.viewer.reply.group
 import android.content.ClipData
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.annotation.ColorInt
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.bottomsheet.BottomSheetBehaviorHack
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.kotlin.subscribeBy
+import kotlinx.coroutines.launch
 import org.signal.core.util.concurrent.LifecycleDisposable
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.getParcelableCompat
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
-import org.thoughtcrime.securesms.components.FixedRoundedCornerBottomSheetDialogFragment
 import org.thoughtcrime.securesms.components.emoji.MediaKeyboard
 import org.thoughtcrime.securesms.components.mention.MentionAnnotation
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
@@ -40,12 +40,11 @@ import org.thoughtcrime.securesms.database.model.Mention
 import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.database.model.MessageRecord
 import org.thoughtcrime.securesms.database.model.databaseprotos.BodyRangeList
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.jobs.RetrieveProfileJob
 import org.thoughtcrime.securesms.keyboard.KeyboardPage
 import org.thoughtcrime.securesms.keyboard.KeyboardPagerViewModel
 import org.thoughtcrime.securesms.keyboard.emoji.EmojiKeyboardCallback
-import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.mediasend.v2.UntrustedRecords
 import org.thoughtcrime.securesms.notifications.v2.ConversationId
 import org.thoughtcrime.securesms.reactions.any.ReactWithAnyEmojiBottomSheetDialogFragment
@@ -58,7 +57,6 @@ import org.thoughtcrime.securesms.stories.viewer.reply.StoryViewsAndRepliesPager
 import org.thoughtcrime.securesms.stories.viewer.reply.StoryViewsAndRepliesPagerParent
 import org.thoughtcrime.securesms.stories.viewer.reply.composer.StoryReplyComposer
 import org.thoughtcrime.securesms.util.DeleteDialog
-import org.thoughtcrime.securesms.util.Dialogs
 import org.thoughtcrime.securesms.util.ServiceUtil
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.PagingMappingAdapter
@@ -116,18 +114,6 @@ class StoryGroupReplyFragment :
     ownerProducer = { requireActivity() }
   )
 
-  private val recyclerListener: RecyclerView.OnItemTouchListener = object : RecyclerView.SimpleOnItemTouchListener() {
-    override fun onInterceptTouchEvent(view: RecyclerView, e: MotionEvent): Boolean {
-      recyclerView.isNestedScrollingEnabled = view == recyclerView
-      composer.emojiPageView?.isNestedScrollingEnabled = view == composer.emojiPageView
-
-      val dialog = (parentFragment as FixedRoundedCornerBottomSheetDialogFragment).dialog as BottomSheetDialog
-      BottomSheetBehaviorHack.setNestedScrollingChild(dialog.behavior, view)
-      dialog.findViewById<View>(R.id.design_bottom_sheet)?.invalidate()
-      return false
-    }
-  }
-
   private val colorizer = Colorizer()
   private val lifecycleDisposable = LifecycleDisposable()
 
@@ -162,7 +148,7 @@ class StoryGroupReplyFragment :
 
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     SignalExecutors.BOUNDED.execute {
-      RetrieveProfileJob.enqueue(groupRecipientId)
+      RetrieveProfileJob.enqueue(groupRecipientId, skipDebounce = false)
     }
 
     recyclerView = view.findViewById(R.id.recycler)
@@ -190,31 +176,33 @@ class StoryGroupReplyFragment :
 
     var firstSubmit = true
 
-    lifecycleDisposable += viewModel.state
-      .observeOn(AndroidSchedulers.mainThread())
-      .subscribeBy { state ->
-        if (markReadHelper == null && state.threadId > 0L) {
-          if (isResumed) {
-            ApplicationDependencies.getMessageNotifier().setVisibleThread(ConversationId(state.threadId, storyId))
+    lifecycleScope.launch {
+      repeatOnLifecycle(Lifecycle.State.RESUMED) {
+        viewModel.state.collect { state ->
+          if (markReadHelper == null && state.threadId > 0L) {
+            if (isResumed) {
+              AppDependencies.messageNotifier.setVisibleThread(ConversationId(state.threadId, storyId))
+            }
+
+            markReadHelper = MarkReadHelper(ConversationId(state.threadId, storyId), requireContext(), viewLifecycleOwner)
+
+            if (isFromNotification) {
+              markReadHelper?.onViewsRevealed(System.currentTimeMillis())
+            }
           }
 
-          markReadHelper = MarkReadHelper(ConversationId(state.threadId, storyId), requireContext(), viewLifecycleOwner)
+          emptyNotice.visible = state.noReplies && state.loadState == StoryGroupReplyState.LoadState.READY
+          colorizer.onNameColorsChanged(state.nameColors)
 
-          if (isFromNotification) {
-            markReadHelper?.onViewsRevealed(System.currentTimeMillis())
-          }
-        }
-
-        emptyNotice.visible = state.noReplies && state.loadState == StoryGroupReplyState.LoadState.READY
-        colorizer.onNameColorsChanged(state.nameColors)
-
-        adapter.submitList(getConfiguration(state.replies).toMappingModelList()) {
-          if (firstSubmit && (groupReplyStartPosition >= 0 && adapter.hasItem(groupReplyStartPosition))) {
-            firstSubmit = false
-            recyclerView.post { recyclerView.scrollToPosition(groupReplyStartPosition) }
+          adapter.submitList(getConfiguration(state.replies).toMappingModelList()) {
+            if (firstSubmit && (groupReplyStartPosition >= 0 && adapter.hasItem(groupReplyStartPosition))) {
+              firstSubmit = false
+              recyclerView.post { recyclerView.scrollToPosition(groupReplyStartPosition) }
+            }
           }
         }
       }
+    }
 
     dataObserver = GroupDataObserver()
     adapter.registerAdapterDataObserver(dataObserver)
@@ -229,13 +217,13 @@ class StoryGroupReplyFragment :
     super.onResume()
     val threadId = viewModel.stateSnapshot.threadId
     if (threadId != 0L) {
-      ApplicationDependencies.getMessageNotifier().setVisibleThread(ConversationId(threadId, storyId))
+      AppDependencies.messageNotifier.setVisibleThread(ConversationId(threadId, storyId))
     }
   }
 
   override fun onPause() {
     super.onPause()
-    ApplicationDependencies.getMessageNotifier().setVisibleThread(null)
+    AppDependencies.messageNotifier.setVisibleThread(null)
   }
 
   override fun onDestroyView() {
@@ -271,8 +259,7 @@ class StoryGroupReplyFragment :
                 onCopyClick = { s -> onCopyClick(s) },
                 onMentionClick = { recipientId ->
                   RecipientBottomSheetDialogFragment
-                    .create(recipientId, null)
-                    .show(childFragmentManager, null)
+                    .show(childFragmentManager, recipientId, null)
                 },
                 onDeleteClick = { m -> onDeleteClick(m) },
                 onTapForDetailsClick = { m -> onTapForDetailsClick(m) }
@@ -357,11 +344,7 @@ class StoryGroupReplyFragment :
       performSend(body, mentions, bodyRanges)
     }
 
-    if (SignalStore.uiHints().hasNotSeenTextFormattingAlert() && composer.input.hasStyling()) {
-      Dialogs.showFormattedTextDialog(requireContext(), send)
-    } else {
-      send.run()
-    }
+    send.run()
   }
 
   override fun onPickAnyReactionClicked() {
@@ -409,13 +392,9 @@ class StoryGroupReplyFragment :
 
   override fun onShowEmojiKeyboard() {
     requireListener<Callback>().requestFullScreen(true)
-    recyclerView.addOnItemTouchListener(recyclerListener)
-    composer.emojiPageView?.addOnItemTouchListener(recyclerListener)
   }
 
   override fun onHideEmojiKeyboard() {
-    recyclerView.removeOnItemTouchListener(recyclerListener)
-    composer.emojiPageView?.removeOnItemTouchListener(recyclerListener)
     requireListener<Callback>().requestFullScreen(false)
   }
 
@@ -438,7 +417,7 @@ class StoryGroupReplyFragment :
     if (savedInstanceState == null) {
       lifecycleDisposable += isActiveGroup.firstOrError().observeOn(AndroidSchedulers.mainThread()).subscribe { active ->
         if (active) {
-          ViewUtil.focusAndShowKeyboard(composer)
+          ViewUtil.focusAndShowKeyboard(composer.input)
         }
       }
     }

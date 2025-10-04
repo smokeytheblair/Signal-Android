@@ -25,11 +25,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import org.signal.core.util.BreakIteratorCompat;
 import org.signal.core.util.EditTextUtil;
 import org.signal.core.util.StringUtil;
+import org.signal.core.util.concurrent.LifecycleDisposable;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.components.emoji.EmojiUtil;
 import org.thoughtcrime.securesms.reactions.any.ReactWithAnyEmojiBottomSheetDialogFragment;
 import org.thoughtcrime.securesms.recipients.Recipient;
-import org.signal.core.util.concurrent.LifecycleDisposable;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.adapter.AlwaysChangedDiffUtil;
 import org.thoughtcrime.securesms.util.text.AfterTextChanged;
@@ -43,7 +43,7 @@ import java.util.Optional;
 /**
  * Let's you edit the 'About' section of your profile.
  */
-public class EditAboutFragment extends Fragment implements ManageProfileActivity.EmojiController {
+public class EditAboutFragment extends Fragment implements EditProfileActivity.EmojiController {
 
   public static final int ABOUT_MAX_GLYPHS              = 140;
   public static final int ABOUT_LIMIT_DISPLAY_THRESHOLD = 120;

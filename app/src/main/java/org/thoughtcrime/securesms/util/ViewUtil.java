@@ -46,8 +46,8 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 import androidx.lifecycle.Lifecycle;
 
-import org.thoughtcrime.securesms.util.concurrent.ListenableFuture;
-import org.thoughtcrime.securesms.util.concurrent.SettableFuture;
+import org.signal.core.util.concurrent.ListenableFuture;
+import org.signal.core.util.concurrent.SettableFuture;
 import org.thoughtcrime.securesms.util.views.Stub;
 
 public final class ViewUtil {
@@ -385,13 +385,17 @@ public final class ViewUtil {
     if (Build.VERSION.SDK_INT > 29 && rootWindowInsets != null) {
       return rootWindowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
     } else {
-      int result     = 0;
-      int resourceId = view.getResources().getIdentifier("navigation_bar_height", "dimen", "android");
-      if (resourceId > 0) {
-        result = view.getResources().getDimensionPixelSize(resourceId);
-      }
-      return result;
+      return getNavigationBarHeight(view.getResources());
     }
+  }
+
+  public static int getNavigationBarHeight(@NonNull Resources resources) {
+    int result     = 0;
+    int resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android");
+    if (resourceId > 0) {
+      result = resources.getDimensionPixelSize(resourceId);
+    }
+    return result;
   }
 
   public static void hideKeyboard(@NonNull Context context, @NonNull View view) {

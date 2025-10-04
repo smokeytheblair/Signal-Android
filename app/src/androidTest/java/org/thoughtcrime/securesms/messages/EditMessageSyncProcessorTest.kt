@@ -3,6 +3,8 @@ package org.thoughtcrime.securesms.messages
 import android.database.Cursor
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import assertk.assertThat
+import assertk.assertions.isEqualTo
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -20,7 +22,6 @@ import org.thoughtcrime.securesms.mms.OutgoingMessage
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.testing.MessageContentFuzzer
 import org.thoughtcrime.securesms.testing.SignalActivityRule
-import org.thoughtcrime.securesms.testing.assertIs
 import org.thoughtcrime.securesms.util.MessageTableTestUtils
 import org.whispersystems.signalservice.internal.push.Content
 import org.whispersystems.signalservice.internal.push.EditMessage
@@ -39,7 +40,6 @@ class EditMessageSyncProcessorTest {
     )
 
     private val IGNORE_ATTACHMENT_COLUMNS = listOf(
-      AttachmentTable.UNIQUE_ID,
       AttachmentTable.TRANSFER_FILE
     )
   }
@@ -78,7 +78,7 @@ class EditMessageSyncProcessorTest {
             .build()
         ).build()
       ).build()
-      SignalDatabase.recipients.setExpireMessages(toRecipient.id, content.dataMessage?.expireTimer ?: 0)
+      SignalDatabase.recipients.setExpireMessages(toRecipient.id, content.dataMessage?.expireTimer ?: 0, content.dataMessage?.expireTimerVersion ?: 1)
       val syncTextMessage = TestMessage(
         envelope = MessageContentFuzzer.envelope(originalTimestamp),
         content = syncContent,
@@ -113,7 +113,7 @@ class EditMessageSyncProcessorTest {
 
       testResult.runSync(listOf(syncTextMessage, syncEditMessage))
 
-      SignalDatabase.recipients.setExpireMessages(toRecipient.id, (content.dataMessage?.expireTimer ?: 0) / 1000)
+      SignalDatabase.recipients.setExpireMessages(toRecipient.id, (content.dataMessage?.expireTimer ?: 0) / 1000, content.dataMessage?.expireTimerVersion ?: 1)
       val originalTextMessage = OutgoingMessage(
         threadRecipient = toRecipient,
         sentTimeMillis = originalTimestamp,
@@ -124,7 +124,7 @@ class EditMessageSyncProcessorTest {
         bodyRanges = content.dataMessage?.bodyRanges.toBodyRangeList()
       )
       val threadId = SignalDatabase.threads.getOrCreateThreadIdFor(toRecipient)
-      val originalMessageId = SignalDatabase.messages.insertMessageOutbox(originalTextMessage, threadId, false, null)
+      val originalMessageId = SignalDatabase.messages.insertMessageOutbox(originalTextMessage, threadId, false, null).messageId
       SignalDatabase.messages.markAsSent(originalMessageId, true)
       if ((content.dataMessage?.expireTimer ?: 0) > 0) {
         SignalDatabase.messages.markExpireStarted(originalMessageId, originalTimestamp)
@@ -141,7 +141,7 @@ class EditMessageSyncProcessorTest {
         messageToEdit = originalMessageId
       )
 
-      val editMessageId = SignalDatabase.messages.insertMessageOutbox(editMessage, threadId, false, null)
+      val editMessageId = SignalDatabase.messages.insertMessageOutbox(editMessage, threadId, false, null).messageId
       SignalDatabase.messages.markAsSent(editMessageId, true)
 
       if ((content.dataMessage?.expireTimer ?: 0) > 0) {
@@ -202,12 +202,12 @@ class EditMessageSyncProcessorTest {
     fun assert() {
       syncMessages.zip(localMessages)
         .forEach { (v2, v1) ->
-          v2.assertIs(v1)
+          assertThat(v2).isEqualTo(v1)
         }
 
       syncAttachments.zip(localAttachments)
         .forEach { (v2, v1) ->
-          v2.assertIs(v1)
+          assertThat(v2).isEqualTo(v1)
         }
     }
 

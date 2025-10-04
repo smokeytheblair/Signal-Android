@@ -6,12 +6,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.signal.libsignal.protocol.InvalidKeyException;
-import org.signal.libsignal.protocol.ecc.Curve;
 import org.signal.libsignal.protocol.ecc.ECPublicKey;
 import org.signal.ringrtc.CallManager;
 import org.signal.ringrtc.GroupCall;
 import org.signal.ringrtc.PeekInfo;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.events.WebRtcViewModel;
 import org.thoughtcrime.securesms.service.webrtc.state.WebRtcServiceState;
 import org.thoughtcrime.securesms.webrtc.audio.AudioManagerCompat;
@@ -29,12 +28,12 @@ public final class WebRtcUtil {
   private WebRtcUtil() {}
 
   public static @NonNull byte[] getPublicKeyBytes(@NonNull byte[] identityKey) throws InvalidKeyException {
-    ECPublicKey key = Curve.decodePoint(identityKey, 0);
+    ECPublicKey key = new ECPublicKey(identityKey);
     return key.getPublicKeyBytes();
   }
 
   public static @NonNull LockManager.PhoneState getInCallPhoneState(@NonNull Context context) {
-    AudioManagerCompat audioManager = ApplicationDependencies.getAndroidCallAudioManager();
+    AudioManagerCompat audioManager = AppDependencies.getAndroidCallAudioManager();
     if (audioManager.isSpeakerphoneOn() || audioManager.isBluetoothConnected() || audioManager.isWiredHeadsetOn()) {
       return LockManager.PhoneState.IN_HANDS_FREE_CALL;
     } else {

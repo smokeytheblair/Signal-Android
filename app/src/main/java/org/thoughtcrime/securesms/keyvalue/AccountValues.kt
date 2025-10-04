@@ -4,24 +4,26 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.preference.PreferenceManager
-import androidx.annotation.VisibleForTesting
+import org.signal.core.util.Base64
 import org.signal.core.util.logging.Log
+import org.signal.core.util.nullIfBlank
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
-import org.signal.libsignal.protocol.ecc.Curve
+import org.signal.libsignal.protocol.ecc.ECPrivateKey
 import org.signal.libsignal.protocol.util.Medium
 import org.thoughtcrime.securesms.crypto.IdentityKeyUtil
 import org.thoughtcrime.securesms.crypto.MasterCipher
 import org.thoughtcrime.securesms.crypto.ProfileKeyUtil
 import org.thoughtcrime.securesms.crypto.storage.PreKeyMetadataStore
 import org.thoughtcrime.securesms.database.SignalDatabase
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
+import org.thoughtcrime.securesms.jobmanager.impl.RegisteredConstraint
 import org.thoughtcrime.securesms.jobs.PreKeysSyncJob
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.service.KeyCachingService
-import org.thoughtcrime.securesms.util.Base64
 import org.thoughtcrime.securesms.util.TextSecurePreferences
 import org.thoughtcrime.securesms.util.Util
+import org.whispersystems.signalservice.api.AccountEntropyPool
 import org.whispersystems.signalservice.api.push.ServiceId.ACI
 import org.whispersystems.signalservice.api.push.ServiceId.PNI
 import org.whispersystems.signalservice.api.push.ServiceIds
@@ -30,8 +32,11 @@ import org.whispersystems.signalservice.api.push.UsernameLinkComponents
 import org.whispersystems.signalservice.api.util.UuidUtil
 import org.whispersystems.signalservice.api.util.toByteArray
 import java.security.SecureRandom
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+import org.signal.libsignal.messagebackup.AccountEntropyPool as LibSignalAccountEntropyPool
 
-internal class AccountValues internal constructor(store: KeyValueStore) : SignalStoreValues(store) {
+class AccountValues internal constructor(store: KeyValueStore, context: Context) : SignalStoreValues(store) {
 
   companion object {
     private val TAG = Log.tag(AccountValues::class.java)
@@ -70,28 +75,35 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
     private const val KEY_USERNAME = "account.username"
     private const val KEY_USERNAME_LINK_ENTROPY = "account.username_link_entropy"
     private const val KEY_USERNAME_LINK_SERVER_ID = "account.username_link_server_id"
-    private const val KEY_USERNAME_OUT_OF_SYNC = "phoneNumberPrivacy.usernameOutOfSync"
+    private const val KEY_USERNAME_SYNC_STATE = "phoneNumberPrivacy.usernameSyncState"
+    private const val KEY_USERNAME_SYNC_ERROR_COUNT = "phoneNumberPrivacy.usernameErrorCount"
 
-    @VisibleForTesting
-    const val KEY_E164 = "account.e164"
+    private const val KEY_E164 = "account.e164"
+    private const val KEY_ACI = "account.aci"
+    private const val KEY_PNI = "account.pni"
+    private const val KEY_IS_REGISTERED = "account.is_registered"
+    private const val KEY_ACCOUNT_REGISTERED_AT = "account.registered_at"
 
-    @VisibleForTesting
-    const val KEY_ACI = "account.aci"
+    private const val KEY_HAS_LINKED_DEVICES = "account.has_linked_devices"
 
-    @VisibleForTesting
-    const val KEY_PNI = "account.pni"
+    private const val KEY_ACCOUNT_ENTROPY_POOL = "account.account_entropy_pool"
+    private const val KEY_RESTORED_ACCOUNT_ENTROPY_KEY = "account.restored_account_entropy_pool"
+    private const val KEY_RESTORED_ACCOUNT_ENTROPY_KEY_FROM_PRIMARY = "account.restore_account_entropy_pool_primary"
 
-    @VisibleForTesting
-    const val KEY_IS_REGISTERED = "account.is_registered"
+    private val AEP_LOCK = ReentrantLock()
   }
 
   init {
     if (!store.containsKey(KEY_ACI)) {
-      migrateFromSharedPrefsV1(ApplicationDependencies.getApplication())
+      migrateFromSharedPrefsV1(context)
     }
 
     if (!store.containsKey(KEY_ACI_IDENTITY_PUBLIC_KEY)) {
-      migrateFromSharedPrefsV2(ApplicationDependencies.getApplication())
+      migrateFromSharedPrefsV2(context)
+    }
+
+    if (!store.containsKey(KEY_HAS_LINKED_DEVICES)) {
+      migrateFromSharedPrefsV3(context)
     }
 
     store.getString(KEY_PNI, null)?.let { pni ->
@@ -110,9 +122,72 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
       KEY_PNI_IDENTITY_PUBLIC_KEY,
       KEY_PNI_IDENTITY_PRIVATE_KEY,
       KEY_USERNAME,
-      KEY_USERNAME_LINK_SERVER_ID
+      KEY_USERNAME_LINK_ENTROPY,
+      KEY_USERNAME_LINK_SERVER_ID,
+      KEY_ACCOUNT_ENTROPY_POOL
     )
   }
+
+  val accountEntropyPool: AccountEntropyPool
+    get() {
+      AEP_LOCK.withLock {
+        getString(KEY_ACCOUNT_ENTROPY_POOL, null)?.let {
+          return AccountEntropyPool(it)
+        }
+
+        Log.i(TAG, "Generating Account Entropy Pool (AEP)...", Throwable(), true)
+        val newAep = LibSignalAccountEntropyPool.generate()
+        putString(KEY_ACCOUNT_ENTROPY_POOL, newAep)
+        return AccountEntropyPool(newAep)
+      }
+    }
+
+  fun rotateAccountEntropyPool(aep: AccountEntropyPool) {
+    AEP_LOCK.withLock {
+      Log.i(TAG, "Rotating Account Entropy Pool (AEP)...", Throwable(), true)
+      store
+        .beginWrite()
+        .putString(KEY_ACCOUNT_ENTROPY_POOL, aep.value)
+        .commit()
+    }
+  }
+
+  fun setAccountEntropyPoolFromPrimaryDevice(aep: AccountEntropyPool) {
+    AEP_LOCK.withLock {
+      Log.i(TAG, "Setting new AEP from primary device")
+      store
+        .beginWrite()
+        .putString(KEY_ACCOUNT_ENTROPY_POOL, aep.value)
+        .putBoolean(KEY_RESTORED_ACCOUNT_ENTROPY_KEY_FROM_PRIMARY, true)
+        .commit()
+    }
+  }
+
+  fun restoreAccountEntropyPool(aep: AccountEntropyPool) {
+    AEP_LOCK.withLock {
+      store
+        .beginWrite()
+        .putString(KEY_ACCOUNT_ENTROPY_POOL, aep.value)
+        .putBoolean(KEY_RESTORED_ACCOUNT_ENTROPY_KEY, true)
+        .commit()
+    }
+  }
+
+  fun resetAccountEntropyPool() {
+    AEP_LOCK.withLock {
+      Log.i(TAG, "Resetting Account Entropy Pool (AEP)", Throwable())
+      store
+        .beginWrite()
+        .putString(KEY_ACCOUNT_ENTROPY_POOL, null)
+        .putBoolean(KEY_RESTORED_ACCOUNT_ENTROPY_KEY, false)
+        .commit()
+    }
+  }
+
+  @get:JvmName("restoredAccountEntropyPool")
+  val restoredAccountEntropyPool by booleanValue(KEY_RESTORED_ACCOUNT_ENTROPY_KEY, false)
+
+  val restoredAccountEntropyPoolFromPrimary by booleanValue(KEY_RESTORED_ACCOUNT_ENTROPY_KEY_FROM_PRIMARY, false)
 
   /** The local user's [ACI]. */
   val aci: ACI?
@@ -125,6 +200,7 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
 
   fun setAci(aci: ACI) {
     putString(KEY_ACI, aci.toString())
+    RegisteredConstraint.Observer.notifyListeners()
   }
 
   /** The local user's [PNI]. */
@@ -177,7 +253,7 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
       require(store.containsKey(KEY_ACI_IDENTITY_PUBLIC_KEY)) { "Not yet set!" }
       return IdentityKeyPair(
         IdentityKey(getBlob(KEY_ACI_IDENTITY_PUBLIC_KEY, null)),
-        Curve.decodePrivatePoint(getBlob(KEY_ACI_IDENTITY_PRIVATE_KEY, null))
+        ECPrivateKey(getBlob(KEY_ACI_IDENTITY_PRIVATE_KEY, null))
       )
     }
 
@@ -187,7 +263,7 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
       require(store.containsKey(KEY_PNI_IDENTITY_PUBLIC_KEY)) { "Not yet set!" }
       return IdentityKeyPair(
         IdentityKey(getBlob(KEY_PNI_IDENTITY_PUBLIC_KEY, null)),
-        Curve.decodePrivatePoint(getBlob(KEY_PNI_IDENTITY_PRIVATE_KEY, null))
+        ECPrivateKey(getBlob(KEY_PNI_IDENTITY_PRIVATE_KEY, null))
       )
     }
 
@@ -199,7 +275,7 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
   fun generateAciIdentityKeyIfNecessary() {
     synchronized(this) {
       if (store.containsKey(KEY_ACI_IDENTITY_PUBLIC_KEY)) {
-        Log.w(TAG, "Tried to generate an ANI identity, but one was already set!", Throwable())
+        Log.w(TAG, "Tried to generate an ACI identity, but one was already set!", Throwable())
         return
       }
 
@@ -237,18 +313,6 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
     }
   }
 
-  /** When acting as a linked device, this method lets you store the identity keys sent from the primary device */
-  fun setAciIdentityKeysFromPrimaryDevice(aciKeys: IdentityKeyPair) {
-    synchronized(this) {
-      require(isLinkedDevice) { "Must be a linked device!" }
-      store
-        .beginWrite()
-        .putBlob(KEY_ACI_IDENTITY_PUBLIC_KEY, aciKeys.publicKey.serialize())
-        .putBlob(KEY_ACI_IDENTITY_PRIVATE_KEY, aciKeys.privateKey.serialize())
-        .commit()
-    }
-  }
-
   /** Set an identity key pair for the PNI identity via change number. */
   fun setPniIdentityKeyAfterChangeNumber(key: IdentityKeyPair) {
     synchronized(this) {
@@ -258,6 +322,46 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
         .beginWrite()
         .putBlob(KEY_PNI_IDENTITY_PUBLIC_KEY, key.publicKey.serialize())
         .putBlob(KEY_PNI_IDENTITY_PRIVATE_KEY, key.privateKey.serialize())
+        .commit()
+    }
+  }
+
+  fun restorePniIdentityKeyFromBackup(publicKey: ByteArray, privateKey: ByteArray) {
+    synchronized(this) {
+      Log.i(TAG, "Setting a new PNI identity key pair.")
+
+      store
+        .beginWrite()
+        .putBlob(KEY_PNI_IDENTITY_PUBLIC_KEY, publicKey)
+        .putBlob(KEY_PNI_IDENTITY_PRIVATE_KEY, privateKey)
+        .commit()
+    }
+  }
+
+  fun restoreAciIdentityKeyFromBackup(publicKey: ByteArray, privateKey: ByteArray) {
+    synchronized(this) {
+      Log.i(TAG, "Setting a new ACI identity key pair.")
+
+      store
+        .beginWrite()
+        .putBlob(KEY_ACI_IDENTITY_PUBLIC_KEY, publicKey)
+        .putBlob(KEY_ACI_IDENTITY_PRIVATE_KEY, privateKey)
+        .commit()
+    }
+  }
+
+  /**
+   * Only to be used as part of Quick Restore, DO NOT USE OTHERWISE.
+   */
+  fun resetAciAndPniIdentityKeysAfterFailedRestore() {
+    synchronized(this) {
+      Log.i(TAG, "Resetting ACI and PNI identity keys after failed quick registration and restore")
+
+      store.beginWrite()
+        .remove(KEY_ACI_IDENTITY_PUBLIC_KEY)
+        .remove(KEY_ACI_IDENTITY_PRIVATE_KEY)
+        .remove(KEY_PNI_IDENTITY_PUBLIC_KEY)
+        .remove(KEY_PNI_IDENTITY_PRIVATE_KEY)
         .commit()
     }
   }
@@ -335,7 +439,7 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
 
     putBoolean(KEY_IS_REGISTERED, registered)
 
-    ApplicationDependencies.getIncomingMessageObserver().notifyRegistrationChanged()
+    AppDependencies.incomingMessageObserver.notifyRegistrationStateChanged()
 
     if (previous != registered) {
       Recipient.self().live().refresh()
@@ -344,14 +448,35 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
     if (previous && !registered) {
       clearLocalCredentials()
     }
+
+    if (!previous && registered) {
+      registeredAtTimestamp = System.currentTimeMillis()
+    } else if (!registered) {
+      registeredAtTimestamp = -1
+    }
+
+    RegisteredConstraint.Observer.notifyListeners()
   }
 
-  val deviceName: String?
-    get() = getString(KEY_DEVICE_NAME, null)
+  /**
+   * Milliseconds since epoch when account was registered or a negative value if not known.
+   */
+  var registeredAtTimestamp: Long by longValue(KEY_ACCOUNT_REGISTERED_AT, -1)
+    private set
 
-  fun setDeviceName(deviceName: String) {
-    putString(KEY_DEVICE_NAME, deviceName)
+  /**
+   * Function for testing backup/restore
+   */
+  @Deprecated("debug only")
+  fun clearRegistrationButKeepCredentials() {
+    putBoolean(KEY_IS_REGISTERED, false)
+
+    AppDependencies.incomingMessageObserver.notifyRegistrationStateChanged()
+
+    Recipient.self().live().refresh()
   }
+
+  var deviceName: String? by stringValue(KEY_DEVICE_NAME, null)
 
   var deviceId: Int by integerValue(KEY_DEVICE_ID, SignalServiceAddress.DEFAULT_DEVICE_ID)
 
@@ -365,10 +490,10 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
   var username: String?
     get() {
       val value = getString(KEY_USERNAME, null)
-      return if (value.isNullOrBlank()) null else value
+      return value.nullIfBlank()
     }
     set(value) {
-      putString(KEY_USERNAME, value)
+      putString(KEY_USERNAME, value.nullIfBlank())
     }
 
   /** The local user's username link components, if set. */
@@ -396,7 +521,14 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
    * There are some cases where our username may fall out of sync with the service. In particular, we may get a new value for our username from
    * storage service but then find that it doesn't match what's on the service.
    */
-  var usernameOutOfSync: Boolean by booleanValue(KEY_USERNAME_OUT_OF_SYNC, false)
+  var usernameSyncState: UsernameSyncState
+    get() = UsernameSyncState.deserialize(getLong(KEY_USERNAME_SYNC_STATE, UsernameSyncState.IN_SYNC.serialize()))
+    set(value) {
+      Log.i(TAG, "Marking username sync state as: $value")
+      putLong(KEY_USERNAME_SYNC_STATE, value.serialize())
+    }
+
+  var usernameSyncErrorCount: Int by integerValue(KEY_USERNAME_SYNC_ERROR_COUNT, 0)
 
   private fun clearLocalCredentials() {
     putString(KEY_SERVICE_PASSWORD, Util.getSecret(18))
@@ -405,8 +537,14 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
     val self = Recipient.self()
 
     SignalDatabase.recipients.setProfileKey(self.id, newProfileKey)
-    ApplicationDependencies.getGroupsV2Authorization().clear()
+    AppDependencies.groupsV2Authorization.clear()
   }
+
+  /**
+   * Whether or not the user is a multi-device account (has linked devices or is a linked device).
+   */
+  @get:JvmName("isMultiDevice")
+  var isMultiDevice by booleanValue(KEY_HAS_LINKED_DEVICES, false)
 
   /** Do not alter. If you need to migrate more stuff, create a new method. */
   private fun migrateFromSharedPrefsV1(context: Context) {
@@ -491,7 +629,33 @@ internal class AccountValues internal constructor(store: KeyValueStore) : Signal
       .commit()
   }
 
+  /** Do not alter. If you need to migrate more stuff, create a new method. */
+  private fun migrateFromSharedPrefsV3(context: Context) {
+    Log.i(TAG, "[V3] Migrating account values from shared prefs.")
+
+    putBoolean(KEY_HAS_LINKED_DEVICES, TextSecurePreferences.getBooleanPreference(context, "pref_multi_device", false))
+  }
+
   private fun SharedPreferences.hasStringData(key: String): Boolean {
     return this.getString(key, null) != null
+  }
+
+  enum class UsernameSyncState(private val value: Long) {
+    /** Our username data is in sync with the service */
+    IN_SYNC(1),
+
+    /** Both our username and username link are out-of-sync with the service */
+    USERNAME_AND_LINK_CORRUPTED(2),
+
+    /** Our username link is out-of-sync with the service */
+    LINK_CORRUPTED(3);
+
+    fun serialize(): Long = value
+
+    companion object {
+      fun deserialize(value: Long): UsernameSyncState {
+        return entries.firstOrNull { it.value == value } ?: throw IllegalArgumentException("Invalid value: $value")
+      }
+    }
   }
 }

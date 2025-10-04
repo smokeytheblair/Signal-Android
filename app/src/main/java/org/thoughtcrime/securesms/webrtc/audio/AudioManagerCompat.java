@@ -97,11 +97,36 @@ public abstract class AudioManagerCompat {
   }
 
   public boolean isSpeakerphoneOn() {
-    return audioManager.isSpeakerphoneOn();
+    if (Build.VERSION.SDK_INT >= 31) {
+      AudioDeviceInfo audioDeviceInfo = getCommunicationDevice();
+      if (audioDeviceInfo == null) {
+        Log.w(TAG, "isSpeakerphoneOn: Failed to find communication device.");
+        return false;
+      } else {
+        return AudioDeviceMapping.fromPlatformType(audioDeviceInfo.getType())  == SignalAudioManager.AudioDevice.SPEAKER_PHONE;
+      }
+    } else {
+      return audioManager.isSpeakerphoneOn();
+    }
   }
 
   public void setSpeakerphoneOn(boolean on) {
-    audioManager.setSpeakerphoneOn(on);
+    if (Build.VERSION.SDK_INT >= 31) {
+      SignalAudioManager.AudioDevice audioDevice = on ? SignalAudioManager.AudioDevice.SPEAKER_PHONE : SignalAudioManager.AudioDevice.EARPIECE;
+      AudioDeviceInfo                candidate   = getAvailableCommunicationDevices().stream()
+                                                                      .filter(it -> AudioDeviceMapping.fromPlatformType(it.getType()) == audioDevice)
+                                                                      .findFirst()
+                                                                      .orElse(null);
+
+      if (candidate != null) {
+        setCommunicationDevice(candidate);
+      } else {
+        Log.w(TAG, "setSpeakerphoneOn: Failed to find candidate for SignalAudioDevice {" + audioDevice + "}. Falling back on deprecated method.");
+        audioManager.setSpeakerphoneOn(on);
+      }
+    } else {
+      audioManager.setSpeakerphoneOn(on);
+    }
   }
 
   public boolean isMicrophoneMute() {
@@ -191,6 +216,10 @@ public abstract class AudioManagerCompat {
     return (float) (1 - (Math.log(maxVolume + 1 - volume) / Math.log(maxVolume + 1)));
   }
 
+  public float getVoiceCallVolume() {
+    return audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+  }
+
   abstract public SoundPool createSoundPool();
 
   abstract public boolean requestCallAudioFocus();
@@ -243,13 +272,17 @@ public abstract class AudioManagerCompat {
         Log.w(TAG, "Trying again to request audio focus");
       }
 
-      int result = audioManager.requestAudioFocus(audioFocusRequest);
+      try {
+        int result = audioManager.requestAudioFocus(audioFocusRequest);
 
-      if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-        Log.w(TAG, "Audio focus not granted. Result code: " + result);
+        if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+          Log.w(TAG, "Audio focus not granted. Result code: " + result);
+          return false;
+        }
+      } catch (SecurityException ex) {
+        Log.w(TAG, "Encountered security exception when requesting audio focus.");
         return false;
       }
-
       return true;
     }
 

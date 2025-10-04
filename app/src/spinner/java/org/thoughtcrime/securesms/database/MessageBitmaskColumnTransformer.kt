@@ -14,7 +14,6 @@ import org.thoughtcrime.securesms.database.MessageTypes.BASE_SENDING_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.BASE_SENT_FAILED_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.BASE_SENT_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.BASE_TYPE_MASK
-import org.thoughtcrime.securesms.database.MessageTypes.BOOST_REQUEST_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.CHANGE_NUMBER_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.ENCRYPTION_REMOTE_BIT
 import org.thoughtcrime.securesms.database.MessageTypes.ENCRYPTION_REMOTE_DUPLICATE_BIT
@@ -35,8 +34,6 @@ import org.thoughtcrime.securesms.database.MessageTypes.INVALID_MESSAGE_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.JOINED_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.KEY_EXCHANGE_BIT
 import org.thoughtcrime.securesms.database.MessageTypes.KEY_EXCHANGE_BUNDLE_BIT
-import org.thoughtcrime.securesms.database.MessageTypes.KEY_EXCHANGE_CONTENT_FORMAT
-import org.thoughtcrime.securesms.database.MessageTypes.KEY_EXCHANGE_CORRUPTED_BIT
 import org.thoughtcrime.securesms.database.MessageTypes.KEY_EXCHANGE_IDENTITY_DEFAULT_BIT
 import org.thoughtcrime.securesms.database.MessageTypes.KEY_EXCHANGE_IDENTITY_UPDATE_BIT
 import org.thoughtcrime.securesms.database.MessageTypes.KEY_EXCHANGE_IDENTITY_VERIFIED_BIT
@@ -50,14 +47,20 @@ import org.thoughtcrime.securesms.database.MessageTypes.OUTGOING_MESSAGE_TYPES
 import org.thoughtcrime.securesms.database.MessageTypes.OUTGOING_VIDEO_CALL_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.PROFILE_CHANGE_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.PUSH_MESSAGE_BIT
+import org.thoughtcrime.securesms.database.MessageTypes.RELEASE_CHANNEL_DONATION_REQUEST_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.SECURE_MESSAGE_BIT
 import org.thoughtcrime.securesms.database.MessageTypes.SMS_EXPORT_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPES_MASK
+import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_BLOCKED
 import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_GIFT_BADGE
+import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_MESSAGE_REQUEST_ACCEPTED
 import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_PAYMENTS_ACTIVATED
 import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_PAYMENTS_ACTIVATE_REQUEST
 import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_PAYMENTS_NOTIFICATION
+import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_POLL_TERMINATE
+import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_REPORTED_SPAM
 import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_STORY_REACTION
+import org.thoughtcrime.securesms.database.MessageTypes.SPECIAL_TYPE_UNBLOCKED
 import org.thoughtcrime.securesms.database.MessageTypes.THREAD_MERGE_TYPE
 import org.thoughtcrime.securesms.database.MessageTypes.UNSUPPORTED_MESSAGE_TYPE
 
@@ -100,10 +103,8 @@ object MessageBitmaskColumnTransformer : ColumnTransformer {
       isKeyExchangeType:${type and KEY_EXCHANGE_BIT != 0L}
       isIdentityVerified:${type and KEY_EXCHANGE_IDENTITY_VERIFIED_BIT != 0L}
       isIdentityDefault:${type and KEY_EXCHANGE_IDENTITY_DEFAULT_BIT != 0L}
-      isCorruptedKeyExchange:${type and KEY_EXCHANGE_CORRUPTED_BIT != 0L}
       isInvalidVersionKeyExchange:${type and KEY_EXCHANGE_INVALID_VERSION_BIT != 0L}
       isBundleKeyExchange:${type and KEY_EXCHANGE_BUNDLE_BIT != 0L}
-      isContentBundleKeyExchange:${type and KEY_EXCHANGE_CONTENT_FORMAT != 0L}
       isIdentityUpdate:${type and KEY_EXCHANGE_IDENTITY_UPDATE_BIT != 0L}
       isRateLimited:${type and MESSAGE_RATE_LIMITED_BIT != 0L}
       isExpirationTimerUpdate:${type and EXPIRATION_TIMER_UPDATE_BIT != 0L}
@@ -125,7 +126,7 @@ object MessageBitmaskColumnTransformer : ColumnTransformer {
       isProfileChange:${type == PROFILE_CHANGE_TYPE}
       isGroupV1MigrationEvent:${type == GV1_MIGRATION_TYPE}
       isChangeNumber:${type == CHANGE_NUMBER_TYPE}
-      isBoostRequest:${type == BOOST_REQUEST_TYPE}
+      isReleaseChannelDonationRequest:${type == RELEASE_CHANNEL_DONATION_REQUEST_TYPE}
       isThreadMerge:${type == THREAD_MERGE_TYPE}
       isSmsExport:${type == SMS_EXPORT_TYPE}
       isGroupV2LeaveOnly:${type and GROUP_V2_LEAVE_BITS == GROUP_V2_LEAVE_BITS}
@@ -135,6 +136,11 @@ object MessageBitmaskColumnTransformer : ColumnTransformer {
       isPaymentsNotificaiton:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_PAYMENTS_NOTIFICATION}
       isRequestToActivatePayments:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_PAYMENTS_ACTIVATE_REQUEST}
       isPaymentsActivated:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_PAYMENTS_ACTIVATED}
+      isReportSpam:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_REPORTED_SPAM}
+      isMessageRequestAccepted:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_MESSAGE_REQUEST_ACCEPTED}
+      isBlockedType:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_BLOCKED}
+      isUnblockedType:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_UNBLOCKED}
+      isPollEnd:${type and SPECIAL_TYPES_MASK == SPECIAL_TYPE_POLL_TERMINATE}
     """.trimIndent()
 
     return "$type<br><br>" + describe.replace(Regex("is[A-Z][A-Za-z0-9]*:false\n?"), "").replace("\n", "<br>")

@@ -5,15 +5,15 @@
 
 package org.thoughtcrime.securesms.database
 
-import junit.framework.TestCase.assertEquals
-import junit.framework.TestCase.assertNotNull
-import junit.framework.TestCase.assertNull
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.signal.core.util.readToSingleObject
 import org.signal.core.util.requireLongOrNull
 import org.signal.core.util.select
 import org.signal.core.util.update
-import org.signal.libsignal.protocol.ecc.Curve
+import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.whispersystems.signalservice.api.push.ServiceId
 import org.whispersystems.signalservice.api.push.ServiceId.ACI
@@ -114,13 +114,13 @@ class OneTimePreKeyTableTest {
     SignalDatabase.oneTimePreKeys.insert(
       serviceId = account,
       keyId = id,
-      record = PreKeyRecord(id, Curve.generateKeyPair())
+      record = PreKeyRecord(id, ECKeyPair.generate())
     )
 
     val count = SignalDatabase.rawDatabase
       .update(OneTimePreKeyTable.TABLE_NAME)
       .values(OneTimePreKeyTable.STALE_TIMESTAMP to staleTime)
-      .where("${OneTimePreKeyTable.ACCOUNT_ID} = ? AND ${OneTimePreKeyTable.KEY_ID} = $id", account)
+      .where("${OneTimePreKeyTable.ACCOUNT_ID} = ? AND ${OneTimePreKeyTable.KEY_ID} = $id", account.toAccountId())
       .run()
 
     assertEquals(1, count)
@@ -130,8 +130,15 @@ class OneTimePreKeyTableTest {
     return SignalDatabase.rawDatabase
       .select(OneTimePreKeyTable.STALE_TIMESTAMP)
       .from(OneTimePreKeyTable.TABLE_NAME)
-      .where("${OneTimePreKeyTable.ACCOUNT_ID} = ? AND ${OneTimePreKeyTable.KEY_ID} = $id", account)
+      .where("${OneTimePreKeyTable.ACCOUNT_ID} = ? AND ${OneTimePreKeyTable.KEY_ID} = $id", account.toAccountId())
       .run()
       .readToSingleObject { it.requireLongOrNull(OneTimePreKeyTable.STALE_TIMESTAMP) }
+  }
+
+  private fun ServiceId.toAccountId(): String {
+    return when (this) {
+      is ACI -> this.toString()
+      is PNI -> OneTimePreKeyTable.PNI_ACCOUNT_ID
+    }
   }
 }

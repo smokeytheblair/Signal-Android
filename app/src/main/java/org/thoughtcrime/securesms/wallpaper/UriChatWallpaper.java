@@ -11,6 +11,7 @@ import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
@@ -19,15 +20,14 @@ import com.bumptech.glide.request.target.Target;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.database.model.databaseprotos.Wallpaper;
-import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader;
-import org.thoughtcrime.securesms.mms.GlideApp;
+import org.thoughtcrime.securesms.mms.DecryptableUri;
 
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-final class UriChatWallpaper implements ChatWallpaper, Parcelable {
+public final class UriChatWallpaper implements ChatWallpaper, Parcelable {
 
   private static final LruCache<Uri, Bitmap> CACHE = new LruCache<Uri, Bitmap>((int) Runtime.getRuntime().maxMemory() / 8) {
     @Override
@@ -64,9 +64,9 @@ final class UriChatWallpaper implements ChatWallpaper, Parcelable {
       imageView.setImageBitmap(cached);
     } else {
       Log.d(TAG, "Not in cache or recycled. Fetching using Glide.");
-      GlideApp.with(imageView.getContext().getApplicationContext())
+      Glide.with(imageView.getContext().getApplicationContext())
               .asBitmap()
-              .load(new DecryptableStreamUriLoader.DecryptableUri(uri))
+              .load(new DecryptableUri(uri))
               .skipMemoryCache(true)
               .diskCacheStrategy(DiskCacheStrategy.NONE)
               .addListener(new RequestListener<>() {
@@ -97,9 +97,9 @@ final class UriChatWallpaper implements ChatWallpaper, Parcelable {
 
     long startTime = System.currentTimeMillis();
     try {
-      Bitmap bitmap = GlideApp.with(context.getApplicationContext())
+      Bitmap bitmap = Glide.with(context.getApplicationContext())
                               .asBitmap()
-                              .load(new DecryptableStreamUriLoader.DecryptableUri(uri))
+                              .load(new DecryptableUri(uri))
                               .skipMemoryCache(true)
                               .diskCacheStrategy(DiskCacheStrategy.NONE)
                               .submit()
@@ -116,6 +116,10 @@ final class UriChatWallpaper implements ChatWallpaper, Parcelable {
     }
 
     return false;
+  }
+
+  public @NonNull Uri getUri() {
+    return uri;
   }
 
   @Override

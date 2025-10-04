@@ -48,7 +48,7 @@ public final class AddGroupDetailsViewModel extends ViewModel {
     this.repository = repository;
 
     MutableLiveData<List<GroupMemberEntry.NewGroupCandidate>> initialMembers = new MutableLiveData<>();
-    LiveData<Boolean>                                         isValidName    = Transformations.map(name, name -> !TextUtils.isEmpty(name));
+    LiveData<Boolean>                                         isValidName    = Transformations.map(name, name -> !name.isBlank());
 
     members       = LiveDataUtil.combineLatest(initialMembers, deleted, AddGroupDetailsViewModel::filterDeletedMembers);
     isMms         = Transformations.map(members, AddGroupDetailsViewModel::isAnyForcedSms);
@@ -104,11 +104,10 @@ public final class AddGroupDetailsViewModel extends ViewModel {
     List<GroupMemberEntry.NewGroupCandidate> members           = Objects.requireNonNull(this.members.getValue());
     Set<RecipientId>                         memberIds         = Stream.of(members).map(member -> member.getMember().getId()).collect(Collectors.toSet());
     byte[]                                   avatarBytes       = avatar.getValue();
-    boolean                                  isGroupMms        = isMms.getValue() == Boolean.TRUE;
     String                                   groupName         = name.getValue();
     Integer                                  disappearingTimer = disappearingMessagesTimer.getValue();
 
-    if (!isGroupMms && TextUtils.isEmpty(groupName)) {
+    if (TextUtils.isEmpty(groupName)) {
       groupCreateResult.postValue(GroupCreateResult.error(GroupCreateResult.Error.Type.ERROR_INVALID_NAME));
       return;
     }
@@ -116,7 +115,6 @@ public final class AddGroupDetailsViewModel extends ViewModel {
     repository.createGroup(memberIds,
                            avatarBytes,
                            groupName,
-                           isGroupMms,
                            disappearingTimer,
                            groupCreateResult::postValue);
   }

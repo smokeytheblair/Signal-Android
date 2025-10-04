@@ -2,7 +2,9 @@ package org.thoughtcrime.securesms.util;
 
 import android.content.Context;
 import android.content.res.Resources;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.Layout;
@@ -25,6 +27,7 @@ import android.text.style.StyleSpan;
 import android.text.style.TextAppearanceSpan;
 import android.text.style.TypefaceSpan;
 import android.text.style.URLSpan;
+import android.text.style.UnderlineSpan;
 import android.view.View;
 
 import androidx.annotation.ColorInt;
@@ -33,6 +36,7 @@ import androidx.annotation.StringRes;
 import androidx.annotation.StyleRes;
 import androidx.core.content.ContextCompat;
 
+import org.signal.core.util.DimensionUnit;
 import org.thoughtcrime.securesms.R;
 
 public final class SpanUtil {
@@ -96,14 +100,21 @@ public final class SpanUtil {
     return spannable;
   }
 
+  public static CharSequence underlineSubstring(CharSequence fullString, CharSequence substring) {
+    SpannableString spannable = new SpannableString(fullString);
+    int             start     = TextUtils.indexOf(fullString, substring);
+    int             end       = start + substring.length();
+
+    if (start >= 0 && end <= fullString.length()) {
+      spannable.setSpan(new UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+    }
+    return spannable;
+  }
+
   public static CharSequence color(int color, CharSequence sequence) {
     SpannableString spannable = new SpannableString(sequence);
     spannable.setSpan(new ForegroundColorSpan(color), 0, sequence.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
     return spannable;
-  }
-
-  public static @NonNull CharSequence bullet(@NonNull CharSequence sequence) {
-    return bullet(sequence, BulletSpan.STANDARD_GAP_WIDTH);
   }
 
   public static @NonNull CharSequence bullet(@NonNull CharSequence sequence, int gapWidth) {
@@ -113,9 +124,13 @@ public final class SpanUtil {
   }
 
   public static CharSequence buildImageSpan(@NonNull Drawable drawable) {
-    SpannableString imageSpan = new SpannableString(" ");
-
     int flag = Build.VERSION.SDK_INT >= 29 ? DynamicDrawableSpan.ALIGN_CENTER : DynamicDrawableSpan.ALIGN_BASELINE;
+
+    return buildImageSpan(drawable, flag);
+  }
+
+  private static CharSequence buildImageSpan(@NonNull Drawable drawable, int flag) {
+    SpannableString imageSpan = new SpannableString(" ");
 
     imageSpan.setSpan(new ImageSpan(drawable, flag), 0, imageSpan.length(), 0);
 
@@ -128,9 +143,25 @@ public final class SpanUtil {
     return imageSpan;
   }
 
+  public static CharSequence space(int width, @NonNull DimensionUnit widthUnit) {
+    Drawable drawable = new ColorDrawable(Color.TRANSPARENT);
+    drawable.setBounds(0, 0, (int) widthUnit.toPixels(width), 1);
+
+    return buildCenteredImageSpan(drawable);
+  }
+
   public static void appendCenteredImageSpan(@NonNull SpannableStringBuilder builder, @NonNull Drawable drawable, int width, int height) {
     drawable.setBounds(0, 0, ViewUtil.dpToPx(width), ViewUtil.dpToPx(height));
     builder.append(" ").append(SpanUtil.buildCenteredImageSpan(drawable));
+  }
+
+  public static void appendSpacer(@NonNull SpannableStringBuilder builder, int width) {
+    SpanUtil.appendCenteredImageSpanWithoutSpace(builder, new ColorDrawable(Color.TRANSPARENT), width, 8);
+  }
+
+  public static void appendCenteredImageSpanWithoutSpace(@NonNull SpannableStringBuilder builder, @NonNull Drawable drawable, int width, int height) {
+    drawable.setBounds(0, 0, ViewUtil.dpToPx(width), ViewUtil.dpToPx(height));
+    builder.append(SpanUtil.buildCenteredImageSpan(drawable));
   }
 
   public static CharSequence learnMore(@NonNull Context context,
@@ -167,6 +198,10 @@ public final class SpanUtil {
     return spannable;
   }
 
+  public static Spannable clickSubstring(@NonNull Context context, @StringRes int mainString, @StringRes int clickableString, @NonNull View.OnClickListener clickListener) {
+    return clickSubstring(context, mainString, clickableString, clickListener, false, R.color.signal_accent_primary);
+  }
+
   /**
    * Takes two resources:
    * - one resource that has a single string placeholder
@@ -179,8 +214,10 @@ public final class SpanUtil {
    *
    * -> This is a clickable string.
    * (where "clickable" is blue and will trigger the provided click listener when clicked)
+   *
+   * Can optionally configure the color & if it's underlined. Default is blue with no underline.
    */
-  public static Spannable clickSubstring(@NonNull Context context, @StringRes int mainString, @StringRes int clickableString, @NonNull View.OnClickListener clickListener) {
+  public static Spannable clickSubstring(@NonNull Context context, @StringRes int mainString, @StringRes int clickableString, @NonNull View.OnClickListener clickListener, boolean shouldUnderline, int linkColor) {
     String main      = context.getString(mainString, SPAN_PLACE_HOLDER);
     String clickable = context.getString(clickableString);
 
@@ -198,7 +235,8 @@ public final class SpanUtil {
       @Override
       public void updateDrawState(@NonNull TextPaint ds) {
         super.updateDrawState(ds);
-        ds.setUnderlineText(false);
+        ds.setUnderlineText(shouldUnderline);
+        ds.setColor(context.getResources().getColor(linkColor));
       }
     }, start, start + clickable.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
 
@@ -218,13 +256,21 @@ public final class SpanUtil {
   public static CharSequence clickSubstring(@NonNull CharSequence fullString,
                                             @NonNull CharSequence substring,
                                             @NonNull View.OnClickListener clickListener,
-                                            @ColorInt int linkColor)
+                                            @ColorInt int linkColor) {
+    return clickSubstring(fullString, substring, clickListener, linkColor, false);
+  }
+
+  public static CharSequence clickSubstring(@NonNull CharSequence fullString,
+                                            @NonNull CharSequence substring,
+                                            @NonNull View.OnClickListener clickListener,
+                                            @ColorInt int linkColor,
+                                            boolean shouldUnderline)
   {
     ClickableSpan clickable = new ClickableSpan() {
       @Override
       public void updateDrawState(@NonNull TextPaint ds) {
         super.updateDrawState(ds);
-        ds.setUnderlineText(false);
+        ds.setUnderlineText(shouldUnderline);
         ds.setColor(linkColor);
       }
 

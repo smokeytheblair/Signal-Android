@@ -3,7 +3,6 @@ package org.thoughtcrime.securesms.lock;
 import android.content.Context;
 import android.content.Intent;
 import android.text.Editable;
-import android.text.InputType;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -21,9 +20,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
-import androidx.autofill.HintConstants;
 import androidx.core.app.DialogCompat;
-import androidx.core.view.ViewCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -66,7 +63,7 @@ public final class SignalPinReminderDialog {
 
     EditText pinEditText = (EditText) DialogCompat.requireViewById(dialog, R.id.pin);
     TextView pinStatus   = (TextView) DialogCompat.requireViewById(dialog, R.id.pin_status);
-    TextView reminder    = (TextView) DialogCompat.requireViewById(dialog, R.id.reminder);
+    TextView reminder    = (TextView) DialogCompat.requireViewById(dialog, R.id.kbs_reminder_body);
     View     skip        = DialogCompat.requireViewById(dialog, R.id.skip);
     View     submit      = DialogCompat.requireViewById(dialog, R.id.submit);
 
@@ -74,16 +71,8 @@ public final class SignalPinReminderDialog {
     SpannableString forgotText   = new SpannableString(context.getString(R.string.KbsReminderDialog__forgot_pin));
 
     ViewUtil.focusAndShowKeyboard(pinEditText);
-    ViewCompat.setAutofillHints(pinEditText, HintConstants.AUTOFILL_HINT_PASSWORD);
 
-    switch (SignalStore.pinValues().getKeyboardType()) {
-      case NUMERIC:
-        pinEditText.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        break;
-      case ALPHA_NUMERIC:
-        pinEditText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        break;
-    }
+    SignalStore.pin().getKeyboardType().applyInputTypeTo(pinEditText);
 
     ClickableSpan clickableSpan = new ClickableSpan() {
       @Override

@@ -105,8 +105,13 @@ public final class PushDistributionListSendJob extends PushSendJob {
       }
 
       if (!message.getStoryType().isTextStory()) {
+        if (message.getAttachments().isEmpty()) {
+          Log.w(TAG, "No attachments found for message " + messageId + ". Ignoring.");
+          return;
+        }
+        
         DatabaseAttachment storyAttachment = (DatabaseAttachment) message.getAttachments().get(0);
-        SignalDatabase.attachments().updateAttachmentCaption(storyAttachment.getAttachmentId(), message.getBody());
+        SignalDatabase.attachments().updateAttachmentCaption(storyAttachment.attachmentId, message.getBody());
       }
 
       Set<String> attachmentUploadIds = enqueueCompressingAndUploadAttachmentsChains(jobManager, message);
@@ -169,9 +174,9 @@ public final class PushDistributionListSendJob extends PushSendJob {
       if (Util.hasItems(filterRecipientIds)) {
         targets = new ArrayList<>(filterRecipientIds.size() + existingNetworkFailures.size());
         targets.addAll(filterRecipientIds.stream().map(Recipient::resolved).collect(Collectors.toList()));
-        targets.addAll(existingNetworkFailures.stream().map(nf -> nf.getRecipientId(context)).distinct().map(Recipient::resolved).collect(Collectors.toList()));
+        targets.addAll(existingNetworkFailures.stream().map(NetworkFailure::getRecipientId).distinct().map(Recipient::resolved).collect(Collectors.toList()));
       } else if (!existingNetworkFailures.isEmpty()) {
-        targets = Stream.of(existingNetworkFailures).map(nf -> nf.getRecipientId(context)).distinct().map(Recipient::resolved).toList();
+        targets = Stream.of(existingNetworkFailures).map(NetworkFailure::getRecipientId).distinct().map(Recipient::resolved).toList();
       } else {
         Stories.SendData data = Stories.getRecipientsToSendTo(messageId, message.getSentTimeMillis(), message.getStoryType().isStoryWithReplies());
         targets = data.getTargets();

@@ -3,8 +3,8 @@ package org.thoughtcrime.securesms.database
 import android.database.Cursor
 import androidx.core.content.contentValuesOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.hamcrest.MatcherAssert
-import org.hamcrest.Matchers
+import assertk.assertThat
+import assertk.assertions.containsExactlyInAnyOrder
 import org.junit.Assert
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,8 +14,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.signal.core.util.Base64
 import org.signal.core.util.SqlUtil
 import org.signal.core.util.exists
+import org.signal.core.util.orNull
+import org.signal.core.util.readToSingleBoolean
 import org.signal.core.util.requireLong
 import org.signal.core.util.requireNonNullString
 import org.signal.core.util.select
@@ -31,17 +34,13 @@ import org.thoughtcrime.securesms.database.model.MessageRecord
 import org.thoughtcrime.securesms.database.model.ReactionRecord
 import org.thoughtcrime.securesms.database.model.databaseprotos.SessionSwitchoverEvent
 import org.thoughtcrime.securesms.database.model.databaseprotos.ThreadMergeEvent
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.keyvalue.SignalStore
-import org.thoughtcrime.securesms.mms.IncomingMediaMessage
+import org.thoughtcrime.securesms.mms.IncomingMessage
 import org.thoughtcrime.securesms.notifications.profiles.NotificationProfile
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.thoughtcrime.securesms.sms.IncomingTextMessage
-import org.thoughtcrime.securesms.util.Base64
-import org.thoughtcrime.securesms.util.FeatureFlags
-import org.thoughtcrime.securesms.util.FeatureFlagsAccessor
 import org.thoughtcrime.securesms.util.Util
 import org.whispersystems.signalservice.api.push.ServiceId.ACI
 import org.whispersystems.signalservice.api.push.ServiceId.PNI
@@ -54,10 +53,9 @@ class RecipientTableTest_getAndPossiblyMerge {
 
   @Before
   fun setup() {
-    SignalStore.account().setE164(E164_SELF)
-    SignalStore.account().setAci(ACI_SELF)
-    SignalStore.account().setPni(PNI_SELF)
-    FeatureFlagsAccessor.forceValue(FeatureFlags.PHONE_NUMBER_PRIVACY, true)
+    SignalStore.account.setE164(E164_SELF)
+    SignalStore.account.setAci(ACI_SELF)
+    SignalStore.account.setPni(PNI_SELF)
   }
 
   @Test
@@ -109,6 +107,18 @@ class RecipientTableTest_getAndPossiblyMerge {
       val record = SignalDatabase.recipients.getRecord(id)
       assertEquals(RecipientTable.RegisteredState.REGISTERED, record.registered)
     }
+
+    test("e164+pni+aci insert, pni verified") {
+      val id = process(E164_A, PNI_A, ACI_A, pniVerified = true)
+      expect(E164_A, PNI_A, ACI_A)
+      expectPniVerified()
+
+      val record = SignalDatabase.recipients.getRecord(id)
+      assertEquals(RecipientTable.RegisteredState.REGISTERED, record.registered)
+
+      process(E164_A, PNI_A, ACI_A, pniVerified = false)
+      expectPniVerified()
+    }
   }
 
   @Test
@@ -140,6 +150,31 @@ class RecipientTableTest_getAndPossiblyMerge {
 
     test("no match, no data", exception = java.lang.IllegalArgumentException::class.java) {
       process(null, null, null)
+    }
+
+    test("pni matches, pni+aci provided, no pni session") {
+      given(E164_A, PNI_A, null)
+      process(null, PNI_A, ACI_A)
+      expect(E164_A, PNI_A, ACI_A)
+
+      expectNoSessionSwitchoverEvent()
+    }
+
+    test("pni matches, pni+aci provided, pni session") {
+      given(E164_A, PNI_A, null, pniSession = true)
+      process(null, PNI_A, ACI_A)
+      expect(E164_A, PNI_A, ACI_A)
+
+      expectSessionSwitchoverEvent(E164_A)
+    }
+
+    test("pni matches, pni+aci provided, pni session, pni-verified") {
+      given(E164_A, PNI_A, null, pniSession = true)
+      process(null, PNI_A, ACI_A, pniVerified = true)
+      expect(E164_A, PNI_A, ACI_A)
+
+      expectNoSessionSwitchoverEvent()
+      expectPniVerified()
     }
 
     test("no match, all fields") {
@@ -201,6 +236,8 @@ class RecipientTableTest_getAndPossiblyMerge {
       given(E164_A, PNI_A, null, pniSession = true)
       process(E164_A, PNI_A, ACI_A, pniVerified = true)
       expect(E164_A, PNI_A, ACI_A)
+
+      expectPniVerified()
     }
 
     test("e164 and aci matches, all provided, new pni") {
@@ -502,6 +539,18 @@ class RecipientTableTest_getAndPossiblyMerge {
       expectNoSessionSwitchoverEvent()
     }
 
+    test("steal, e164+pni+aci * pni+aci, all provided, aci sessions but not pni sessions, no SSE expected") {
+      given(E164_A, PNI_A, ACI_A, createThread = true, aciSession = true, pniSession = false)
+      given(null, PNI_B, ACI_B, createThread = false, aciSession = true, pniSession = false)
+
+      process(E164_A, PNI_B, ACI_A)
+
+      expect(E164_A, PNI_B, ACI_A)
+      expect(null, null, ACI_B)
+
+      expectNoSessionSwitchoverEvent()
+    }
+
     test("merge, e164 & pni & aci, all provided") {
       given(E164_A, null, null)
       given(null, PNI_A, null)
@@ -658,6 +707,8 @@ class RecipientTableTest_getAndPossiblyMerge {
 
       expectDeleted()
       expect(E164_A, PNI_A, ACI_A)
+
+      expectPniVerified()
     }
 
     test("merge, e164+pni & aci, pni session, pni verified") {
@@ -670,6 +721,7 @@ class RecipientTableTest_getAndPossiblyMerge {
       expect(E164_A, PNI_A, ACI_A)
 
       expectThreadMergeEvent(E164_A)
+      expectPniVerified()
     }
 
     test("merge, e164+pni & e164+pni+aci, change number") {
@@ -724,6 +776,18 @@ class RecipientTableTest_getAndPossiblyMerge {
       expectThreadMergeEvent(E164_A)
     }
 
+    test("merge, e164+pni & e164+aci, pni+aci provided, change number") {
+      given(E164_A, PNI_A, null)
+      given(E164_B, null, ACI_A)
+
+      process(null, PNI_A, ACI_A)
+
+      expect(E164_A, PNI_A, ACI_A)
+
+      expectThreadMergeEvent(E164_A)
+      expectChangeNumberEvent()
+    }
+
     test("merge, e164 + pni reassigned, aci abandoned") {
       given(E164_A, PNI_A, ACI_A)
       given(E164_B, PNI_B, ACI_B)
@@ -734,6 +798,17 @@ class RecipientTableTest_getAndPossiblyMerge {
       expect(E164_A, PNI_A, ACI_B)
 
       expectChangeNumberEvent()
+    }
+
+    test("merge, e164 follows pni+aci") {
+      given(E164_A, PNI_A, null)
+      given(null, null, ACI_A)
+
+      process(null, PNI_A, ACI_A, pniVerified = true)
+
+      expect(E164_A, PNI_A, ACI_A)
+      expectThreadMergeEvent(E164_A)
+      expectPniVerified()
     }
 
     test("local user, local e164 and aci provided, changeSelf=false, leave e164 alone") {
@@ -789,9 +864,9 @@ class RecipientTableTest_getAndPossiblyMerge {
     val smsId2: Long = SignalDatabase.messages.insertMessageInbox(smsMessage(sender = recipientIdE164, time = 1, body = "1")).get().messageId
     val smsId3: Long = SignalDatabase.messages.insertMessageInbox(smsMessage(sender = recipientIdAci, time = 2, body = "2")).get().messageId
 
-    val mmsId1: Long = SignalDatabase.messages.insertSecureDecryptedMessageInbox(mmsMessage(sender = recipientIdAci, time = 3, body = "3"), -1).get().messageId
-    val mmsId2: Long = SignalDatabase.messages.insertSecureDecryptedMessageInbox(mmsMessage(sender = recipientIdE164, time = 4, body = "4"), -1).get().messageId
-    val mmsId3: Long = SignalDatabase.messages.insertSecureDecryptedMessageInbox(mmsMessage(sender = recipientIdAci, time = 5, body = "5"), -1).get().messageId
+    val mmsId1: Long = SignalDatabase.messages.insertMessageInbox(mmsMessage(sender = recipientIdAci, time = 3, body = "3"), -1).get().messageId
+    val mmsId2: Long = SignalDatabase.messages.insertMessageInbox(mmsMessage(sender = recipientIdE164, time = 4, body = "4"), -1).get().messageId
+    val mmsId3: Long = SignalDatabase.messages.insertMessageInbox(mmsMessage(sender = recipientIdAci, time = 5, body = "5"), -1).get().messageId
 
     val threadIdAci: Long = SignalDatabase.threads.getThreadIdFor(recipientIdAci)!!
     val threadIdE164: Long = SignalDatabase.threads.getThreadIdFor(recipientIdE164)!!
@@ -838,8 +913,8 @@ class RecipientTableTest_getAndPossiblyMerge {
 
     // Thread validation
     assertEquals(threadIdAci, retrievedThreadId)
-    Assert.assertNull(SignalDatabase.threads.getThreadIdFor(recipientIdE164))
-    Assert.assertNull(SignalDatabase.threads.getThreadRecord(threadIdE164))
+    assertNull(SignalDatabase.threads.getThreadIdFor(recipientIdE164))
+    assertNull(SignalDatabase.threads.getThreadRecord(threadIdE164))
 
     // SMS validation
     val sms1: MessageRecord = SignalDatabase.messages.getMessageRecord(smsId1)!!
@@ -883,10 +958,10 @@ class RecipientTableTest_getAndPossiblyMerge {
 
     // Identity validation
     assertEquals(identityKeyAci, SignalDatabase.identities.getIdentityStoreRecord(ACI_A.toString())!!.identityKey)
-    Assert.assertNull(SignalDatabase.identities.getIdentityStoreRecord(E164_A))
+    assertNull(SignalDatabase.identities.getIdentityStoreRecord(E164_A))
 
     // Session validation
-    Assert.assertNotNull(SignalDatabase.sessions.load(ACI_SELF, SignalProtocolAddress(ACI_A.toString(), 1)))
+    assertNotNull(SignalDatabase.sessions.load(ACI_SELF, SignalProtocolAddress(ACI_A.toString(), 1)))
 
     // Reaction validation
     val reactionsSms: List<ReactionRecord> = SignalDatabase.reactions.getReactions(MessageId(smsId1))
@@ -902,21 +977,42 @@ class RecipientTableTest_getAndPossiblyMerge {
     val updatedProfile1: NotificationProfile = SignalDatabase.notificationProfiles.getProfile(profile1.id)!!
     val updatedProfile2: NotificationProfile = SignalDatabase.notificationProfiles.getProfile(profile2.id)!!
 
-    MatcherAssert.assertThat("Notification Profile 1 should now only contain ACI $recipientIdAci", updatedProfile1.allowedMembers, Matchers.containsInAnyOrder(recipientIdAci))
-    MatcherAssert.assertThat("Notification Profile 2 should now contain ACI A ($recipientIdAci) and ACI B ($recipientIdAciB)", updatedProfile2.allowedMembers, Matchers.containsInAnyOrder(recipientIdAci, recipientIdAciB))
+    assertThat(updatedProfile1.allowedMembers, "Notification Profile 1 should now only contain ACI $recipientIdAci")
+      .containsExactlyInAnyOrder(recipientIdAci)
+    assertThat(updatedProfile2.allowedMembers, "Notification Profile 2 should now contain ACI A ($recipientIdAci) and ACI B ($recipientIdAciB)")
+      .containsExactlyInAnyOrder(recipientIdAci, recipientIdAciB)
 
     // Distribution List validation
     val updatedList: DistributionListRecord = SignalDatabase.distributionLists.getList(distributionListId)!!
 
-    MatcherAssert.assertThat("Distribution list should have updated $recipientIdE164 to $recipientIdAci", updatedList.members, Matchers.containsInAnyOrder(recipientIdAci, recipientIdAciB))
+    assertThat(updatedList.members, "Distribution list should have updated $recipientIdE164 to $recipientIdAci")
+      .containsExactlyInAnyOrder(recipientIdAci, recipientIdAciB)
   }
 
-  private fun smsMessage(sender: RecipientId, time: Long = 0, body: String = "", groupId: Optional<GroupId> = Optional.empty()): IncomingTextMessage {
-    return IncomingTextMessage(sender, 1, time, time, time, body, groupId, 0, true, null)
+  private fun smsMessage(sender: RecipientId, time: Long = 0, body: String = "", groupId: Optional<GroupId> = Optional.empty()): IncomingMessage {
+    return IncomingMessage(
+      type = MessageType.NORMAL,
+      from = sender,
+      sentTimeMillis = time,
+      serverTimeMillis = time,
+      receivedTimeMillis = time,
+      body = body,
+      groupId = groupId.orNull(),
+      isUnidentified = true
+    )
   }
 
-  private fun mmsMessage(sender: RecipientId, time: Long = 0, body: String = "", groupId: Optional<GroupId> = Optional.empty()): IncomingMediaMessage {
-    return IncomingMediaMessage(sender, groupId, body, time, time, time, emptyList(), 0, 0, false, false, true, Optional.empty(), false, false)
+  private fun mmsMessage(sender: RecipientId, time: Long = 0, body: String = "", groupId: Optional<GroupId> = Optional.empty()): IncomingMessage {
+    return IncomingMessage(
+      type = MessageType.NORMAL,
+      from = sender,
+      groupId = groupId.orNull(),
+      body = body,
+      sentTimeMillis = time,
+      receivedTimeMillis = time,
+      serverTimeMillis = time,
+      isUnidentified = true
+    )
   }
 
   private fun identityKey(value: Byte): IdentityKey {
@@ -933,7 +1029,7 @@ class RecipientTableTest_getAndPossiblyMerge {
   }
 
   private fun notificationProfile(name: String): NotificationProfile {
-    return (SignalDatabase.notificationProfiles.createProfile(name = name, emoji = "", color = AvatarColor.A210, System.currentTimeMillis()) as NotificationProfileDatabase.NotificationProfileChangeResult.Success).notificationProfile
+    return (SignalDatabase.notificationProfiles.createProfile(name = name, emoji = "", color = AvatarColor.A210, System.currentTimeMillis()) as NotificationProfileTables.NotificationProfileChangeResult.Success).notificationProfile
   }
 
   private fun getMention(messageId: Long): MentionModel {
@@ -983,6 +1079,10 @@ class RecipientTableTest_getAndPossiblyMerge {
       if (!test.sessionSwitchoverExpected) {
         test.expectNoSessionSwitchoverEvent()
       }
+
+      if (!test.pniVerifiedExpected) {
+        test.expectPniNotVerified()
+      }
     } catch (e: Throwable) {
       if (e.javaClass != exception) {
         val error = java.lang.AssertionError("[$name] ${e.message}")
@@ -1002,11 +1102,12 @@ class RecipientTableTest_getAndPossiblyMerge {
     var changeNumberExpected = false
     var threadMergeExpected = false
     var sessionSwitchoverExpected = false
+    var pniVerifiedExpected = false
 
     init {
       // Need to delete these first to prevent foreign key crash
-      SignalDatabase.rawDatabase.execSQL("DELETE FROM distribution_list")
-      SignalDatabase.rawDatabase.execSQL("DELETE FROM distribution_list_member")
+      SignalDatabase.rawDatabase.execSQL("DELETE FROM ${DistributionListTables.ListTable.TABLE_NAME}")
+      SignalDatabase.rawDatabase.execSQL("DELETE FROM ${DistributionListTables.MembershipTable.TABLE_NAME}")
 
       SqlUtil.getAllTables(SignalDatabase.rawDatabase)
         .filterNot { it.contains("sqlite") || it.contains("fts") || it.startsWith("emoji_search_") } // If we delete these we'll corrupt the DB
@@ -1015,8 +1116,8 @@ class RecipientTableTest_getAndPossiblyMerge {
           SignalDatabase.rawDatabase.execSQL("DELETE FROM $table")
         }
 
-      ApplicationDependencies.getRecipientCache().clear()
-      ApplicationDependencies.getRecipientCache().clearSelf()
+      AppDependencies.recipientCache.clear()
+      AppDependencies.recipientCache.clearSelf()
       RecipientId.clearCache()
     }
 
@@ -1151,6 +1252,24 @@ class RecipientTableTest_getAndPossiblyMerge {
 
     fun expectNoThreadMergeEvent() {
       assertNull("Unexpected thread merge event!", getLatestThreadMergeEvent(outputRecipientId))
+    }
+
+    fun expectPniVerified() {
+      assertTrue("Expected PNI to be verified!", isPniVerified(outputRecipientId))
+      pniVerifiedExpected = true
+    }
+
+    fun expectPniNotVerified() {
+      assertFalse("Expected PNI to be not be verified!", isPniVerified(outputRecipientId))
+    }
+
+    private fun isPniVerified(recipientId: RecipientId): Boolean {
+      return SignalDatabase.rawDatabase
+        .select(RecipientTable.PNI_SIGNATURE_VERIFIED)
+        .from(RecipientTable.TABLE_NAME)
+        .where("${RecipientTable.ID} = ?", recipientId)
+        .run()
+        .readToSingleBoolean(false)
     }
 
     private fun insert(e164: String?, pni: PNI?, aci: ACI?): RecipientId {

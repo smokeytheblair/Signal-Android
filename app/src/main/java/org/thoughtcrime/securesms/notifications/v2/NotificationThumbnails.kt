@@ -2,15 +2,18 @@ package org.thoughtcrime.securesms.notifications.v2
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import org.signal.core.util.asListContains
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.database.model.MessageId
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
-import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader
+import org.thoughtcrime.securesms.dependencies.AppDependencies
+import org.thoughtcrime.securesms.mms.DecryptableUri
 import org.thoughtcrime.securesms.mms.Slide
 import org.thoughtcrime.securesms.providers.BlobProvider
 import org.thoughtcrime.securesms.util.BitmapDecodingException
 import org.thoughtcrime.securesms.util.ImageCompressionUtil
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.kb
 import org.thoughtcrime.securesms.util.mb
 
@@ -32,6 +35,47 @@ object NotificationThumbnails {
   private val executor = SignalExecutors.BOUNDED_IO
 
   private val thumbnailCache = LinkedHashMap<MessageId, CachedThumbnail>(MAX_CACHE_SIZE)
+
+  /**
+   * Some devices are hitting weird issues when rendering notification thumbnails. It's only a few specific older models, so rather than try to figure out the
+   * specifics here, we'll just disable notification thumbnails for them.
+   */
+  private val isBlocklisted by lazy {
+    RemoteConfig.notificationThumbnailProductBlocklist.asListContains(Build.PRODUCT)
+  }
+
+  fun getWithoutModifying(notificationItem: NotificationItem): NotificationItem.ThumbnailInfo {
+    val thumbnailSlide: Slide? = notificationItem.slideDeck?.thumbnailSlide
+
+    if (isBlocklisted) {
+      return NotificationItem.ThumbnailInfo.NONE
+    }
+
+    if (thumbnailSlide == null || thumbnailSlide.uri == null) {
+      return NotificationItem.ThumbnailInfo.NONE
+    }
+
+    if (thumbnailSlide.fileSize > SUPPORTED_SIZE_THRESHOLD) {
+      return NotificationItem.ThumbnailInfo.NONE
+    }
+
+    if (thumbnailSlide.fileSize < TARGET_SIZE) {
+      return NotificationItem.ThumbnailInfo(thumbnailSlide.publicUri, thumbnailSlide.contentType)
+    }
+
+    val messageId = MessageId(notificationItem.id)
+    val thumbnail: CachedThumbnail? = synchronized(thumbnailCache) { thumbnailCache[messageId] }
+
+    if (thumbnail != null) {
+      return if (thumbnail != CachedThumbnail.PENDING) {
+        NotificationItem.ThumbnailInfo(thumbnail.uri, thumbnail.contentType)
+      } else {
+        NotificationItem.ThumbnailInfo.NONE
+      }
+    }
+
+    return NotificationItem.ThumbnailInfo.NEEDS_SHRINKING
+  }
 
   fun get(context: Context, notificationItem: NotificationItem): NotificationItem.ThumbnailInfo {
     val thumbnailSlide: Slide? = notificationItem.slideDeck?.thumbnailSlide
@@ -72,7 +116,7 @@ object NotificationThumbnails {
           ImageCompressionUtil.compressWithinConstraints(
             context,
             thumbnailSlide.contentType,
-            DecryptableStreamUriLoader.DecryptableUri(uri),
+            DecryptableUri(uri),
             1024,
             TARGET_SIZE,
             60
@@ -99,7 +143,7 @@ object NotificationThumbnails {
             thumbnailCache[messageId] = CachedThumbnail(thumbnailUri, result.mimeType)
           }
 
-          ApplicationDependencies.getMessageNotifier().updateNotification(context, notificationItem.thread)
+          AppDependencies.messageNotifier.updateNotification(context, notificationItem.thread)
         } else {
           Log.i(TAG, "Unable to compress attachment thumbnail for $messageId")
         }

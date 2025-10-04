@@ -18,7 +18,9 @@ import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.appcompat.widget.Toolbar;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.navigation.Navigation;
 
 import com.annimon.stream.Stream;
 
@@ -40,7 +42,7 @@ public class HelpFragment extends LoggingFragment {
   public static final String START_CATEGORY_INDEX = "start_category_index";
   public static final int    PAYMENT_INDEX        = 6;
   public static final int    DONATION_INDEX       = 7;
-  public static final int    SMS_EXPORT_INDEX     = 8;
+  public static final int    REMOTE_BACKUPS_INDEX = 8;
 
   private EditText                       problem;
   private CheckBox                       includeDebugLogs;
@@ -61,6 +63,7 @@ public class HelpFragment extends LoggingFragment {
   @Override
   public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
     initializeViewModels();
+    initializeToolbar(view);
     initializeViews(view);
     initializeListeners();
     initializeObservers();
@@ -94,7 +97,7 @@ public class HelpFragment extends LoggingFragment {
       emoji.add(view.findViewById(feeling.getViewId()));
     }
 
-    categoryAdapter = ArrayAdapter.createFromResource(requireContext(), R.array.HelpFragment__categories_5, android.R.layout.simple_spinner_item);
+    categoryAdapter = ArrayAdapter.createFromResource(requireContext(), R.array.HelpFragment__categories_6, android.R.layout.simple_spinner_item);
     categoryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
 
     categorySpinner.setAdapter(categoryAdapter);
@@ -136,6 +139,11 @@ public class HelpFragment extends LoggingFragment {
       next.setEnabled(isValid);
       toaster.setVisibility(isValid ? View.GONE : View.VISIBLE);
     });
+  }
+
+  private void initializeToolbar(@NonNull View view) {
+    Toolbar toolbar = view.findViewById(R.id.toolbar);
+    toolbar.setNavigationOnClickListener(v -> Navigation.findNavController(v).navigateUp());
   }
 
   private void handleEmojiClicked(@NonNull View clicked) {
@@ -210,7 +218,7 @@ public class HelpFragment extends LoggingFragment {
       suffix.append(getString(feeling.getStringId()));
     }
 
-    String[] englishCategories = ResourceUtil.getEnglishResources(requireContext()).getStringArray(R.array.HelpFragment__categories_5);
+    String[] englishCategories = ResourceUtil.getEnglishResources(requireContext()).getStringArray(R.array.HelpFragment__categories_6);
     String   category          = (helpViewModel.getCategoryIndex() >= 0 && helpViewModel.getCategoryIndex() < englishCategories.length) ? englishCategories[helpViewModel.getCategoryIndex()]
                                                                                                                                         : categoryAdapter.getItem(helpViewModel.getCategoryIndex()).toString();
 

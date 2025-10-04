@@ -8,16 +8,16 @@ package org.thoughtcrime.securesms.service.webrtc
 import org.signal.core.util.logging.Log
 import org.signal.libsignal.zkgroup.GenericServerPublicParams
 import org.signal.libsignal.zkgroup.InvalidInputException
+import org.signal.libsignal.zkgroup.ServerPublicParams
 import org.signal.libsignal.zkgroup.VerificationFailedException
 import org.signal.libsignal.zkgroup.calllinks.CallLinkSecretParams
 import org.signal.ringrtc.CallException
 import org.signal.ringrtc.CallLinkRootKey
 import org.thoughtcrime.securesms.database.SignalDatabase.Companion.callLinks
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.events.WebRtcViewModel
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.ringrtc.RemotePeer
-import org.thoughtcrime.securesms.service.webrtc.RingRtcDynamicConfiguration.getAudioProcessingMethod
 import org.thoughtcrime.securesms.service.webrtc.state.WebRtcServiceState
 import org.thoughtcrime.securesms.util.NetworkUtil
 import java.io.IOException
@@ -34,6 +34,11 @@ class CallLinkPreJoinActionProcessor(
     private val TAG = Log.tag(CallLinkPreJoinActionProcessor::class.java)
   }
 
+  override fun handleSetRingGroup(currentState: WebRtcServiceState, ringGroup: Boolean): WebRtcServiceState {
+    Log.i(TAG, "handleSetRingGroup(): Ignoring.")
+    return currentState
+  }
+
   override fun handlePreJoinCall(currentState: WebRtcServiceState, remotePeer: RemotePeer): WebRtcServiceState {
     Log.i(TAG, "handlePreJoinCall():")
 
@@ -46,23 +51,30 @@ class CallLinkPreJoinActionProcessor(
       val callLinkRootKey = CallLinkRootKey(callLink.credentials.linkKeyBytes)
       val callLinkSecretParams = CallLinkSecretParams.deriveFromRootKey(callLink.credentials.linkKeyBytes)
       val genericServerPublicParams = GenericServerPublicParams(
-        ApplicationDependencies.getSignalServiceNetworkAccess()
+        AppDependencies.signalServiceNetworkAccess
           .getConfiguration()
           .genericServerPublicParams
       )
+      val serverPublicParams = ServerPublicParams(
+        AppDependencies.signalServiceNetworkAccess
+          .getConfiguration()
+          .zkGroupServerPublicParams
+      )
 
-      val callLinkAuthCredentialPresentation = ApplicationDependencies
-        .getGroupsV2Authorization()
+      val callLinkAuthCredentialPresentation = AppDependencies
+        .groupsV2Authorization
         .getCallLinkAuthorizationForToday(genericServerPublicParams, callLinkSecretParams)
 
       webRtcInteractor.callManager.createCallLinkCall(
-        SignalStore.internalValues().groupCallingServer(),
+        SignalStore.internal.groupCallingServer,
+        serverPublicParams.endorsementPublicKey,
         callLinkAuthCredentialPresentation.serialize(),
         callLinkRootKey,
+        callLink.credentials.epoch,
         callLink.credentials.adminPassBytes,
         ByteArray(0),
         AUDIO_LEVELS_INTERVAL,
-        getAudioProcessingMethod(),
+        RingRtcDynamicConfiguration.getAudioConfig(),
         webRtcInteractor.groupCallObserver
       )
     } catch (e: InvalidInputException) {
@@ -85,7 +97,7 @@ class CallLinkPreJoinActionProcessor(
       return groupCallFailure(currentState, "Unable to connect to call link", e)
     }
 
-    SignalStore.tooltips().markGroupCallingLobbyEntered()
+    SignalStore.tooltips.markGroupCallingLobbyEntered()
     return currentState.builder()
       .changeCallSetupState(RemotePeer.GROUP_CALL_ID)
       .setRingGroup(false)

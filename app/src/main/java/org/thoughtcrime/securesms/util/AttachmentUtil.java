@@ -4,17 +4,20 @@ package org.thoughtcrime.securesms.util;
 import android.content.Context;
 import android.text.TextUtils;
 
+import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
 import org.signal.core.util.logging.Log;
+import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.attachments.AttachmentId;
 import org.thoughtcrime.securesms.attachments.DatabaseAttachment;
 import org.thoughtcrime.securesms.database.NoSuchMessageException;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.jobmanager.impl.NotInCallConstraint;
+import org.thoughtcrime.securesms.jobs.MultiDeviceDeleteSyncJob;
 import org.thoughtcrime.securesms.recipients.Recipient;
 
 import java.util.Collections;
@@ -24,6 +27,21 @@ public class AttachmentUtil {
 
   private static final String TAG = Log.tag(AttachmentUtil.class);
 
+  @MainThread
+  public static boolean isRestoreOnOpenPermitted(@NonNull Context context, @Nullable Attachment attachment) {
+    if (attachment == null) {
+      Log.w(TAG, "attachment was null, returning vacuous true");
+      return true;
+    }
+    Set<String> allowedTypes = getAllowedAutoDownloadTypes(context);
+    String      contentType  = attachment.contentType;
+
+    if (MediaUtil.isImageType(contentType)) {
+      return NotInCallConstraint.isNotInConnectedCall() && allowedTypes.contains(MediaUtil.getDiscreteMimeType(contentType));
+    }
+    return false;
+  }
+  
   @WorkerThread
   public static boolean isAutoDownloadPermitted(@NonNull Context context, @Nullable DatabaseAttachment attachment) {
     if (attachment == null) {
@@ -37,15 +55,15 @@ public class AttachmentUtil {
     }
 
     Set<String> allowedTypes = getAllowedAutoDownloadTypes(context);
-    String      contentType  = attachment.getContentType();
+    String      contentType  = attachment.contentType;
 
-    if (attachment.isVoiceNote()                                                       ||
-        (MediaUtil.isAudio(attachment) && TextUtils.isEmpty(attachment.getFileName())) ||
-        MediaUtil.isLongTextType(attachment.getContentType())                          ||
+    if (attachment.voiceNote ||
+        (MediaUtil.isAudio(attachment) && TextUtils.isEmpty(attachment.fileName)) ||
+        MediaUtil.isLongTextType(attachment.contentType) ||
         attachment.isSticker())
     {
       return true;
-    } else if (attachment.isVideoGif()) {
+    } else if (attachment.videoGif) {
       boolean allowed = NotInCallConstraint.isNotInConnectedCall() && allowedTypes.contains("image");
       if (!allowed) {
         Log.w(TAG, "Not auto downloading. inCall: " + NotInCallConstraint.isNotInConnectedCall() + " allowedType: " + allowedTypes.contains("image"));
@@ -69,22 +87,27 @@ public class AttachmentUtil {
   /**
    * Deletes the specified attachment. If its the only attachment for its linked message, the entire
    * message is deleted.
+   *
+   * @return message record of deleted message if a message is deleted
    */
   @WorkerThread
-  public static void deleteAttachment(@NonNull Context context,
-                                      @NonNull DatabaseAttachment attachment)
-  {
-    AttachmentId attachmentId    = attachment.getAttachmentId();
-    long         mmsId           = attachment.getMmsId();
+  public static @Nullable MessageRecord deleteAttachment(@NonNull DatabaseAttachment attachment) {
+    AttachmentId attachmentId    = attachment.attachmentId;
+    long         mmsId           = attachment.mmsId;
     int          attachmentCount = SignalDatabase.attachments()
                                                  .getAttachmentsForMessage(mmsId)
                                                  .size();
 
+    MessageRecord deletedMessageRecord = null;
     if (attachmentCount <= 1) {
+      deletedMessageRecord = SignalDatabase.messages().getMessageRecordOrNull(mmsId);
       SignalDatabase.messages().deleteMessage(mmsId);
     } else {
       SignalDatabase.attachments().deleteAttachment(attachmentId);
+      MultiDeviceDeleteSyncJob.enqueueAttachmentDelete(SignalDatabase.messages().getMessageRecordOrNull(mmsId), attachment);
     }
+
+    return deletedMessageRecord;
   }
 
   private static boolean isNonDocumentType(String contentType) {
@@ -104,7 +127,7 @@ public class AttachmentUtil {
   @WorkerThread
   private static boolean isFromTrustedConversation(@NonNull Context context, @NonNull DatabaseAttachment attachment) {
     try {
-      MessageRecord message = SignalDatabase.messages().getMessageRecord(attachment.getMmsId());
+      MessageRecord message = SignalDatabase.messages().getMessageRecord(attachment.mmsId);
 
       Recipient fromRecipient = message.getFromRecipient();
       Recipient toRecipient   = SignalDatabase.threads().getRecipientForThreadId(message.getThreadId());

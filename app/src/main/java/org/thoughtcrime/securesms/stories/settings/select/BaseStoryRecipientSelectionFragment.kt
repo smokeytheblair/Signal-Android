@@ -15,6 +15,7 @@ import org.thoughtcrime.securesms.ContactSelectionListFragment
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.contacts.ContactSelectionDisplayMode
 import org.thoughtcrime.securesms.contacts.HeaderAction
+import org.thoughtcrime.securesms.contacts.paged.ChatType
 import org.thoughtcrime.securesms.contacts.selection.ContactSelectionArguments
 import org.thoughtcrime.securesms.database.model.DistributionListId
 import org.thoughtcrime.securesms.groups.SelectionLimits
@@ -76,8 +77,13 @@ abstract class BaseStoryRecipientSelectionFragment : Fragment(R.layout.stories_b
     }
 
     viewModel.state.observe(viewLifecycleOwner) {
+      actionButton.isEnabled = it.selection.isNotEmpty()
+
       if (it.distributionListId == null || it.privateStory != null) {
-        getAttachedContactSelectionFragment().markSelected(it.selection.toSet())
+        if (it.isStartingSelection) {
+          getAttachedContactSelectionFragment().markSelected(it.selection.toSet())
+          viewModel.onStartingSelectionAdded()
+        }
         presentTitle(toolbar, it.selection.size)
       }
     }
@@ -86,7 +92,7 @@ abstract class BaseStoryRecipientSelectionFragment : Fragment(R.layout.stories_b
       when (action) {
         is BaseStoryRecipientSelectionViewModel.Action.ExitFlow -> exitFlow()
         is BaseStoryRecipientSelectionViewModel.Action.GoToNextScreen -> goToNextScreen(
-          getAttachedContactSelectionFragment().selectedContacts.map { it.getOrCreateRecipientId(requireContext()) }.toSet()
+          getAttachedContactSelectionFragment().selectedContacts.map { it.getOrCreateRecipientId() }.toSet()
         )
       }
     }
@@ -117,13 +123,17 @@ abstract class BaseStoryRecipientSelectionFragment : Fragment(R.layout.stories_b
     }
   }
 
-  override fun onBeforeContactSelected(isFromUnknownSearchKey: Boolean, recipientId: Optional<RecipientId>, number: String?, callback: Consumer<Boolean>) {
+  override fun onBeforeContactSelected(isFromUnknownSearchKey: Boolean, recipientId: Optional<RecipientId>, number: String?, chatType: Optional<ChatType>, callback: Consumer<Boolean>) {
     viewModel.addRecipient(recipientId.get())
-    searchField.setText("")
+
+    if (searchField.text.isNotBlank()) {
+      searchField.setText("")
+    }
+
     callback.accept(true)
   }
 
-  override fun onContactDeselected(recipientId: Optional<RecipientId>, number: String?) {
+  override fun onContactDeselected(recipientId: Optional<RecipientId>, number: String?, chatType: Optional<ChatType>) {
     viewModel.removeRecipient(recipientId.get())
   }
 
@@ -133,7 +143,9 @@ abstract class BaseStoryRecipientSelectionFragment : Fragment(R.layout.stories_b
     return HeaderAction(
       R.string.BaseStoryRecipientSelectionFragment__select_all
     ) {
-      viewModel.toggleSelectAll()
+      lifecycleDisposable += viewModel.toggleSelectAll().subscribe { updatedRecipients ->
+        getAttachedContactSelectionFragment().markSelected(updatedRecipients)
+      }
     }
   }
 

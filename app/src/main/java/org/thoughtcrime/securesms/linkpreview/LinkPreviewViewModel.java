@@ -13,7 +13,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import org.signal.core.util.ThreadUtil;
 import org.thoughtcrime.securesms.attachments.AttachmentId;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.net.RequestController;
 import org.thoughtcrime.securesms.util.Debouncer;
@@ -50,14 +50,6 @@ public class LinkPreviewViewModel extends ViewModel {
     return linkPreviewSafeState;
   }
 
-  public boolean hasLinkPreview() {
-    return linkPreviewSafeState.getValue() != null && linkPreviewSafeState.getValue().getLinkPreview().isPresent();
-  }
-
-  public boolean hasLinkPreviewUi() {
-    return linkPreviewSafeState.getValue() != null && linkPreviewSafeState.getValue().hasContent();
-  }
-
   /**
    * Gets the current state for use in the UI, then resets local state to prepare for the next message send.
    */
@@ -75,10 +67,10 @@ public class LinkPreviewViewModel extends ViewModel {
     debouncer.clear();
     linkPreviewState.setValue(LinkPreviewState.forNoLinks());
 
-    if (currentState == null || !currentState.getLinkPreview().isPresent()) {
+    if (currentState == null || !currentState.linkPreview.isPresent()) {
       return Collections.emptyList();
     } else {
-      return Collections.singletonList(currentState.getLinkPreview().get());
+      return Collections.singletonList(currentState.linkPreview.get());
     }
   }
 
@@ -101,14 +93,14 @@ public class LinkPreviewViewModel extends ViewModel {
 
     if (currentState == null) {
       return Collections.emptyList();
-    } else if (currentState.getLinkPreview().isPresent()) {
-      return Collections.singletonList(currentState.getLinkPreview().get());
-    } else if (currentState.getActiveUrlForError() != null) {
-      String       topLevelDomain = LinkPreviewUtil.getTopLevelDomain(currentState.getActiveUrlForError());
+    } else if (currentState.linkPreview.isPresent()) {
+      return Collections.singletonList(currentState.linkPreview.get());
+    } else if (currentState.activeUrlForError != null) {
+      String       topLevelDomain = LinkPreviewUtil.getTopLevelDomain(currentState.activeUrlForError);
       AttachmentId attachmentId   = null;
 
-      return Collections.singletonList(new LinkPreview(currentState.getActiveUrlForError(),
-                                                       topLevelDomain != null ? topLevelDomain : currentState.getActiveUrlForError(),
+      return Collections.singletonList(new LinkPreview(currentState.activeUrlForError,
+                                                       topLevelDomain != null ? topLevelDomain : currentState.activeUrlForError,
                                                        null,
                                                        -1L,
                                                        attachmentId));
@@ -117,7 +109,7 @@ public class LinkPreviewViewModel extends ViewModel {
     }
   }
 
-  public void onTextChanged(@NonNull Context context, @NonNull String text, int cursorStart, int cursorEnd) {
+  public void onTextChanged(@NonNull String text, int cursorStart, int cursorEnd) {
     if (!enabled && !enablePlaceholder) return;
 
     debouncer.publish(() -> {
@@ -218,7 +210,7 @@ public class LinkPreviewViewModel extends ViewModel {
   }
 
   private @Nullable RequestController performRequest(String url) {
-    return repository.getLinkPreview(ApplicationDependencies.getApplication(), url, new LinkPreviewRepository.Callback() {
+    return repository.getLinkPreview(AppDependencies.getApplication(), url, new LinkPreviewRepository.Callback() {
       @Override
       public void onSuccess(@NonNull LinkPreview linkPreview) {
         ThreadUtil.runOnMain(() -> {
@@ -255,7 +247,7 @@ public class LinkPreviewViewModel extends ViewModel {
     }
 
     if (enablePlaceholder) {
-      return state.getLinkPreview()
+      return state.linkPreview
           .map(linkPreview -> LinkPreviewState.forLinksWithNoPreview(linkPreview.getUrl(), LinkPreviewRepository.Error.PREVIEW_NOT_AVAILABLE))
           .orElse(state);
     }

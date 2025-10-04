@@ -5,7 +5,6 @@ import android.os.Process;
 
 import androidx.annotation.NonNull;
 
-import org.signal.core.util.LinkedBlockingLifoQueue;
 import org.signal.core.util.ThreadUtil;
 
 import java.util.concurrent.ExecutorService;
@@ -52,7 +51,7 @@ public final class SignalExecutors {
                                                            maxThreads,
                                                            timeoutSeconds,
                                                            TimeUnit.SECONDS,
-                                                           new LinkedBlockingQueue<Runnable>() {
+                                                           new LinkedBlockingQueue<>() {
                                                              @Override
                                                              public boolean offer(Runnable runnable) {
                                                                if (isEmpty()) {
@@ -74,27 +73,19 @@ public final class SignalExecutors {
     return threadPool;
   }
 
-  /**
-   * Returns an executor that prioritizes newer work. This is the opposite of a traditional executor,
-   * which processor work in FIFO order.
-   */
-  public static ExecutorService newFixedLifoThreadExecutor(String name, int minThreads, int maxThreads) {
-    return new ThreadPoolExecutor(minThreads, maxThreads, 0, TimeUnit.MILLISECONDS, new LinkedBlockingLifoQueue<>(), new NumberedThreadFactory(name, ThreadUtil.PRIORITY_BACKGROUND_THREAD));
-  }
-
   public static HandlerThread getAndStartHandlerThread(@NonNull String name, int priority) {
     HandlerThread handlerThread = new HandlerThread(name, priority);
     handlerThread.start();
     return handlerThread;
   }
 
-  private static class NumberedThreadFactory implements ThreadFactory {
+  public static class NumberedThreadFactory implements ThreadFactory {
 
     private final int           priority;
     private final String        baseName;
     private final AtomicInteger counter;
 
-    NumberedThreadFactory(@NonNull String baseName, int priority) {
+    public NumberedThreadFactory(@NonNull String baseName, int priority) {
       this.priority = priority;
       this.baseName = baseName;
       this.counter  = new AtomicInteger();

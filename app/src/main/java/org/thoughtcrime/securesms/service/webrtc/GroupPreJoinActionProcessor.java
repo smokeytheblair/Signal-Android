@@ -21,7 +21,6 @@ import org.thoughtcrime.securesms.service.webrtc.state.WebRtcServiceStateBuilder
 import org.thoughtcrime.securesms.util.NetworkUtil;
 import org.whispersystems.signalservice.api.messages.calls.OfferMessage;
 import org.whispersystems.signalservice.api.push.ServiceId.ACI;
-import org.whispersystems.signalservice.api.push.ServiceId;
 
 import java.util.List;
 
@@ -48,11 +47,15 @@ public class GroupPreJoinActionProcessor extends GroupActionProcessor {
 
     byte[]      groupId = currentState.getCallInfoState().getCallRecipient().requireGroupId().getDecodedId();
     GroupCall groupCall = webRtcInteractor.getCallManager().createGroupCall(groupId,
-                                                                            SignalStore.internalValues().groupCallingServer(),
+                                                                            SignalStore.internal().getGroupCallingServer(),
                                                                             new byte[0],
                                                                             AUDIO_LEVELS_INTERVAL,
-                                                                            RingRtcDynamicConfiguration.getAudioProcessingMethod(),
+                                                                            RingRtcDynamicConfiguration.getAudioConfig(),
                                                                             webRtcInteractor.getGroupCallObserver());
+
+    if (groupCall == null) {
+      return groupCallFailure(currentState, "RingRTC did not create a group call", null);
+    }
 
     try {
       groupCall.setOutgoingAudioMuted(true);
@@ -126,7 +129,7 @@ public class GroupPreJoinActionProcessor extends GroupActionProcessor {
 
     WebRtcServiceStateBuilder.CallInfoStateBuilder builder = currentState.builder()
                                                                          .changeCallInfoState()
-                                                                         .remoteDevicesCount(peekInfo.getDeviceCount())
+                                                                         .remoteDevicesCount(peekInfo.getDeviceCountExcludingPendingDevices())
                                                                          .participantLimit(peekInfo.getMaxDevices())
                                                                          .clearParticipantMap();
 
@@ -138,6 +141,7 @@ public class GroupPreJoinActionProcessor extends GroupActionProcessor {
                                                                      true,
                                                                      true,
                                                                      true,
+                                                                     CallParticipant.HAND_LOWERED,
                                                                      0,
                                                                      false,
                                                                      0,

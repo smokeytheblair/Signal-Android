@@ -52,8 +52,8 @@ public abstract class SendJob extends BaseJob {
     attachments.addAll(Stream.of(message.getLinkPreviews()).map(lp -> lp.getThumbnail().orElse(null)).withoutNulls().toList());
     attachments.addAll(Stream.of(message.getSharedContacts()).map(Contact::getAvatarAttachment).withoutNulls().toList());
 
-    if (message.getOutgoingQuote() != null) {
-      attachments.addAll(message.getOutgoingQuote().getAttachments());
+    if (message.getOutgoingQuote() != null && message.getOutgoingQuote().getAttachment() != null) {
+      attachments.add(message.getOutgoingQuote().getAttachment());
     }
 
     AttachmentTable database = SignalDatabase.attachments();
@@ -66,7 +66,7 @@ public abstract class SendJob extends BaseJob {
   protected String buildAttachmentString(@NonNull List<Attachment> attachments) {
     List<String> strings = attachments.stream().map(attachment -> {
       if (attachment instanceof DatabaseAttachment) {
-        return ((DatabaseAttachment) attachment).getAttachmentId().toString();
+        return ((DatabaseAttachment) attachment).attachmentId.toString();
       } else if (attachment.getUri() != null) {
         return attachment.getUri().toString();
       } else {

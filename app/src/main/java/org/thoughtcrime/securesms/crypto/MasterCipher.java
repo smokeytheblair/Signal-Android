@@ -21,9 +21,8 @@ import androidx.annotation.NonNull;
 
 import org.signal.core.util.logging.Log;
 import org.signal.libsignal.protocol.InvalidMessageException;
-import org.signal.libsignal.protocol.ecc.Curve;
 import org.signal.libsignal.protocol.ecc.ECPrivateKey;
-import org.thoughtcrime.securesms.util.Base64;
+import org.signal.core.util.Base64;
 import org.signal.core.util.Hex;
 
 import java.io.IOException;
@@ -89,7 +88,7 @@ public class MasterCipher {
       throws org.signal.libsignal.protocol.InvalidKeyException
   {
     try {
-      return Curve.decodePrivatePoint(decryptBytes(key));
+      return new ECPrivateKey(decryptBytes(key));
     } catch (InvalidMessageException ime) {
       throw new org.signal.libsignal.protocol.InvalidKeyException(ime);
     }
@@ -153,7 +152,7 @@ public class MasterCipher {
 	
   private String encryptAndEncodeBytes(@NonNull  byte[] bytes) {
     byte[] encryptedAndMacBody = encryptBytes(bytes);
-    return Base64.encodeBytes(encryptedAndMacBody);
+    return Base64.encodeWithPadding(encryptedAndMacBody);
   }
 	
   private byte[] verifyMacBody(@NonNull Mac hmac, @NonNull byte[] encryptedAndMac) throws InvalidMessageException {

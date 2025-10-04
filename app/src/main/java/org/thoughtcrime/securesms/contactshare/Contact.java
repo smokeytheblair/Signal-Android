@@ -20,7 +20,7 @@ import org.thoughtcrime.securesms.util.JsonUtils;
 import org.thoughtcrime.securesms.util.MediaUtil;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 
 public class Contact implements Parcelable {
@@ -43,7 +43,7 @@ public class Contact implements Parcelable {
   @JsonProperty
   private final Avatar              avatar;
 
-  public Contact(@JsonProperty("name")            @NonNull  Name                name,
+  public Contact(@JsonProperty("name")            @Nullable Name                name,
                  @JsonProperty("organization")    @Nullable String              organization,
                  @JsonProperty("phoneNumbers")    @NonNull  List<Phone>         phoneNumbers,
                  @JsonProperty("emails")          @NonNull  List<Email>         emails,
@@ -52,10 +52,14 @@ public class Contact implements Parcelable {
   {
     this.name            = name;
     this.organization    = organization;
-    this.phoneNumbers    = Collections.unmodifiableList(phoneNumbers);
-    this.emails          = Collections.unmodifiableList(emails);
-    this.postalAddresses = Collections.unmodifiableList(postalAddresses);
+    this.phoneNumbers    = new ArrayList<>(phoneNumbers.size());
+    this.emails          = new ArrayList<>(emails.size());
+    this.postalAddresses = new ArrayList<>(postalAddresses.size());
     this.avatar          = avatar;
+
+    this.phoneNumbers.addAll(phoneNumbers);
+    this.emails.addAll(emails);
+    this.postalAddresses.addAll(postalAddresses);
   }
 
   public Contact(@NonNull Contact contact, @Nullable Avatar avatar) {
@@ -77,7 +81,7 @@ public class Contact implements Parcelable {
   }
 
   public @NonNull Name getName() {
-    return name;
+    return name == null ? Name.EMPTY_NAME : name;
   }
 
   public @Nullable String getOrganization() {
@@ -143,9 +147,6 @@ public class Contact implements Parcelable {
   public static class Name implements Parcelable {
 
     @JsonProperty
-    private final String displayName;
-
-    @JsonProperty
     private final String givenName;
 
     @JsonProperty
@@ -160,27 +161,27 @@ public class Contact implements Parcelable {
     @JsonProperty
     private final String middleName;
 
-    Name(@JsonProperty("displayName") @Nullable String displayName,
+    @JsonProperty
+    private final String nickname;
+
+    public Name(
          @JsonProperty("givenName")   @Nullable String givenName,
          @JsonProperty("familyName")  @Nullable String familyName,
          @JsonProperty("prefix")      @Nullable String prefix,
          @JsonProperty("suffix")      @Nullable String suffix,
-         @JsonProperty("middleName")  @Nullable String middleName)
+         @JsonProperty("middleName")  @Nullable String middleName,
+         @JsonProperty("nickname")    @Nullable String nickname)
     {
-      this.displayName = displayName;
       this.givenName  = givenName;
       this.familyName = familyName;
       this.prefix     = prefix;
       this.suffix     = suffix;
       this.middleName = middleName;
+      this.nickname   = nickname;
     }
 
     private Name(Parcel in) {
       this(in.readString(), in.readString(), in.readString(), in.readString(), in.readString(), in.readString());
-    }
-
-    public @Nullable String getDisplayName() {
-      return displayName;
     }
 
     public @Nullable String getGivenName() {
@@ -203,8 +204,12 @@ public class Contact implements Parcelable {
       return middleName;
     }
 
+    public @Nullable String getNickname() {
+      return nickname;
+    }
+
     public boolean isEmpty() {
-      return TextUtils.isEmpty(displayName) &&
+      return TextUtils.isEmpty(nickname) &&
              TextUtils.isEmpty(givenName)   &&
              TextUtils.isEmpty(familyName)  &&
              TextUtils.isEmpty(prefix)      &&
@@ -219,13 +224,15 @@ public class Contact implements Parcelable {
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {
-      dest.writeString(displayName);
       dest.writeString(givenName);
       dest.writeString(familyName);
       dest.writeString(prefix);
       dest.writeString(suffix);
       dest.writeString(middleName);
+      dest.writeString(nickname);
     }
+
+    public static Name EMPTY_NAME = new Name("","","","","","");
 
     public static final Creator<Name> CREATOR = new Creator<Name>() {
       @Override
@@ -254,9 +261,9 @@ public class Contact implements Parcelable {
     @JsonIgnore
     private boolean selected;
 
-    Phone(@JsonProperty("number") @NonNull  String number,
-          @JsonProperty("type")   @NonNull  Type   type,
-          @JsonProperty("label")  @Nullable String label)
+    public Phone(@JsonProperty("number") @NonNull  String number,
+                 @JsonProperty("type")   @NonNull  Type   type,
+                 @JsonProperty("label")  @Nullable String label)
     {
       this.number   = number;
       this.type     = type;
@@ -333,9 +340,9 @@ public class Contact implements Parcelable {
     @JsonIgnore
     private boolean selected;
 
-    Email(@JsonProperty("email") @NonNull  String email,
-          @JsonProperty("type")  @NonNull  Type   type,
-          @JsonProperty("label") @Nullable String label)
+    public Email(@JsonProperty("email") @NonNull  String email,
+                 @JsonProperty("type")  @NonNull  Type   type,
+                 @JsonProperty("label") @Nullable String label)
     {
       this.email    = email;
       this.type     = type;
@@ -355,7 +362,7 @@ public class Contact implements Parcelable {
       return type;
     }
 
-    public @NonNull String getLabel() {
+    public @Nullable String getLabel() {
       return label;
     }
 
@@ -430,15 +437,15 @@ public class Contact implements Parcelable {
     @JsonIgnore
     private boolean selected;
 
-    PostalAddress(@JsonProperty("type")         @NonNull  Type   type,
-                  @JsonProperty("label")        @Nullable String label,
-                  @JsonProperty("street")       @Nullable String street,
-                  @JsonProperty("poBox")        @Nullable String poBox,
-                  @JsonProperty("neighborhood") @Nullable String neighborhood,
-                  @JsonProperty("city")         @Nullable String city,
-                  @JsonProperty("region")       @Nullable String region,
-                  @JsonProperty("postalCode")   @Nullable String postalCode,
-                  @JsonProperty("country")      @Nullable String country)
+    public PostalAddress(@JsonProperty("type")         @NonNull  Type   type,
+                         @JsonProperty("label")        @Nullable String label,
+                         @JsonProperty("street")       @Nullable String street,
+                         @JsonProperty("poBox")        @Nullable String poBox,
+                         @JsonProperty("neighborhood") @Nullable String neighborhood,
+                         @JsonProperty("city")         @Nullable String city,
+                         @JsonProperty("region")       @Nullable String region,
+                         @JsonProperty("postalCode")   @Nullable String postalCode,
+                         @JsonProperty("country")      @Nullable String country)
     {
       this.type         = type;
       this.label        = label;
@@ -643,7 +650,7 @@ public class Contact implements Parcelable {
 
     private static Attachment attachmentFromUri(@Nullable Uri uri) {
       if (uri == null) return null;
-      return new UriAttachment(uri, MediaUtil.IMAGE_JPEG, AttachmentTable.TRANSFER_PROGRESS_DONE, 0, null, false, false, false, false, null, null, null, null, null);
+      return new UriAttachment(uri, MediaUtil.IMAGE_JPEG, AttachmentTable.TRANSFER_PROGRESS_DONE, 0, null, false, false, false, false, null, null, null, null, null, null);
     }
 
     @Override

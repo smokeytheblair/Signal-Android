@@ -7,7 +7,7 @@ import org.thoughtcrime.securesms.components.webrtc.BroadcastVideoSink
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.ringrtc.CameraState
 
-data class CallParticipant constructor(
+data class CallParticipant(
   val callParticipantId: CallParticipantId = CallParticipantId(Recipient.UNKNOWN),
   val recipient: Recipient = Recipient.UNKNOWN,
   val identityKey: IdentityKey? = null,
@@ -16,11 +16,13 @@ data class CallParticipant constructor(
   val isForwardingVideo: Boolean = true,
   val isVideoEnabled: Boolean = false,
   val isMicrophoneEnabled: Boolean = false,
+  val handRaisedTimestamp: Long = HAND_LOWERED,
   val lastSpoke: Long = 0,
   val audioLevel: AudioLevel? = null,
   val isMediaKeysReceived: Boolean = true,
   val addedToCallTime: Long = 0,
   val isScreenSharing: Boolean = false,
+  val remotelyMutedBy: Recipient? = null,
   private val deviceOrdinal: DeviceOrdinal = DeviceOrdinal.PRIMARY
 ) {
   val cameraDirection: CameraState.Direction
@@ -34,6 +36,9 @@ data class CallParticipant constructor(
 
   val isSelf: Boolean
     get() = recipient.isSelf
+
+  val isHandRaised: Boolean
+    get() = handRaisedTimestamp > 0
 
   fun getRecipientDisplayName(context: Context): String {
     return if (recipient.isSelf && isPrimary) {
@@ -63,6 +68,10 @@ data class CallParticipant constructor(
     return copy(identityKey = identityKey)
   }
 
+  fun withAudioEnabled(audioEnabled: Boolean): CallParticipant {
+    return copy(isMicrophoneEnabled = audioEnabled, remotelyMutedBy = if (audioEnabled) null else remotelyMutedBy)
+  }
+
   fun withVideoEnabled(videoEnabled: Boolean): CallParticipant {
     return copy(isVideoEnabled = videoEnabled)
   }
@@ -71,8 +80,21 @@ data class CallParticipant constructor(
     return copy(isScreenSharing = enable)
   }
 
+  fun withHandRaisedTimestamp(timestamp: Long): CallParticipant {
+    return copy(handRaisedTimestamp = timestamp)
+  }
+
+  fun withRemotelyMutedBy(source: Recipient): CallParticipant {
+    return copy(remotelyMutedBy = source)
+  }
+
+  override fun toString(): String {
+    return "CallParticipant(callParticipantId=$callParticipantId, isForwardingVideo=$isForwardingVideo, isVideoEnabled=$isVideoEnabled, isMicrophoneEnabled=$isMicrophoneEnabled, handRaisedTimestamp=$handRaisedTimestamp, isMediaKeysReceived=$isMediaKeysReceived, isScreenSharing=$isScreenSharing, remotelyMutedBy=$remotelyMutedBy)"
+  }
+
   enum class DeviceOrdinal {
-    PRIMARY, SECONDARY
+    PRIMARY,
+    SECONDARY
   }
 
   enum class AudioLevel {
@@ -102,22 +124,28 @@ data class CallParticipant constructor(
   }
 
   companion object {
+    const val HAND_LOWERED = -1L
+
     @JvmField
     val EMPTY: CallParticipant = CallParticipant()
 
     @JvmStatic
+    @JvmOverloads
     fun createLocal(
       cameraState: CameraState,
       renderer: BroadcastVideoSink,
-      microphoneEnabled: Boolean
+      microphoneEnabled: Boolean,
+      handRaisedTimestamp: Long,
+      callParticipantId: CallParticipantId = CallParticipantId(Recipient.self())
     ): CallParticipant {
       return CallParticipant(
-        callParticipantId = CallParticipantId(Recipient.self()),
+        callParticipantId = callParticipantId,
         recipient = Recipient.self(),
         videoSink = renderer,
         cameraState = cameraState,
         isVideoEnabled = cameraState.isEnabled && cameraState.cameraCount > 0,
-        isMicrophoneEnabled = microphoneEnabled
+        isMicrophoneEnabled = microphoneEnabled,
+        handRaisedTimestamp = handRaisedTimestamp
       )
     }
 
@@ -130,6 +158,7 @@ data class CallParticipant constructor(
       isForwardingVideo: Boolean,
       audioEnabled: Boolean,
       videoEnabled: Boolean,
+      handRaisedTimestamp: Long,
       lastSpoke: Long,
       mediaKeysReceived: Boolean,
       addedToCallTime: Long,
@@ -144,6 +173,7 @@ data class CallParticipant constructor(
         isForwardingVideo = isForwardingVideo,
         isVideoEnabled = videoEnabled,
         isMicrophoneEnabled = audioEnabled,
+        handRaisedTimestamp = handRaisedTimestamp,
         lastSpoke = lastSpoke,
         isMediaKeysReceived = mediaKeysReceived,
         addedToCallTime = addedToCallTime,

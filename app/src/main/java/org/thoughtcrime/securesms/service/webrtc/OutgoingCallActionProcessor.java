@@ -144,6 +144,7 @@ public class OutgoingCallActionProcessor extends DeviceAwareActionProcessor {
       return currentState;
     }
 
+    boolean         hideIp          = !activePeer.getRecipient().isProfileSharing() || callSetupState.isAlwaysTurnServers();
     VideoState      videoState      = currentState.getVideoState();
     CallParticipant callParticipant = Objects.requireNonNull(currentState.getCallInfoState().getRemoteCallParticipant(activePeer.getRecipient()));
 
@@ -151,12 +152,12 @@ public class OutgoingCallActionProcessor extends DeviceAwareActionProcessor {
       webRtcInteractor.getCallManager().proceed(activePeer.getCallId(),
                                                 context,
                                                 videoState.getLockableEglBase().require(),
-                                                RingRtcDynamicConfiguration.getAudioProcessingMethod(),
+                                                RingRtcDynamicConfiguration.getAudioConfig(),
                                                 videoState.requireLocalSink(),
                                                 callParticipant.getVideoSink(),
                                                 videoState.requireCamera(),
                                                 callSetupState.getIceServers(),
-                                                callSetupState.isAlwaysTurnServers(),
+                                                hideIp,
                                                 NetworkUtil.getCallingDataMode(context),
                                                 AUDIO_LEVELS_INTERVAL,
                                                 currentState.getCallSetupState(activePeer).isEnableVideoOnCreate());
@@ -202,7 +203,7 @@ public class OutgoingCallActionProcessor extends DeviceAwareActionProcessor {
       byte[] remoteIdentityKey = WebRtcUtil.getPublicKeyBytes(receivedAnswerMetadata.getRemoteIdentityKey());
       byte[] localIdentityKey  = WebRtcUtil.getPublicKeyBytes(SignalStore.account().getAciIdentityKey().getPublicKey().serialize());
 
-      webRtcInteractor.getCallManager().receivedAnswer(callMetadata.getCallId(), callMetadata.getRemoteDevice(), answerMetadata.getOpaque(), remoteIdentityKey, localIdentityKey);
+      webRtcInteractor.getCallManager().receivedAnswer(callMetadata.getCallId(), callMetadata.getRemotePeer(), callMetadata.getRemoteDevice(), answerMetadata.getOpaque(), remoteIdentityKey, localIdentityKey);
     } catch (CallException | InvalidKeyException e) {
       return callFailure(currentState, "receivedAnswer() failed: ", e);
     }
@@ -215,7 +216,7 @@ public class OutgoingCallActionProcessor extends DeviceAwareActionProcessor {
     Log.i(TAG, "handleReceivedBusy(): id: " + callMetadata.getCallId().format(callMetadata.getRemoteDevice()));
 
     try {
-      webRtcInteractor.getCallManager().receivedBusy(callMetadata.getCallId(), callMetadata.getRemoteDevice());
+      webRtcInteractor.getCallManager().receivedBusy(callMetadata.getCallId(), callMetadata.getRemotePeer(), callMetadata.getRemoteDevice());
     } catch (CallException e) {
       return callFailure(currentState, "receivedBusy() failed: ", e);
     }
@@ -229,6 +230,11 @@ public class OutgoingCallActionProcessor extends DeviceAwareActionProcessor {
                        .changeLocalDeviceState()
                        .isMicrophoneEnabled(!muted)
                        .build();
+  }
+
+  @Override
+  protected @NonNull WebRtcServiceState handleRemoteAudioEnable(@NonNull WebRtcServiceState currentState, boolean enable) {
+    return activeCallDelegate.handleRemoteAudioEnable(currentState, enable);
   }
 
   @Override

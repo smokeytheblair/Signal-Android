@@ -5,11 +5,13 @@ import android.content.Context
 import androidx.core.content.contentValuesOf
 import org.signal.core.util.CursorUtil
 import org.signal.core.util.SqlUtil
+import org.signal.core.util.logging.Log
 import org.signal.core.util.readToList
 import org.signal.core.util.requireLong
 import org.signal.core.util.select
 import org.signal.core.util.toInt
 import org.signal.core.util.update
+import org.signal.core.util.withinTransaction
 import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.whispersystems.signalservice.api.push.DistributionId
@@ -25,6 +27,8 @@ import org.whispersystems.signalservice.api.push.DistributionId
 class StorySendTable(context: Context, databaseHelper: SignalDatabase) : DatabaseTable(context, databaseHelper), RecipientIdDatabaseReference {
 
   companion object {
+    private val TAG = Log.tag(StorySendTable::class)
+
     const val TABLE_NAME = "story_sends"
     const val ID = "_id"
     const val MESSAGE_ID = "message_id"
@@ -209,12 +213,14 @@ class StorySendTable(context: Context, databaseHelper: SignalDatabase) : Databas
     return null
   }
 
-  override fun remapRecipient(oldId: RecipientId, newId: RecipientId) {
-    val query = "$RECIPIENT_ID = ?"
-    val args = SqlUtil.buildArgs(oldId)
-    val values = contentValuesOf(RECIPIENT_ID to newId.serialize())
+  override fun remapRecipient(fromId: RecipientId, toId: RecipientId) {
+    val count = writableDatabase
+      .update(TABLE_NAME)
+      .values(RECIPIENT_ID to toId.serialize())
+      .where("$RECIPIENT_ID = ?", fromId.serialize())
+      .run()
 
-    writableDatabase.update(TABLE_NAME, values, query, args)
+    Log.d(TAG, "Remapped $fromId to $toId. count: $count")
   }
 
   /**
@@ -259,12 +265,7 @@ class StorySendTable(context: Context, databaseHelper: SignalDatabase) : Databas
    * 1. For each unique message id in local not present in remote, we can assume that the message can be marked deleted.
    */
   fun applySentStoryManifest(remoteManifest: SentStorySyncManifest, sentTimestamp: Long) {
-    if (remoteManifest.entries.isEmpty()) {
-      return
-    }
-
-    writableDatabase.beginTransaction()
-    try {
+    writableDatabase.withinTransaction {
       val localManifest: SentStorySyncManifest = getLocalManifest(sentTimestamp)
 
       val query = """
@@ -291,7 +292,7 @@ class StorySendTable(context: Context, databaseHelper: SignalDatabase) : Databas
       val remoteRows: Set<SentStorySyncManifest.Row> = remoteManifest.flattenToRows(distributionIdToMessageId)
 
       if (localRows == remoteRows) {
-        return
+        return@withinTransaction
       }
 
       val remoteOnly: List<SentStorySyncManifest.Row> = remoteRows.filterNot { localRows.contains(it) }
@@ -332,10 +333,6 @@ class StorySendTable(context: Context, databaseHelper: SignalDatabase) : Databas
         SignalDatabase.messages.markAsRemoteDelete(it)
         SignalDatabase.messages.deleteRemotelyDeletedStory(it)
       }
-
-      writableDatabase.setTransactionSuccessful()
-    } finally {
-      writableDatabase.endTransaction()
     }
   }
 
@@ -352,7 +349,7 @@ class StorySendTable(context: Context, databaseHelper: SignalDatabase) : Databas
         INNER JOIN ${MessageTable.TABLE_NAME} ON ${MessageTable.TABLE_NAME}.${MessageTable.ID} = $TABLE_NAME.$MESSAGE_ID
         WHERE $TABLE_NAME.$SENT_TIMESTAMP = ?
       """,
-      arrayOf(sentTimestamp)
+      sentTimestamp
     ).use { cursor ->
       val results: MutableMap<RecipientId, SentStorySyncManifest.Entry> = mutableMapOf()
       while (cursor.moveToNext()) {

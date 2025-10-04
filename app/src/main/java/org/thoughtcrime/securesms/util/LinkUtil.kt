@@ -1,7 +1,9 @@
 package org.thoughtcrime.securesms.util
 
-import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.thoughtcrime.securesms.stickers.StickerUrl
+import java.net.URI
+import java.net.URISyntaxException
 import java.util.Objects
 import java.util.regex.Pattern
 
@@ -37,7 +39,11 @@ object LinkUtil {
       return false
     }
 
-    return HttpUrl.parse(linkUrl)?.scheme() == "https"
+    if (!isValidURI(linkUrl)) {
+      return false
+    }
+
+    return linkUrl.toHttpUrlOrNull()?.scheme == "https"
   }
 
   /**
@@ -83,6 +89,20 @@ object LinkUtil {
       isLegal = ALL_ASCII_PATTERN.matcher(cleanedDomain).matches() || ALL_NON_ASCII_PATTERN.matcher(cleanedDomain).matches(),
       domain = domain
     )
+  }
+
+  @JvmStatic
+  private fun isValidURI(linkUri: String?): Boolean {
+    return if (linkUri == null) {
+      false
+    } else {
+      try {
+        val ignored = URI(linkUri)
+        true
+      } catch (e: URISyntaxException) {
+        false
+      }
+    }
   }
 
   private data class LegalCharactersResult(val isLegal: Boolean, val domain: String? = null)

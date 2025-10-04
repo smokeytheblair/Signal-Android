@@ -1,13 +1,14 @@
 package org.thoughtcrime.securesms.database
 
 import org.thoughtcrime.securesms.attachments.AttachmentId
+import org.thoughtcrime.securesms.attachments.Cdn
 import org.thoughtcrime.securesms.attachments.DatabaseAttachment
 import org.thoughtcrime.securesms.audio.AudioHash
 import org.thoughtcrime.securesms.blurhash.BlurHash
 import org.thoughtcrime.securesms.contactshare.Contact
 import org.thoughtcrime.securesms.database.documents.IdentityKeyMismatch
 import org.thoughtcrime.securesms.database.documents.NetworkFailure
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.ParentStoryId
 import org.thoughtcrime.securesms.database.model.Quote
 import org.thoughtcrime.securesms.database.model.ReactionRecord
@@ -27,20 +28,23 @@ import org.thoughtcrime.securesms.util.MediaUtil
 object FakeMessageRecords {
 
   fun buildDatabaseAttachment(
-    attachmentId: AttachmentId = AttachmentId(1, 1),
+    attachmentId: AttachmentId = AttachmentId(1),
     mmsId: Long = 1,
     hasData: Boolean = true,
     hasThumbnail: Boolean = true,
+    hasArchiveThumbnail: Boolean = false,
     contentType: String = MediaUtil.IMAGE_JPEG,
     transferProgress: Int = AttachmentTable.TRANSFER_PROGRESS_DONE,
     size: Long = 0L,
     fileName: String = "",
-    cdnNumber: Int = 1,
+    cdnNumber: Int = 3,
     location: String = "",
     key: String = "",
+    iv: ByteArray = byteArrayOf(),
     relay: String = "",
     digest: ByteArray = byteArrayOf(),
     incrementalDigest: ByteArray = byteArrayOf(),
+    incrementalMacChunkSize: Int = 0,
     fastPreflightId: String = "",
     voiceNote: Boolean = false,
     borderless: Boolean = false,
@@ -54,37 +58,50 @@ object FakeMessageRecords {
     audioHash: AudioHash? = null,
     transformProperties: AttachmentTable.TransformProperties? = null,
     displayOrder: Int = 0,
-    uploadTimestamp: Long = 200
+    uploadTimestamp: Long = 200,
+    dataHash: String? = null,
+    archiveCdn: Int = 0,
+    archiveMediaName: String? = null,
+    archiveMediaId: String? = null,
+    archiveThumbnailId: String? = null,
+    thumbnailRestoreState: AttachmentTable.ThumbnailRestoreState = AttachmentTable.ThumbnailRestoreState.NONE,
+    archiveTransferState: AttachmentTable.ArchiveTransferState = AttachmentTable.ArchiveTransferState.NONE
   ): DatabaseAttachment {
     return DatabaseAttachment(
-      attachmentId,
-      mmsId,
-      hasData,
-      hasThumbnail,
-      contentType,
-      transferProgress,
-      size,
-      fileName,
-      cdnNumber,
-      location,
-      key,
-      relay,
-      digest,
-      incrementalDigest,
-      fastPreflightId,
-      voiceNote,
-      borderless,
-      videoGif,
-      width,
-      height,
-      quote,
-      caption,
-      stickerLocator,
-      blurHash,
-      audioHash,
-      transformProperties,
-      displayOrder,
-      uploadTimestamp
+      attachmentId = attachmentId,
+      mmsId = mmsId,
+      hasData = hasData,
+      hasThumbnail = hasThumbnail,
+      contentType = contentType,
+      transferProgress = transferProgress,
+      size = size,
+      fileName = fileName,
+      cdn = Cdn.fromCdnNumber(cdnNumber),
+      location = location,
+      key = key,
+      digest = digest,
+      incrementalDigest = incrementalDigest,
+      incrementalMacChunkSize = incrementalMacChunkSize,
+      fastPreflightId = fastPreflightId,
+      voiceNote = voiceNote,
+      borderless = borderless,
+      videoGif = videoGif,
+      width = width,
+      height = height,
+      quote = quote,
+      caption = caption,
+      stickerLocator = stickerLocator,
+      blurHash = blurHash,
+      audioHash = audioHash,
+      transformProperties = transformProperties,
+      displayOrder = displayOrder,
+      uploadTimestamp = uploadTimestamp,
+      dataHash = dataHash,
+      archiveCdn = archiveCdn,
+      thumbnailRestoreState = thumbnailRestoreState,
+      archiveTransferState = archiveTransferState,
+      uuid = null,
+      quoteTargetContentType = null
     )
   }
 
@@ -112,7 +129,7 @@ object FakeMessageRecords {
     dateSent: Long = 200,
     dateReceived: Long = 400,
     dateServer: Long = 300,
-    deliveryReceiptCount: Int = 0,
+    hasDeliveryReceipt: Boolean = false,
     threadId: Long = 1,
     body: String = "body",
     slideDeck: SlideDeck = SlideDeck(),
@@ -123,8 +140,9 @@ object FakeMessageRecords {
     subscriptionId: Int = -1,
     expiresIn: Long = -1,
     expireStarted: Long = -1,
+    expireTimerVersion: Int = individualRecipient.expireTimerVersion,
     viewOnce: Boolean = false,
-    readReceiptCount: Int = 0,
+    hasReadReceipt: Boolean = false,
     quote: Quote? = null,
     contacts: List<Contact> = emptyList(),
     linkPreviews: List<LinkPreview> = emptyList(),
@@ -133,7 +151,7 @@ object FakeMessageRecords {
     remoteDelete: Boolean = false,
     mentionsSelf: Boolean = false,
     notifiedTimestamp: Long = 350,
-    viewedReceiptCount: Int = 0,
+    viewed: Boolean = false,
     receiptTimestamp: Long = 0,
     messageRanges: BodyRangeList? = null,
     storyType: StoryType = StoryType.NONE,
@@ -141,8 +159,8 @@ object FakeMessageRecords {
     giftBadge: GiftBadge? = null,
     payment: Payment? = null,
     call: CallTable.Call? = null
-  ): MediaMmsMessageRecord {
-    return MediaMmsMessageRecord(
+  ): MmsMessageRecord {
+    return MmsMessageRecord(
       id,
       conversationRecipient,
       recipientDeviceId,
@@ -150,7 +168,7 @@ object FakeMessageRecords {
       dateSent,
       dateReceived,
       dateServer,
-      deliveryReceiptCount,
+      hasDeliveryReceipt,
       threadId,
       body,
       slideDeck,
@@ -160,8 +178,9 @@ object FakeMessageRecords {
       subscriptionId,
       expiresIn,
       expireStarted,
+      expireTimerVersion,
       viewOnce,
-      readReceiptCount,
+      hasReadReceipt,
       quote,
       contacts,
       linkPreviews,
@@ -170,7 +189,7 @@ object FakeMessageRecords {
       remoteDelete,
       mentionsSelf,
       notifiedTimestamp,
-      viewedReceiptCount,
+      viewed,
       receiptTimestamp,
       messageRanges,
       storyType,
@@ -178,10 +197,13 @@ object FakeMessageRecords {
       giftBadge,
       payment,
       call,
+      null,
       -1,
       null,
       null,
-      0
+      0,
+      false,
+      null
     )
   }
 }

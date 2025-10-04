@@ -5,19 +5,14 @@
 
 package org.thoughtcrime.securesms.database
 
-import junit.framework.TestCase.assertEquals
-import junit.framework.TestCase.assertNotNull
-import junit.framework.TestCase.assertNull
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
-import org.signal.core.util.readToSingleObject
-import org.signal.core.util.requireLongOrNull
-import org.signal.core.util.select
-import org.signal.core.util.update
-import org.signal.libsignal.protocol.ecc.Curve
-import org.signal.libsignal.protocol.kem.KEMKeyPair
-import org.signal.libsignal.protocol.kem.KEMKeyType
-import org.signal.libsignal.protocol.state.KyberPreKeyRecord
-import org.whispersystems.signalservice.api.push.ServiceId
+import org.signal.libsignal.protocol.ReusedBaseKeyException
+import org.thoughtcrime.securesms.util.KyberPreKeysTestUtil.generateECPublicKey
+import org.thoughtcrime.securesms.util.KyberPreKeysTestUtil.getStaleTime
+import org.thoughtcrime.securesms.util.KyberPreKeysTestUtil.insertTestRecord
 import org.whispersystems.signalservice.api.push.ServiceId.ACI
 import org.whispersystems.signalservice.api.push.ServiceId.PNI
 import java.util.UUID
@@ -142,35 +137,43 @@ class KyberPreKeyTableTest {
     assertNotNull(getStaleTime(aci, 3))
   }
 
-  private fun insertTestRecord(account: ServiceId, id: Int, staleTime: Long = 0, lastResort: Boolean = false) {
-    val kemKeyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
-    SignalDatabase.kyberPreKeys.insert(
-      serviceId = account,
-      keyId = id,
-      record = KyberPreKeyRecord(
-        id,
-        System.currentTimeMillis(),
-        kemKeyPair,
-        Curve.generateKeyPair().privateKey.calculateSignature(kemKeyPair.publicKey.serialize())
-      ),
-      lastResort = lastResort
+  @Test(expected = ReusedBaseKeyException::class)
+  fun handleMarkKyberPreKeyUsed_doesNotAllowDuplicateLastResortKeyEntries() {
+    insertTestRecord(aci, id = 1, staleTime = 10, lastResort = true)
+    val publicKey = generateECPublicKey()
+
+    SignalDatabase.kyberPreKeys.handleMarkKyberPreKeyUsed(
+      serviceId = aci,
+      kyberPreKeyId = 1,
+      signedPreKeyId = 1,
+      baseKey = publicKey
     )
 
-    val count = SignalDatabase.rawDatabase
-      .update(KyberPreKeyTable.TABLE_NAME)
-      .values(KyberPreKeyTable.STALE_TIMESTAMP to staleTime)
-      .where("${KyberPreKeyTable.ACCOUNT_ID} = ? AND ${KyberPreKeyTable.KEY_ID} = $id", account)
-      .run()
-
-    assertEquals(1, count)
+    SignalDatabase.kyberPreKeys.handleMarkKyberPreKeyUsed(
+      serviceId = aci,
+      kyberPreKeyId = 1,
+      signedPreKeyId = 1,
+      baseKey = publicKey
+    )
   }
 
-  private fun getStaleTime(account: ServiceId, id: Int): Long? {
-    return SignalDatabase.rawDatabase
-      .select(KyberPreKeyTable.STALE_TIMESTAMP)
-      .from(KyberPreKeyTable.TABLE_NAME)
-      .where("${KyberPreKeyTable.ACCOUNT_ID} = ? AND ${KyberPreKeyTable.KEY_ID} = $id", account)
-      .run()
-      .readToSingleObject { it.requireLongOrNull(KyberPreKeyTable.STALE_TIMESTAMP) }
+  @Test
+  fun handleMarkKyberPreKeyUsed_allowDuplicateNonLastResortKeyEntries() {
+    insertTestRecord(aci, id = 1, staleTime = 10, lastResort = false)
+    val publicKey = generateECPublicKey()
+
+    SignalDatabase.kyberPreKeys.handleMarkKyberPreKeyUsed(
+      serviceId = aci,
+      kyberPreKeyId = 1,
+      signedPreKeyId = 1,
+      baseKey = publicKey
+    )
+
+    SignalDatabase.kyberPreKeys.handleMarkKyberPreKeyUsed(
+      serviceId = aci,
+      kyberPreKeyId = 1,
+      signedPreKeyId = 1,
+      baseKey = publicKey
+    )
   }
 }

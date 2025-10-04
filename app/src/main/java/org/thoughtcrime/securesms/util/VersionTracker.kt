@@ -3,7 +3,8 @@ package org.thoughtcrime.securesms.util
 import android.content.Context
 import android.content.pm.PackageManager
 import org.signal.core.util.logging.Log
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.BuildConfig
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.jobs.RefreshAttributesJob
 import org.thoughtcrime.securesms.jobs.RemoteConfigRefreshJob
 import org.thoughtcrime.securesms.jobs.RetrieveRemoteAnnouncementsJob
@@ -20,14 +21,15 @@ object VersionTracker {
 
   @JvmStatic
   fun updateLastSeenVersion(context: Context) {
-    val currentVersionCode = Util.getCanonicalVersionCode()
+    val currentVersionCode = BuildConfig.VERSION_CODE
     val lastVersionCode = TextSecurePreferences.getLastVersionCode(context)
 
     if (currentVersionCode != lastVersionCode) {
-      Log.i(TAG, "Upgraded from $lastVersionCode to $currentVersionCode")
-      SignalStore.misc().clearClientDeprecated()
+      Log.i(TAG, "Upgraded from $lastVersionCode to $currentVersionCode. Clearing client deprecation.", true)
+      SignalStore.misc.isClientDeprecated = false
+      SignalStore.remoteConfig.eTag = ""
       val jobChain = listOf(RemoteConfigRefreshJob(), RefreshAttributesJob())
-      ApplicationDependencies.getJobManager().startChain(jobChain).enqueue()
+      AppDependencies.jobManager.startChain(jobChain).enqueue()
       RetrieveRemoteAnnouncementsJob.enqueue(true)
       LocalMetrics.getInstance().clear()
     }

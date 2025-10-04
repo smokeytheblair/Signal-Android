@@ -1,22 +1,20 @@
 package org.thoughtcrime.securesms.jobs;
 
 
-import android.app.Application;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
 import org.signal.core.util.ListUtil;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil;
+import org.thoughtcrime.securesms.crypto.SealedSenderAccessUtil;
 import org.thoughtcrime.securesms.database.MessageTable.MarkedMessageInfo;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageId;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
-import org.thoughtcrime.securesms.jobmanager.JsonJobData;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.JobManager;
+import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.net.NotPushRegisteredException;
 import org.thoughtcrime.securesms.recipients.Recipient;
@@ -98,11 +96,15 @@ public class SendReadReceiptJob extends BaseJob {
    * maximum size.
    */
   public static void enqueue(long threadId, @NonNull RecipientId recipientId, List<MarkedMessageInfo> markedMessageInfos) {
+    if (!TextSecurePreferences.isReadReceiptsEnabled(AppDependencies.getApplication())) {
+      return;
+    }
+
     if (recipientId.equals(Recipient.self().getId())) {
       return;
     }
 
-    JobManager                    jobManager      = ApplicationDependencies.getJobManager();
+    JobManager                    jobManager      = AppDependencies.getJobManager();
     List<List<MarkedMessageInfo>> messageIdChunks = ListUtil.chunk(markedMessageInfos, MAX_TIMESTAMPS);
 
     if (messageIdChunks.size() > 1) {
@@ -178,19 +180,20 @@ public class SendReadReceiptJob extends BaseJob {
       return;
     }
 
-    if (!recipient.hasServiceId() && !recipient.hasE164()) {
+    if (!recipient.getHasServiceId() && !recipient.getHasE164()) {
       Log.w(TAG, "No serviceId or e164!");
       return;
     }
 
-    SignalServiceMessageSender  messageSender  = ApplicationDependencies.getSignalServiceMessageSender();
+    SignalServiceMessageSender  messageSender  = AppDependencies.getSignalServiceMessageSender();
     SignalServiceAddress        remoteAddress  = RecipientUtil.toSignalServiceAddress(context, recipient);
     SignalServiceReceiptMessage receiptMessage = new SignalServiceReceiptMessage(SignalServiceReceiptMessage.Type.READ, messageSentTimestamps, timestamp);
 
     SendMessageResult result = messageSender.sendReceipt(remoteAddress,
-                                                         UnidentifiedAccessUtil.getAccessFor(context, Recipient.resolved(recipientId)),
+                                                         SealedSenderAccessUtil.getSealedSenderAccessFor(recipient,
+                                                                                                         () -> SignalDatabase.groups().getGroupSendFullToken(threadId, recipientId)),
                                                          receiptMessage,
-                                                         recipient.needsPniSignature());
+                                                         recipient.getNeedsPniSignature());
 
     if (Util.hasItems(messageIds)) {
       SignalDatabase.messageLog().insertIfPossible(recipientId, timestamp, result, ContentHint.IMPLICIT, messageIds, false);
@@ -218,12 +221,6 @@ public class SendReadReceiptJob extends BaseJob {
 
   public static final class Factory implements Job.Factory<SendReadReceiptJob> {
 
-    private final Application application;
-
-    public Factory(@NonNull Application application) {
-      this.application = application;
-    }
-
     @Override
     public @NonNull SendReadReceiptJob create(@NonNull Parameters parameters, @Nullable byte[] serializedData) {
       JsonJobData data = JsonJobData.deserialize(serializedData);
@@ -234,8 +231,7 @@ public class SendReadReceiptJob extends BaseJob {
       List<String>    rawMessageIds  = data.hasStringArray(KEY_MESSAGE_IDS) ? data.getStringArrayAsList(KEY_MESSAGE_IDS) : Collections.emptyList();
       List<MessageId> messageIds     = rawMessageIds.stream().map(MessageId::deserialize).collect(Collectors.toList());
       long            threadId       = data.getLong(KEY_THREAD);
-      RecipientId     recipientId    = data.hasString(KEY_RECIPIENT) ? RecipientId.from(data.getString(KEY_RECIPIENT))
-                                                                               : Recipient.external(application, data.getString(KEY_ADDRESS)).getId();
+      RecipientId     recipientId    = RecipientId.from(data.getString(KEY_RECIPIENT));
 
       for (long id : ids) {
         sentTimestamps.add(id);

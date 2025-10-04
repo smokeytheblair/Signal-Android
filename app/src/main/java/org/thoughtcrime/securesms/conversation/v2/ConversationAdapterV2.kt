@@ -5,19 +5,25 @@
 
 package org.thoughtcrime.securesms.conversation.v2
 
+import android.content.Context
 import android.text.TextUtils
+import android.view.GestureDetector
+import android.view.GestureDetector.SimpleOnGestureListener
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.text.HtmlCompat
 import androidx.core.view.children
+import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.RequestManager
 import org.signal.core.util.logging.Log
 import org.signal.core.util.toOptional
 import org.thoughtcrime.securesms.BindableConversationItem
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.Unbindable
+import org.thoughtcrime.securesms.components.settings.conversation.ConversationSettingsActivity
 import org.thoughtcrime.securesms.conversation.ConversationAdapter.ItemClickListener
 import org.thoughtcrime.securesms.conversation.ConversationAdapterBridge
 import org.thoughtcrime.securesms.conversation.ConversationHeaderView
@@ -27,6 +33,7 @@ import org.thoughtcrime.securesms.conversation.colors.Colorizable
 import org.thoughtcrime.securesms.conversation.colors.Colorizer
 import org.thoughtcrime.securesms.conversation.mutiselect.MultiselectPart
 import org.thoughtcrime.securesms.conversation.mutiselect.Multiselectable
+import org.thoughtcrime.securesms.conversation.v2.data.AvatarDownloadStateCache
 import org.thoughtcrime.securesms.conversation.v2.data.ConversationElementKey
 import org.thoughtcrime.securesms.conversation.v2.data.ConversationMessageElement
 import org.thoughtcrime.securesms.conversation.v2.data.ConversationUpdate
@@ -35,6 +42,7 @@ import org.thoughtcrime.securesms.conversation.v2.data.IncomingTextOnly
 import org.thoughtcrime.securesms.conversation.v2.data.OutgoingMedia
 import org.thoughtcrime.securesms.conversation.v2.data.OutgoingTextOnly
 import org.thoughtcrime.securesms.conversation.v2.data.ThreadHeader
+import org.thoughtcrime.securesms.conversation.v2.items.ChatColorsDrawable
 import org.thoughtcrime.securesms.conversation.v2.items.V2ConversationContext
 import org.thoughtcrime.securesms.conversation.v2.items.V2ConversationItemMediaViewHolder
 import org.thoughtcrime.securesms.conversation.v2.items.V2ConversationItemTextOnlyViewHolder
@@ -48,31 +56,31 @@ import org.thoughtcrime.securesms.databinding.V2ConversationItemTextOnlyOutgoing
 import org.thoughtcrime.securesms.giph.mp4.GiphyMp4PlaybackPolicyEnforcer
 import org.thoughtcrime.securesms.groups.v2.GroupDescriptionUtil
 import org.thoughtcrime.securesms.keyvalue.SignalStore
-import org.thoughtcrime.securesms.messagerequests.MessageRequestState
-import org.thoughtcrime.securesms.mms.GlideRequests
-import org.thoughtcrime.securesms.phonenumbers.PhoneNumberFormatter
 import org.thoughtcrime.securesms.recipients.Recipient
+import org.thoughtcrime.securesms.recipients.ui.about.AboutSheet
 import org.thoughtcrime.securesms.util.CachedInflater
-import org.thoughtcrime.securesms.util.FeatureFlags
-import org.thoughtcrime.securesms.util.HtmlUtil
 import org.thoughtcrime.securesms.util.Projection
 import org.thoughtcrime.securesms.util.ProjectionList
+import org.thoughtcrime.securesms.util.SignalE164Util
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingViewHolder
 import org.thoughtcrime.securesms.util.adapter.mapping.PagingMappingAdapter
 import java.util.Locale
 import java.util.Optional
 
 class ConversationAdapterV2(
-  private val lifecycleOwner: LifecycleOwner,
-  override val glideRequests: GlideRequests,
+  override val lifecycleOwner: LifecycleOwner,
+  override val requestManager: RequestManager,
   override val clickListener: ItemClickListener,
   private var hasWallpaper: Boolean,
   private val colorizer: Colorizer,
-  private val startExpirationTimeout: (MessageRecord) -> Unit
+  private val startExpirationTimeout: (MessageRecord) -> Unit,
+  private val chatColorsDataProvider: () -> ChatColorsDrawable.ChatColorsData,
+  private val displayDialogFragment: (DialogFragment) -> Unit
 ) : PagingMappingAdapter<ConversationElementKey>(), ConversationAdapterBridge, V2ConversationContext {
 
   companion object {
     private val TAG = Log.tag(ConversationAdapterV2::class.java)
+    private const val MIN_GROUPS_THRESHOLD = 2
   }
 
   private val _selected = hashSetOf<MultiselectPart>()
@@ -102,7 +110,7 @@ class ConversationAdapterV2(
       ConversationUpdateViewHolder(view)
     }
 
-    if (SignalStore.internalValues().useConversationItemV2Media()) {
+    if (SignalStore.internal.useConversationItemV2Media) {
       registerFactory(OutgoingMedia::class.java) { parent ->
         val view = CachedInflater.from(parent.context).inflate<View>(R.layout.v2_conversation_item_media_outgoing, parent, false)
         V2ConversationItemMediaViewHolder(V2ConversationItemMediaOutgoingBinding.bind(view).bridge(), this)
@@ -124,26 +132,14 @@ class ConversationAdapterV2(
       }
     }
 
-    if (FeatureFlags.useTextOnlyConversationItemV2()) {
-      registerFactory(OutgoingTextOnly::class.java) { parent ->
-        val view = CachedInflater.from(parent.context).inflate<View>(R.layout.v2_conversation_item_text_only_outgoing, parent, false)
-        V2ConversationItemTextOnlyViewHolder(V2ConversationItemTextOnlyOutgoingBinding.bind(view).bridge(), this)
-      }
+    registerFactory(OutgoingTextOnly::class.java) { parent ->
+      val view = CachedInflater.from(parent.context).inflate<View>(R.layout.v2_conversation_item_text_only_outgoing, parent, false)
+      V2ConversationItemTextOnlyViewHolder(V2ConversationItemTextOnlyOutgoingBinding.bind(view).bridge(), this)
+    }
 
-      registerFactory(IncomingTextOnly::class.java) { parent ->
-        val view = CachedInflater.from(parent.context).inflate<View>(R.layout.v2_conversation_item_text_only_incoming, parent, false)
-        V2ConversationItemTextOnlyViewHolder(V2ConversationItemTextOnlyIncomingBinding.bind(view).bridge(), this)
-      }
-    } else {
-      registerFactory(OutgoingTextOnly::class.java) { parent ->
-        val view = CachedInflater.from(parent.context).inflate<View>(R.layout.conversation_item_sent_text_only, parent, false)
-        OutgoingTextOnlyViewHolder(view)
-      }
-
-      registerFactory(IncomingTextOnly::class.java) { parent ->
-        val view = CachedInflater.from(parent.context).inflate<View>(R.layout.conversation_item_received_text_only, parent, false)
-        IncomingTextOnlyViewHolder(view)
-      }
+    registerFactory(IncomingTextOnly::class.java) { parent ->
+      val view = CachedInflater.from(parent.context).inflate<View>(R.layout.v2_conversation_item_text_only_incoming, parent, false)
+      V2ConversationItemTextOnlyViewHolder(V2ConversationItemTextOnlyIncomingBinding.bind(view).bridge(), this)
     }
   }
 
@@ -196,6 +192,10 @@ class ConversationAdapterV2(
   override fun hasWallpaper(): Boolean = hasWallpaper && displayMode.displayWallpaper()
 
   override fun getColorizer(): Colorizer = colorizer
+
+  override fun getChatColorsData(): ChatColorsDrawable.ChatColorsData {
+    return chatColorsDataProvider()
+  }
 
   override fun getNextMessage(adapterPosition: Int): MessageRecord? {
     return getConversationMessage(adapterPosition - 1)?.messageRecord
@@ -306,6 +306,8 @@ class ConversationAdapterV2(
   }
 
   fun toggleSelection(multiselectPart: MultiselectPart) {
+    if (multiselectPart.getMessageRecord().isInMemoryMessageRecord) { return }
+
     if (multiselectPart in _selected) {
       _selected.remove(multiselectPart)
     } else {
@@ -344,35 +346,7 @@ class ConversationAdapterV2(
         model.conversationMessage,
         previousMessage,
         nextMessage,
-        glideRequests,
-        Locale.getDefault(),
-        _selected,
-        model.conversationMessage.threadRecipient,
-        searchQuery,
-        false,
-        hasWallpaper && displayMode.displayWallpaper(),
-        isMessageRequestAccepted,
-        model.conversationMessage == inlineContent,
-        colorizer,
-        displayMode
-      )
-    }
-  }
-
-  private inner class OutgoingTextOnlyViewHolder(itemView: View) : ConversationViewHolder<OutgoingTextOnly>(itemView) {
-    override fun bind(model: OutgoingTextOnly) {
-      bindable.setEventListener(clickListener)
-
-      if (bindPayloadsIfAvailable()) {
-        return
-      }
-
-      bindable.bind(
-        lifecycleOwner,
-        model.conversationMessage,
-        previousMessage,
-        nextMessage,
-        glideRequests,
+        requestManager,
         Locale.getDefault(),
         _selected,
         model.conversationMessage.threadRecipient,
@@ -390,6 +364,7 @@ class ConversationAdapterV2(
   private inner class OutgoingMediaViewHolder(itemView: View) : ConversationViewHolder<OutgoingMedia>(itemView) {
     override fun bind(model: OutgoingMedia) {
       bindable.setEventListener(clickListener)
+      bindable.setGestureDetector(gestureDetector)
 
       if (bindPayloadsIfAvailable()) {
         return
@@ -400,35 +375,7 @@ class ConversationAdapterV2(
         model.conversationMessage,
         previousMessage,
         nextMessage,
-        glideRequests,
-        Locale.getDefault(),
-        _selected,
-        model.conversationMessage.threadRecipient,
-        searchQuery,
-        false,
-        hasWallpaper && displayMode.displayWallpaper(),
-        isMessageRequestAccepted,
-        model.conversationMessage == inlineContent,
-        colorizer,
-        displayMode
-      )
-    }
-  }
-
-  private inner class IncomingTextOnlyViewHolder(itemView: View) : ConversationViewHolder<IncomingTextOnly>(itemView) {
-    override fun bind(model: IncomingTextOnly) {
-      bindable.setEventListener(clickListener)
-
-      if (bindPayloadsIfAvailable()) {
-        return
-      }
-
-      bindable.bind(
-        lifecycleOwner,
-        model.conversationMessage,
-        previousMessage,
-        nextMessage,
-        glideRequests,
+        requestManager,
         Locale.getDefault(),
         _selected,
         model.conversationMessage.threadRecipient,
@@ -456,7 +403,7 @@ class ConversationAdapterV2(
         model.conversationMessage,
         previousMessage,
         nextMessage,
-        glideRequests,
+        requestManager,
         Locale.getDefault(),
         _selected,
         model.conversationMessage.threadRecipient,
@@ -474,6 +421,19 @@ class ConversationAdapterV2(
   private abstract inner class ConversationViewHolder<T>(itemView: View) : MappingViewHolder<T>(itemView), Multiselectable, Colorizable {
     val bindable: BindableConversationItem
       get() = itemView as BindableConversationItem
+
+    val gestureDetector = GestureDetector(
+      context,
+      object : SimpleOnGestureListener() {
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+          if (clickListener != null && selectedItems.isEmpty()) {
+            clickListener.onItemDoubleClick(getMultiselectPartForLatestTouch())
+            return true
+          }
+          return false
+        }
+      }
+    )
 
     override val root: ViewGroup = bindable.root
 
@@ -501,6 +461,8 @@ class ConversationAdapterV2(
         )
         true
       }
+
+      itemView.setOnTouchListener { _, event: MotionEvent -> gestureDetector.onTouchEvent(event) }
     }
 
     fun bindPayloadsIfAvailable(): Boolean {
@@ -577,38 +539,89 @@ class ConversationAdapterV2(
       val (recipient, groupInfo, sharedGroups, messageRequestState) = model.recipientInfo
       val isSelf = recipient.id == Recipient.self().id
 
-      conversationBanner.setAvatar(glideRequests, recipient)
-      conversationBanner.showBackgroundBubble(recipient.hasWallpaper())
-      val title: String = conversationBanner.setTitle(recipient)
-      conversationBanner.setAbout(recipient)
-
-      if (recipient.isGroup) {
-        if (groupInfo.pendingMemberCount > 0) {
-          val invited = context.resources.getQuantityString(R.plurals.MessageRequestProfileView_invited, groupInfo.pendingMemberCount, groupInfo.pendingMemberCount)
-          conversationBanner.setSubtitle(context.resources.getQuantityString(R.plurals.MessageRequestProfileView_members_and_invited, groupInfo.fullMemberCount, groupInfo.fullMemberCount, invited))
-        } else if (groupInfo.fullMemberCount > 0) {
-          conversationBanner.setSubtitle(context.resources.getQuantityString(R.plurals.MessageRequestProfileView_members, groupInfo.fullMemberCount, groupInfo.fullMemberCount))
-        } else {
-          conversationBanner.setSubtitle(null)
+      when (model.avatarDownloadState) {
+        AvatarDownloadStateCache.DownloadState.NONE,
+        AvatarDownloadStateCache.DownloadState.FINISHED -> {
+          conversationBanner.setAvatar(requestManager, recipient)
         }
-      } else if (isSelf) {
-        conversationBanner.setSubtitle(context.getString(R.string.ConversationFragment__you_can_add_notes_for_yourself_in_this_conversation))
-      } else {
-        val subtitle: String? = recipient.e164.map { e164: String? -> PhoneNumberFormatter.prettyPrint(e164!!) }.orElse(null)
-        if (subtitle == null || subtitle == title) {
-          conversationBanner.hideSubtitle()
-        } else {
-          conversationBanner.setSubtitle(subtitle)
+        AvatarDownloadStateCache.DownloadState.IN_PROGRESS -> {
+          conversationBanner.showProgressBar(recipient)
+        }
+        AvatarDownloadStateCache.DownloadState.FAILED -> {
+          conversationBanner.showFailedAvatarDownload(recipient)
         }
       }
 
-      if (sharedGroups.isEmpty() || isSelf) {
+      conversationBanner.showBackgroundBubble(recipient.hasWallpaper)
+      val title: String = conversationBanner.setTitle(recipient) {
+        displayDialogFragment(AboutSheet.create(recipient))
+      }
+
+      if (recipient.isReleaseNotes) {
+        conversationBanner.showReleaseNoteHeader()
+      }
+
+      conversationBanner.setAbout(recipient)
+
+      if (recipient.isGroup) {
+        if (!groupInfo.hasExistingContacts) {
+          conversationBanner.setUnverifiedNameSubtitle(R.drawable.symbol_group_question_16, true) {
+            clickListener.onShowUnverifiedProfileSheet(true)
+          }
+        } else {
+          conversationBanner.hideUnverifiedNameSubtitle()
+        }
+
+        if (groupInfo.fullMemberCount > 0 || groupInfo.pendingMemberCount > 0) {
+          if (groupInfo.fullMemberCount == 1 && recipient.isActiveGroup) {
+            conversationBanner.hideUnverifiedNameSubtitle()
+          }
+          setSubtitle(context, groupInfo.pendingMemberCount, groupInfo.fullMemberCount, groupInfo.membersPreview, recipient)
+        } else {
+          conversationBanner.hideSubtitle()
+        }
+      } else if (isSelf) {
+        conversationBanner.setSubtitle(context.getString(R.string.ConversationFragment__you_can_add_notes_for_yourself_in_this_conversation), R.drawable.symbol_note_compact_16, null, null)
+      } else {
+        if ((recipient.profileName.toString() == recipient.getDisplayName(context)) && recipient.nickname.isEmpty && !recipient.isSystemContact) {
+          conversationBanner.setUnverifiedNameSubtitle(R.drawable.symbol_person_question_16, false) {
+            clickListener.onShowUnverifiedProfileSheet(false)
+          }
+        } else {
+          conversationBanner.hideUnverifiedNameSubtitle()
+        }
+
+        val subtitle: String? = recipient.takeIf { it.shouldShowE164 }?.e164?.map { e164: String? -> SignalE164Util.prettyPrint(e164!!) }?.orElse(null)
+        if (subtitle == null || subtitle == title) {
+          conversationBanner.hideSubtitle()
+        } else {
+          conversationBanner.setSubtitle(subtitle, R.drawable.symbol_phone_compact_16, null, null)
+        }
+      }
+
+      conversationBanner.hideButton()
+
+      if (messageRequestState?.isAccepted == false && !isSelf && !recipient.isGroup) {
+        if (sharedGroups.size < MIN_GROUPS_THRESHOLD) {
+          conversationBanner.showWarningSubtitle()
+        }
+        conversationBanner.setButton(context.getString(R.string.ConversationFragment_safety_tips)) {
+          clickListener.onShowSafetyTips(false)
+        }
+        conversationBanner.setDescription(getDescription(context, sharedGroups), R.drawable.symbol_group_compact_16)
+      } else if (messageRequestState?.isAccepted == false && recipient.isGroup) {
+        conversationBanner.showWarningSubtitle()
+        conversationBanner.setButton(context.getString(R.string.ConversationFragment_safety_tips)) {
+          clickListener.onShowSafetyTips(true)
+        }
+      } else if ((recipient.isGroup && sharedGroups.isEmpty()) || isSelf) {
+        conversationBanner.hideWarningSubtitle()
         if (TextUtils.isEmpty(groupInfo.description)) {
           conversationBanner.setLinkifyDescription(false)
           conversationBanner.hideDescription()
         } else {
           conversationBanner.setLinkifyDescription(true)
-          val linkifyWebLinks = messageRequestState == MessageRequestState.NONE
+          val linkifyWebLinks = messageRequestState?.isAccepted == true
           conversationBanner.showDescription()
 
           GroupDescriptionUtil.setText(
@@ -621,23 +634,66 @@ class ConversationAdapterV2(
           }
         }
       } else {
-        val description: String = when (sharedGroups.size) {
-          1 -> context.getString(R.string.MessageRequestProfileView_member_of_one_group, HtmlUtil.bold(sharedGroups[0]))
-          2 -> context.getString(R.string.MessageRequestProfileView_member_of_two_groups, HtmlUtil.bold(sharedGroups[0]), HtmlUtil.bold(sharedGroups[1]))
-          3 -> context.getString(R.string.MessageRequestProfileView_member_of_many_groups, HtmlUtil.bold(sharedGroups[0]), HtmlUtil.bold(sharedGroups[1]), HtmlUtil.bold(sharedGroups[2]))
-          else -> {
-            val others: Int = sharedGroups.size - 2
-            context.getString(
-              R.string.MessageRequestProfileView_member_of_many_groups,
-              HtmlUtil.bold(sharedGroups[0]),
-              HtmlUtil.bold(sharedGroups[1]),
-              context.resources.getQuantityString(R.plurals.MessageRequestProfileView_member_of_d_additional_groups, others, others)
-            )
-          }
-        }
-        conversationBanner.setDescription(HtmlCompat.fromHtml(description, 0))
-        conversationBanner.showDescription()
+        conversationBanner.hideWarningSubtitle()
+        conversationBanner.setDescription(getDescription(context, sharedGroups), R.drawable.symbol_group_compact_16)
       }
+      conversationBanner.updateOutlineBoxSize()
+    }
+
+    private fun setSubtitle(context: Context, pendingMemberCount: Int, size: Int, members: List<Recipient>, recipient: Recipient) {
+      val names = members.map { member -> member.getDisplayName(context) }
+      val otherMembers = if (size > 3) context.resources.getQuantityString(R.plurals.MessageRequestProfileView_other_members, size - 3, size - 3) else null
+      val membersSubtitle = if (recipient.isActiveGroup) {
+        when (names.size) {
+          0 -> context.getString(R.string.MessageRequestProfileView_group_members_zero)
+          1 -> context.getString(R.string.MessageRequestProfileView_group_members_one_and_you, names[0])
+          2 -> context.getString(R.string.MessageRequestProfileView_group_members_two_and_you, names[0], names[1])
+          else -> context.getString(R.string.MessageRequestProfileView_group_members_other, names[0], names[1], names[2], otherMembers)
+        }
+      } else {
+        when (names.size) {
+          0 -> context.getString(R.string.MessageRequestProfileView_group_members_zero)
+          1 -> context.getString(R.string.MessageRequestProfileView_group_members_one, names[0])
+          2 -> context.getString(R.string.MessageRequestProfileView_group_members_two, names[0], names[1])
+          3 -> context.getString(R.string.MessageRequestProfileView_group_members_three, names[0], names[1], names[2])
+          else -> context.getString(R.string.MessageRequestProfileView_group_members_other, names[0], names[1], names[2], otherMembers)
+        }
+      }
+
+      if (pendingMemberCount > 0) {
+        val invited = context.resources.getQuantityString(R.plurals.MessageRequestProfileView_invited, pendingMemberCount, pendingMemberCount)
+        val subtitle = context.getString(R.string.MessageRequestProfileView_member_names_and_invited, membersSubtitle, invited)
+        conversationBanner.setSubtitle(subtitle, R.drawable.symbol_group_compact_16, otherMembers) { goToGroupSettings(recipient) }
+      } else {
+        conversationBanner.setSubtitle(membersSubtitle, R.drawable.symbol_group_compact_16, otherMembers) { goToGroupSettings(recipient) }
+      }
+    }
+
+    private fun getDescription(context: Context, sharedGroups: List<String>): String {
+      return when (sharedGroups.size) {
+        0 -> context.getString(R.string.ConversationUpdateItem_no_groups_in_common_review_requests_carefully)
+        1 -> context.getString(R.string.MessageRequestProfileView_member_of_one_group, sharedGroups[0])
+        2 -> context.getString(R.string.MessageRequestProfileView_member_of_two_groups, sharedGroups[0], sharedGroups[1])
+        3 -> context.getString(R.string.MessageRequestProfileView_member_of_many_groups, sharedGroups[0], sharedGroups[1], sharedGroups[2])
+        else -> {
+          val others: Int = sharedGroups.size - 2
+          context.getString(
+            R.string.MessageRequestProfileView_member_of_many_groups,
+            sharedGroups[0],
+            sharedGroups[1],
+            context.resources.getQuantityString(R.plurals.MessageRequestProfileView_member_of_d_additional_groups, others, others)
+          )
+        }
+      }
+    }
+
+    private fun goToGroupSettings(recipient: Recipient) {
+      val intent = ConversationSettingsActivity.forGroup(getContext(), recipient.requireGroupId())
+      val bundle = ConversationSettingsActivity.createTransitionBundle(
+        getContext(),
+        conversationBanner.getViewById(R.id.message_request_avatar)
+      )
+      getContext().startActivity(intent, bundle)
     }
   }
 

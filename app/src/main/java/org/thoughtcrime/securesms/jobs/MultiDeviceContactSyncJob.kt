@@ -1,10 +1,10 @@
 package org.thoughtcrime.securesms.jobs
 
+import org.signal.core.util.isAbsent
 import org.signal.core.util.logging.Log
 import org.signal.libsignal.protocol.InvalidMessageException
-import org.thoughtcrime.securesms.database.IdentityTable.VerifiedStatus
 import org.thoughtcrime.securesms.database.SignalDatabase
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.jobmanager.Job
 import org.thoughtcrime.securesms.jobmanager.JsonJobData
 import org.thoughtcrime.securesms.keyvalue.SignalStore
@@ -12,10 +12,10 @@ import org.thoughtcrime.securesms.net.NotPushRegisteredException
 import org.thoughtcrime.securesms.profiles.AvatarHelper
 import org.thoughtcrime.securesms.providers.BlobProvider
 import org.thoughtcrime.securesms.recipients.Recipient
+import org.whispersystems.signalservice.api.crypto.AttachmentCipherInputStream.IntegrityCheck
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentPointer
 import org.whispersystems.signalservice.api.messages.multidevice.DeviceContact
 import org.whispersystems.signalservice.api.messages.multidevice.DeviceContactsInputStream
-import org.whispersystems.signalservice.api.messages.multidevice.VerifiedMessage.VerifiedState
 import org.whispersystems.signalservice.api.push.SignalServiceAddress
 import org.whispersystems.signalservice.api.push.exceptions.MissingConfigurationException
 import org.whispersystems.signalservice.api.util.AttachmentPointerUtil
@@ -50,7 +50,7 @@ class MultiDeviceContactSyncJob(parameters: Parameters, private val attachmentPo
       throw NotPushRegisteredException()
     }
 
-    if (SignalStore.account().isPrimaryDevice) {
+    if (SignalStore.account.isPrimaryDevice) {
       Log.i(TAG, "Not linked device, aborting...")
       return
     }
@@ -59,8 +59,8 @@ class MultiDeviceContactSyncJob(parameters: Parameters, private val attachmentPo
 
     try {
       val contactsFile: File = BlobProvider.getInstance().forNonAutoEncryptingSingleSessionOnDisk(context)
-      ApplicationDependencies.getSignalServiceMessageReceiver()
-        .retrieveAttachment(contactAttachment, contactsFile, MAX_ATTACHMENT_SIZE)
+      AppDependencies.signalServiceMessageReceiver
+        .retrieveAttachment(contactAttachment, contactsFile, MAX_ATTACHMENT_SIZE, IntegrityCheck.forEncryptedDigest(contactAttachment.digest.get()))
         .use(this::processContactFile)
     } catch (e: MissingConfigurationException) {
       throw IOException(e)
@@ -72,11 +72,18 @@ class MultiDeviceContactSyncJob(parameters: Parameters, private val attachmentPo
   private fun processContactFile(inputStream: InputStream) {
     val deviceContacts = DeviceContactsInputStream(inputStream)
     val recipients = SignalDatabase.recipients
-    val threads = SignalDatabase.threads
 
     var contact: DeviceContact? = deviceContacts.read()
     while (contact != null) {
-      val recipient = Recipient.externalPush(SignalServiceAddress(contact.address.serviceId, contact.address.number.orElse(null)))
+      val recipient: Recipient? = if (contact.aci.isPresent) {
+        Recipient.externalPush(SignalServiceAddress(contact.aci.get(), contact.e164.orElse(null)))
+      } else {
+        Recipient.external(contact.e164.get())
+      }
+
+      if (recipient == null) {
+        continue
+      }
 
       if (recipient.isSelf) {
         contact = deviceContacts.read()
@@ -88,44 +95,13 @@ class MultiDeviceContactSyncJob(parameters: Parameters, private val attachmentPo
       }
 
       if (contact.expirationTimer.isPresent) {
-        recipients.setExpireMessages(recipient.id, contact.expirationTimer.get())
-      }
-
-      if (contact.profileKey.isPresent) {
-        val profileKey = contact.profileKey.get()
-        recipients.setProfileKey(recipient.id, profileKey)
-      }
-
-      if (contact.verified.isPresent) {
-        val verifiedStatus: VerifiedStatus = when (contact.verified.get().verified) {
-          VerifiedState.VERIFIED -> VerifiedStatus.VERIFIED
-          VerifiedState.UNVERIFIED -> VerifiedStatus.UNVERIFIED
-          else -> VerifiedStatus.DEFAULT
-        }
-
-        if (recipient.serviceId.isPresent) {
-          ApplicationDependencies.getProtocolStore().aci().identities().saveIdentityWithoutSideEffects(
-            recipient.id,
-            recipient.serviceId.get(),
-            contact.verified.get().identityKey,
-            verifiedStatus,
-            false,
-            contact.verified.get().timestamp,
-            true
-          )
+        if (contact.expirationTimerVersion.isPresent && contact.expirationTimerVersion.get() > recipient.expireTimerVersion) {
+          recipients.setExpireMessages(recipient.id, contact.expirationTimer.get(), contact.expirationTimerVersion.orElse(1))
+        } else if (contact.expirationTimerVersion.isAbsent()) {
+          // TODO [expireVersion] After unsupported builds expire, we can remove this branch
+          recipients.setExpireMessagesWithoutIncrementingVersion(recipient.id, contact.expirationTimer.get())
         } else {
-          Log.w(TAG, "Missing serviceId for ${recipient.id} -- cannot save identity!")
-        }
-      }
-
-      recipients.setBlocked(recipient.id, contact.isBlocked)
-
-      val threadRecord = threads.getThreadRecord(threads.getThreadIdFor(recipient.id))
-      if (threadRecord != null && contact.isArchived != threadRecord.isArchived) {
-        if (contact.isArchived) {
-          threads.archiveConversation(threadRecord.threadId)
-        } else {
-          threads.unarchiveConversation(threadRecord.threadId)
+          Log.w(TAG, "[ContactSync] ${recipient.id} was synced with an old expiration timer. Ignoring. Recieved: ${contact.expirationTimerVersion.get()} Current: ${recipient.expireTimerVersion}")
         }
       }
 

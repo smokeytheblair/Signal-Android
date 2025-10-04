@@ -50,14 +50,14 @@ public class SearchToolbar extends LinearLayout {
 
     Toolbar toolbar = findViewById(R.id.toolbar);
 
-    Drawable drawable = ContextCompat.getDrawable(getContext(), R.drawable.ic_arrow_left_24);
+    Drawable drawable = ContextCompat.getDrawable(getContext(), R.drawable.symbol_arrow_start_24);
     toolbar.setNavigationIcon(drawable);
     toolbar.setCollapseIcon(drawable);
     toolbar.inflateMenu(R.menu.conversation_list_search);
 
     this.searchItem = toolbar.getMenu().findItem(R.id.action_filter_search);
     SearchView searchView = (SearchView) searchItem.getActionView();
-    EditText   searchText = searchView.findViewById(R.id.search_src_text);
+    EditText   searchText = searchView.findViewById(androidx.appcompat.R.id.search_src_text);
 
     EditTextExtensionsKt.setIncognitoKeyboardEnabled(searchText, TextSecurePreferences.isIncognitoKeyboardEnabled(getContext()));
 

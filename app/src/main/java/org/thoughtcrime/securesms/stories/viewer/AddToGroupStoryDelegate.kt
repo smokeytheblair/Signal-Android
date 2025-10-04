@@ -17,7 +17,7 @@ import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.contacts.paged.ContactSearchKey
 import org.thoughtcrime.securesms.database.SignalDatabase
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.mediasend.MediaSendActivityResult
 import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionActivity
 import org.thoughtcrime.securesms.mms.OutgoingMessage
@@ -111,12 +111,13 @@ class AddToGroupStoryDelegate(
             timestamp = System.currentTimeMillis(),
             storyType = result.storyType,
             isSecure = true,
+            body = result.body,
             attachments = listOf(it)
           )
         }
 
       MessageSender.sendStories(
-        ApplicationDependencies.getApplication(),
+        AppDependencies.application,
         secureMessages,
         null
       ) {

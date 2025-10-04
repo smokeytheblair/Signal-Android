@@ -10,17 +10,18 @@ import org.signal.core.util.Stopwatch
 import org.signal.core.util.logging.Log
 import org.signal.core.util.toInt
 import org.signal.paging.PagedDataSource
+import org.thoughtcrime.securesms.backup.v2.ArchiveRestoreProgress
+import org.thoughtcrime.securesms.backup.v2.BackupRestoreManager
 import org.thoughtcrime.securesms.conversation.ConversationData
 import org.thoughtcrime.securesms.conversation.ConversationMessage
 import org.thoughtcrime.securesms.conversation.ConversationMessage.ConversationMessageFactory
 import org.thoughtcrime.securesms.database.MessageTable
 import org.thoughtcrime.securesms.database.SignalDatabase
-import org.thoughtcrime.securesms.database.model.InMemoryMessageRecord.NoGroupsInCommon
 import org.thoughtcrime.securesms.database.model.InMemoryMessageRecord.RemovedContactHidden
 import org.thoughtcrime.securesms.database.model.InMemoryMessageRecord.UniversalExpireTimerUpdate
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
 import org.thoughtcrime.securesms.database.model.MessageRecord
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.messagerequests.MessageRequestRepository
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingModel
@@ -47,12 +48,12 @@ private object ThreadHeaderKey : ConversationElementKey
  * ConversationDataSource for V2. Assumes that ThreadId is never -1L.
  */
 class ConversationDataSource(
-  private val context: Context,
+  private val localContext: Context,
   private val threadId: Long,
   private val messageRequestData: ConversationData.MessageRequestData,
   private val showUniversalExpireTimerUpdate: Boolean,
   private var baseSize: Int,
-  private val messageRequestRepository: MessageRequestRepository = MessageRequestRepository(context)
+  private val messageRequestRepository: MessageRequestRepository = MessageRequestRepository(localContext)
 ) : PagedDataSource<ConversationElementKey, ConversationElement> {
 
   companion object {
@@ -72,7 +73,6 @@ class ConversationDataSource(
     val startTime = System.currentTimeMillis()
     val size: Int = getSizeInternal() +
       THREAD_HEADER_COUNT +
-      messageRequestData.includeWarningUpdateMessage().toInt() +
       messageRequestData.isHidden.toInt() +
       showUniversalExpireTimerUpdate.toInt()
 
@@ -108,10 +108,6 @@ class ConversationDataSource(
         }
       }
 
-    if (messageRequestData.includeWarningUpdateMessage() && (start + length >= totalSize)) {
-      records.add(NoGroupsInCommon(threadId, messageRequestData.isGroup))
-    }
-
     if (messageRequestData.isHidden && (start + length >= totalSize)) {
       records.add(RemovedContactHidden(threadId))
     }
@@ -128,11 +124,16 @@ class ConversationDataSource(
     records = MessageDataFetcher.updateModelsWithData(records, extraData).toMutableList()
     stopwatch.split("models")
 
+    if (ArchiveRestoreProgress.state.activelyRestoring()) {
+      BackupRestoreManager.prioritizeAttachmentsIfNeeded(records)
+      stopwatch.split("restore")
+    }
+
     val messages = records.map { record ->
       ConversationMessageFactory.createWithUnresolvedData(
-        context,
+        localContext,
         record,
-        record.getDisplayBody(context),
+        record.getDisplayBody(localContext),
         extraData.mentionsById[record.id],
         extraData.hasBeenQuoted.contains(record.id),
         threadRecipient
@@ -169,11 +170,11 @@ class ConversationDataSource(
     val stopwatch = Stopwatch(title = "load($key), thread $threadId", decimalPlaces = 2)
     var record = SignalDatabase.messages.getMessageRecordOrNull(key.id)
 
-    if ((record as? MediaMmsMessageRecord)?.parentStoryId?.isGroupReply() == true) {
+    if ((record as? MmsMessageRecord)?.parentStoryId?.isGroupReply() == true) {
       return null
     }
 
-    val scheduleDate = (record as? MediaMmsMessageRecord)?.scheduledDate
+    val scheduleDate = (record as? MmsMessageRecord)?.scheduledDate
     if (scheduleDate != null && scheduleDate != -1L) {
       return null
     }
@@ -192,9 +193,9 @@ class ConversationDataSource(
         stopwatch.split("models")
 
         return ConversationMessageFactory.createWithUnresolvedData(
-          ApplicationDependencies.getApplication(),
+          localContext,
           record,
-          record.getDisplayBody(ApplicationDependencies.getApplication()),
+          record.getDisplayBody(AppDependencies.application),
           extraData.mentionsById[record.id],
           extraData.hasBeenQuoted.contains(record.id),
           threadRecipient
@@ -215,20 +216,20 @@ class ConversationDataSource(
   }
 
   private fun loadThreadHeader(): ThreadHeader {
-    return ThreadHeader(messageRequestRepository.getRecipientInfo(threadRecipient.id, threadId))
+    return ThreadHeader(messageRequestRepository.getRecipientInfo(threadRecipient.id, threadId), AvatarDownloadStateCache.getDownloadState(threadRecipient))
   }
 
   private fun ConversationMessage.toMappingModel(): MappingModel<*> {
     return if (messageRecord.isUpdate) {
       ConversationUpdate(this)
     } else if (messageRecord.isOutgoing) {
-      if (this.isTextOnly(context)) {
+      if (this.isTextOnly(localContext)) {
         OutgoingTextOnly(this)
       } else {
         OutgoingMedia(this)
       }
     } else {
-      if (this.isTextOnly(context)) {
+      if (this.isTextOnly(localContext)) {
         IncomingTextOnly(this)
       } else {
         IncomingMedia(this)

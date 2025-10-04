@@ -9,6 +9,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.util.Consumer;
 
+import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 
 import org.signal.core.util.Hex;
@@ -19,6 +20,7 @@ import org.signal.libsignal.protocol.InvalidMessageException;
 import org.signal.libsignal.protocol.util.Pair;
 import org.signal.libsignal.zkgroup.VerificationFailedException;
 import org.signal.libsignal.zkgroup.groups.GroupMasterKey;
+import org.signal.ringrtc.CallLinkEpoch;
 import org.signal.ringrtc.CallLinkRootKey;
 import org.signal.storageservice.protos.groups.local.DecryptedGroupJoinInfo;
 import org.thoughtcrime.securesms.R;
@@ -28,14 +30,13 @@ import org.thoughtcrime.securesms.calls.links.CallLinks;
 import org.thoughtcrime.securesms.database.AttachmentTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.GroupRecord;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.groups.GroupId;
 import org.thoughtcrime.securesms.groups.GroupManager;
 import org.thoughtcrime.securesms.groups.v2.GroupInviteLinkUrl;
 import org.thoughtcrime.securesms.jobs.AvatarGroupsV2DownloadJob;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.linkpreview.LinkPreviewUtil.OpenGraph;
-import org.thoughtcrime.securesms.mms.GlideApp;
 import org.thoughtcrime.securesms.mms.PushMediaConstraints;
 import org.thoughtcrime.securesms.net.CallRequestController;
 import org.thoughtcrime.securesms.net.CompositeRequestController;
@@ -64,6 +65,7 @@ import org.whispersystems.signalservice.api.util.OptionalUtil;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
@@ -96,7 +98,7 @@ public class LinkPreviewRepository {
 
   public @NonNull Single<Result<LinkPreview, Error>> getLinkPreview(@NonNull String url) {
     return Single.<Result<LinkPreview, Error>>create(emitter -> {
-      RequestController controller = getLinkPreview(ApplicationDependencies.getApplication(),
+      RequestController controller = getLinkPreview(AppDependencies.getApplication(),
                                                     url,
                                                     new Callback() {
                                                       @Override
@@ -190,7 +192,26 @@ public class LinkPreviewRepository {
           return;
         }
 
-        String           body        = OkHttpUtil.readAsString(response.body(), FAILSAFE_MAX_TEXT_SIZE);
+        if (MediaUtil.isImageType(response.header("Content-Type"))) {
+          // We've been linked directly to an image.
+          okhttp3.HttpUrl imageUrl = response.request().url();
+          // The best we can do for a title is the filename in the URL itself,
+          // but that's no worse than the body of the message.
+          List<String> requestedUrlPathSegments = imageUrl.pathSegments();
+          String       filename                 = requestedUrlPathSegments.get(requestedUrlPathSegments.size() - 1);
+          callback.accept(new Metadata(Optional.of(filename), Optional.empty(), 0, Optional.of(imageUrl.toString())));
+          return;
+        }
+
+        String body;
+        try {
+          body = OkHttpUtil.readAsString(response.body(), FAILSAFE_MAX_TEXT_SIZE);
+        } catch (IOException e) {
+          Log.w(TAG, "Failed to read body", e);
+          callback.accept(Metadata.empty());
+          return;
+        }
+
         OpenGraph        openGraph   = LinkPreviewUtil.parseOpenGraphFields(body);
         Optional<String> title       = openGraph.getTitle();
         Optional<String> description = openGraph.getDescription();
@@ -226,17 +247,17 @@ public class LinkPreviewRepository {
         byte[]                           data        = OkHttpUtil.readAsBytes(bodyStream, FAILSAFE_MAX_IMAGE_SIZE);
         Bitmap                           bitmap      = BitmapFactory.decodeByteArray(data, 0, data.length);
         Optional<Attachment>             thumbnail   = Optional.empty();
-        PushMediaConstraints.MediaConfig mediaConfig = PushMediaConstraints.MediaConfig.getDefault(ApplicationDependencies.getApplication());
+        PushMediaConstraints.MediaConfig mediaConfig = PushMediaConstraints.MediaConfig.getDefault(AppDependencies.getApplication());
 
         if (bitmap != null) {
           for (final int maxDimension : mediaConfig.getImageSizeTargets()) {
             ImageCompressionUtil.Result result = ImageCompressionUtil.compressWithinConstraints(
-                ApplicationDependencies.getApplication(),
+                AppDependencies.getApplication(),
                 MediaUtil.IMAGE_JPEG,
                 bitmap,
                 maxDimension,
                 mediaConfig.getMaxImageFileSize(),
-                mediaConfig.getQualitySetting()
+                mediaConfig.getImageQualitySetting()
             );
 
             if (result != null) {
@@ -271,7 +292,7 @@ public class LinkPreviewRepository {
         byte[]               packIdBytes   = Hex.fromStringCondensed(packIdString);
         byte[]               packKeyBytes  = Hex.fromStringCondensed(packKeyString);
 
-        SignalServiceMessageReceiver receiver = ApplicationDependencies.getSignalServiceMessageReceiver();
+        SignalServiceMessageReceiver receiver = AppDependencies.getSignalServiceMessageReceiver();
         SignalServiceStickerManifest manifest = receiver.retrieveStickerManifest(packIdBytes, packKeyBytes);
 
         String                title        = OptionalUtil.or(manifest.getTitle(), manifest.getAuthor()).orElse("");
@@ -279,7 +300,7 @@ public class LinkPreviewRepository {
         Optional<StickerInfo> cover        = OptionalUtil.or(manifest.getCover(), firstSticker);
 
         if (cover.isPresent()) {
-          Bitmap bitmap = GlideApp.with(context).asBitmap()
+          Bitmap bitmap = Glide.with(context).asBitmap()
                                                 .load(new StickerRemoteUri(packIdString, packKeyString, cover.get().getId()))
                                                 .skipMemoryCache(true)
                                                 .diskCacheStrategy(DiskCacheStrategy.NONE)
@@ -306,17 +327,22 @@ public class LinkPreviewRepository {
                                                         @NonNull String callLinkUrl,
                                                         @NonNull Callback callback) {
 
-    CallLinkRootKey callLinkRootKey = CallLinks.parseUrl(callLinkUrl);
-    if (callLinkRootKey == null) {
+    CallLinks.CallLinkParseResult linkParseResult = CallLinks.parseUrl(callLinkUrl);
+    if (linkParseResult == null) {
       callback.onError(Error.PREVIEW_NOT_AVAILABLE);
       return () -> { };
     }
 
-    Disposable disposable = ApplicationDependencies.getSignalCallManager()
-                                                   .getCallLinkManager()
-                                                   .readCallLink(new CallLinkCredentials(callLinkRootKey.getKeyBytes(), null))
-                                                   .observeOn(Schedulers.io())
-                                                   .subscribe(
+    CallLinkEpoch epoch = linkParseResult.getEpoch();
+    byte[] epochBytes = epoch != null ? epoch.getBytes() : null;
+
+    Disposable disposable = AppDependencies.getSignalCallManager()
+                                           .getCallLinkManager()
+                                           .readCallLink(new CallLinkCredentials(linkParseResult.getRootKey().getKeyBytes(),
+                                                                                 epochBytes,
+                                                                                 null))
+                                           .observeOn(Schedulers.io())
+                                           .subscribe(
                                                         result -> {
                                                           if (result instanceof ReadCallLinkResult.Success) {
                                                             ReadCallLinkResult.Success success = (ReadCallLinkResult.Success) result;
@@ -458,6 +484,7 @@ public class LinkPreviewRepository {
                              false,
                              false,
                              false,
+                             null,
                              null,
                              null,
                              null,

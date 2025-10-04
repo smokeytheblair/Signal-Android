@@ -10,9 +10,9 @@ import org.thoughtcrime.securesms.conversation.v2.data.ConversationElementKey
 import org.thoughtcrime.securesms.conversation.v2.data.IncomingTextOnly
 import org.thoughtcrime.securesms.conversation.v2.data.OutgoingTextOnly
 import org.thoughtcrime.securesms.database.MessageTypes
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.StoryType
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.mms.SlideDeck
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingModel
@@ -78,7 +78,7 @@ class ConversationElementGenerator {
 
     val isIncoming = random.nextBoolean()
 
-    val record = MediaMmsMessageRecord(
+    val record = MmsMessageRecord(
       messageId,
       if (isIncoming) Recipient.UNKNOWN else Recipient.self(),
       0,
@@ -86,7 +86,7 @@ class ConversationElementGenerator {
       now,
       now,
       now,
-      1,
+      true,
       1,
       testMessage,
       SlideDeck(),
@@ -96,8 +96,9 @@ class ConversationElementGenerator {
       0,
       0,
       0,
+      0,
       false,
-      1,
+      true,
       null,
       emptyList(),
       emptyList(),
@@ -106,7 +107,7 @@ class ConversationElementGenerator {
       false,
       false,
       now,
-      1,
+      true,
       now,
       null,
       StoryType.NONE,
@@ -114,14 +115,17 @@ class ConversationElementGenerator {
       null,
       null,
       null,
+      null,
       -1,
       null,
       null,
-      0
+      0,
+      false,
+      null
     )
 
     val conversationMessage = ConversationMessageFactory.createWithUnresolvedData(
-      ApplicationDependencies.getApplication(),
+      AppDependencies.application,
       record,
       Recipient.UNKNOWN
     )

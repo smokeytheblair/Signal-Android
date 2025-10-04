@@ -8,10 +8,12 @@ import androidx.annotation.Nullable;
 import androidx.core.util.Consumer;
 
 import org.signal.core.util.StreamUtil;
+import org.signal.core.util.concurrent.ListenableFuture;
+import org.signal.core.util.concurrent.SimpleTask;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.conversation.colors.AvatarColor;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.jobs.MultiDeviceProfileContentUpdateJob;
 import org.thoughtcrime.securesms.jobs.MultiDeviceProfileKeyUpdateJob;
 import org.thoughtcrime.securesms.jobs.ProfileUploadJob;
@@ -22,9 +24,7 @@ import org.thoughtcrime.securesms.profiles.ProfileName;
 import org.thoughtcrime.securesms.profiles.SystemProfileUtil;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
-import org.thoughtcrime.securesms.registration.RegistrationUtil;
-import org.thoughtcrime.securesms.util.concurrent.ListenableFuture;
-import org.signal.core.util.concurrent.SimpleTask;
+import org.thoughtcrime.securesms.registration.util.RegistrationUtil;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -140,15 +140,15 @@ public class EditSelfProfileRepository implements EditProfileRepository {
         }
       }
 
-      ApplicationDependencies.getJobManager()
-                             .startChain(new ProfileUploadJob())
-                             .then(Arrays.asList(new MultiDeviceProfileKeyUpdateJob(), new MultiDeviceProfileContentUpdateJob()))
-                             .enqueue();
+      AppDependencies.getJobManager()
+                     .startChain(new ProfileUploadJob())
+                     .then(Arrays.asList(new MultiDeviceProfileKeyUpdateJob(), new MultiDeviceProfileContentUpdateJob()))
+                     .enqueue();
 
       RegistrationUtil.maybeMarkRegistrationComplete();
 
       if (avatar != null) {
-        SignalStore.misc().markHasEverHadAnAvatar();
+        SignalStore.misc().setHasEverHadAnAvatar(true);
       }
 
       return UploadResult.SUCCESS;
@@ -157,6 +157,6 @@ public class EditSelfProfileRepository implements EditProfileRepository {
 
   @Override
   public void getCurrentUsername(@NonNull Consumer<Optional<String>> callback) {
-    callback.accept(Recipient.self().getUsername());
+    callback.accept(Optional.ofNullable(SignalStore.account().getUsername()));
   }
 }

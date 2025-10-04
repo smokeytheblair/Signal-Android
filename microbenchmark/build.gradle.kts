@@ -19,6 +19,7 @@ android {
   compileSdkVersion = signalCompileSdkVersion
 
   compileOptions {
+    isCoreLibraryDesugaringEnabled = true
     sourceCompatibility = signalJavaVersion
     targetCompatibility = signalJavaVersion
   }
@@ -29,8 +30,6 @@ android {
 
   defaultConfig {
     minSdk = signalMinSdkVersion
-    targetSdk = signalTargetSdkVersion
-
     testInstrumentationRunner = "androidx.benchmark.junit4.AndroidBenchmarkRunner"
   }
 
@@ -49,7 +48,10 @@ android {
 }
 
 dependencies {
+  coreLibraryDesugaring(libs.android.tools.desugar)
   lintChecks(project(":lintchecks"))
+
+  implementation(project(":core-util"))
 
   // Base dependencies
   androidTestImplementation(testLibs.junit.junit)

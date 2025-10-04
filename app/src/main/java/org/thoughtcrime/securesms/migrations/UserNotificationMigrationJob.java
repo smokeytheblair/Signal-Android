@@ -1,17 +1,20 @@
 package org.thoughtcrime.securesms.migrations;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.TaskStackBuilder;
+import androidx.core.content.ContextCompat;
 
+import org.signal.core.util.SetUtil;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.MainActivity;
 import org.thoughtcrime.securesms.NewConversationActivity;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.conversationlist.model.ConversationFilter;
@@ -19,10 +22,10 @@ import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.ThreadTable;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
+import org.thoughtcrime.securesms.MainActivity;
 import org.thoughtcrime.securesms.notifications.NotificationChannels;
 import org.thoughtcrime.securesms.notifications.NotificationIds;
 import org.thoughtcrime.securesms.recipients.RecipientId;
-import org.signal.core.util.SetUtil;
 import org.thoughtcrime.securesms.util.TextSecurePreferences;
 
 import java.util.List;
@@ -77,7 +80,7 @@ public class UserNotificationMigrationJob extends MigrationJob {
 
     ThreadTable threadTable = SignalDatabase.threads();
 
-    int threadCount = threadTable.getUnarchivedConversationListCount(ConversationFilter.OFF) +
+    int threadCount = threadTable.getUnarchivedConversationListCount(ConversationFilter.OFF, null) +
                       threadTable.getArchivedConversationListCount(ConversationFilter.OFF);
 
     if (threadCount >= 3) {
@@ -92,6 +95,11 @@ public class UserNotificationMigrationJob extends MigrationJob {
 
     if (threadRecipients.containsAll(registeredSystemContacts)) {
       Log.w(TAG, "Threads already exist for all relevant contacts. Skipping.");
+      return;
+    }
+
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+      Log.w(TAG, "Notification permission is not granted. Skipping.");
       return;
     }
 

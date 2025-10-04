@@ -4,15 +4,17 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.jobmanager.JsonJobData;
 import org.thoughtcrime.securesms.jobmanager.Job;
-import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.whispersystems.signalservice.internal.push.http.ResumableUploadSpec;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 
+/**
+ * No longer used. Functionality has been merged into {@link AttachmentUploadJob}.
+ */
+@Deprecated
 public class ResumableUploadSpecJob extends BaseJob {
 
   private static final String TAG = Log.tag(ResumableUploadSpecJob.class);
@@ -21,22 +23,14 @@ public class ResumableUploadSpecJob extends BaseJob {
 
   public static final String KEY = "ResumableUploadSpecJob";
 
-  public ResumableUploadSpecJob() {
-    this(new Job.Parameters.Builder()
-                           .addConstraint(NetworkConstraint.KEY)
-                           .setLifespan(TimeUnit.DAYS.toMillis(1))
-                           .setMaxAttempts(Parameters.UNLIMITED)
-                           .build());
-  }
-
   private ResumableUploadSpecJob(@NonNull Parameters parameters) {
     super(parameters);
   }
 
   @Override
   protected void onRun() throws Exception {
-    ResumableUploadSpec resumableUploadSpec = ApplicationDependencies.getSignalServiceMessageSender()
-                                                                     .getResumableUploadSpec();
+    ResumableUploadSpec resumableUploadSpec = AppDependencies.getSignalServiceMessageSender()
+                                                             .getResumableUploadSpec();
 
     setOutputData(new JsonJobData.Builder()
                           .putString(KEY_RESUME_SPEC, resumableUploadSpec.serialize())

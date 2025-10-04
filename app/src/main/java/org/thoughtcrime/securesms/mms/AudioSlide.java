@@ -53,6 +53,7 @@ public class AudioSlide extends Slide {
                                             null,
                                             null,
                                             null,
+                                            null,
                                             null));
   }
 
@@ -61,7 +62,7 @@ public class AudioSlide extends Slide {
   }
 
   public AudioSlide(Uri uri, long dataSize, String contentType, boolean voiceNote) {
-    super(new UriAttachment(uri, contentType, AttachmentTable.TRANSFER_PROGRESS_STARTED, dataSize, 0, 0, null, null, voiceNote, false, false, false, null, null, null, null, null));
+    super(new UriAttachment(uri, contentType, AttachmentTable.TRANSFER_PROGRESS_STARTED, dataSize, 0, 0, null, null, voiceNote, false, false, false, null, null, null, null, null, null));
   }
 
   public AudioSlide(Attachment attachment) {
@@ -91,6 +92,6 @@ public class AudioSlide extends Slide {
 
   @Override
   public @DrawableRes int getPlaceholderRes(Theme theme) {
-    return R.drawable.ic_audio;
+    return R.drawable.symbol_speaker_fill_24;
   }
 }

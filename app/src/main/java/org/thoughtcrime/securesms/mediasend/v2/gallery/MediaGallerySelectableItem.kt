@@ -2,11 +2,14 @@ package org.thoughtcrime.securesms.mediasend.v2.gallery
 
 import android.animation.ValueAnimator
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.view.setPadding
+import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
@@ -16,8 +19,9 @@ import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.mediasend.Media
 import org.thoughtcrime.securesms.mediasend.MediaFolder
-import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader
-import org.thoughtcrime.securesms.mms.GlideApp
+import org.thoughtcrime.securesms.mediasend.v2.review.MediaGalleryGridItemTouchListener
+import org.thoughtcrime.securesms.mms.DecryptableUri
+import org.thoughtcrime.securesms.mms.PartAuthority
 import org.thoughtcrime.securesms.util.MediaUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.LayoutFactory
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
@@ -37,12 +41,23 @@ object MediaGallerySelectableItem {
 
   fun registerAdapter(
     mappingAdapter: MappingAdapter,
+    mediaGalleryGridItemTouchListener: MediaGalleryGridItemTouchListener,
     onMediaFolderClicked: OnMediaFolderClicked,
     onMediaClicked: OnMediaClicked,
     isMultiselectEnabled: Boolean
   ) {
     mappingAdapter.registerFactory(FolderModel::class.java, LayoutFactory({ FolderViewHolder(it, onMediaFolderClicked) }, R.layout.v2_media_gallery_folder_item))
-    mappingAdapter.registerFactory(FileModel::class.java, LayoutFactory({ FileViewHolder(it, onMediaClicked) }, if (isMultiselectEnabled) R.layout.v2_media_gallery_item else R.layout.v2_media_gallery_item_no_check))
+    mappingAdapter.registerFactory(FileModel::class.java, LayoutFactory({ FileViewHolder(it, onMediaClicked, mediaGalleryGridItemTouchListener) }, if (isMultiselectEnabled) R.layout.v2_media_gallery_item else R.layout.v2_media_gallery_item_no_check))
+    mappingAdapter.registerFactory(PlaceholderModel::class.java, LayoutFactory({ PlaceholderViewHolder(it) }, R.layout.v2_media_gallery_placeholder_item))
+  }
+
+  class PlaceholderViewHolder(itemView: View) : BaseViewHolder<PlaceholderModel>(itemView) {
+    override fun bind(model: PlaceholderModel) = Unit
+  }
+
+  class PlaceholderModel : MappingModel<PlaceholderModel> {
+    override fun areItemsTheSame(newItem: PlaceholderModel): Boolean = true
+    override fun areContentsTheSame(newItem: PlaceholderModel): Boolean = true
   }
 
   class FolderModel(val mediaFolder: MediaFolder) : MappingModel<FolderModel> {
@@ -56,20 +71,28 @@ object MediaGallerySelectableItem {
     }
   }
 
+  private fun Uri.toGlideModel(): Any {
+    return if (PartAuthority.isLocalUri(this)) {
+      DecryptableUri(this)
+    } else {
+      this
+    }
+  }
+
   abstract class BaseViewHolder<T : MappingModel<T>>(itemView: View) : MappingViewHolder<T>(itemView) {
     protected val imageView: ShapeableImageView = itemView.findViewById(R.id.media_gallery_image)
-    protected val playOverlay: ImageView = itemView.findViewById(R.id.media_gallery_play_overlay)
+    protected val playOverlay: ImageView? = itemView.findViewById(R.id.media_gallery_play_overlay)
     protected val checkView: TextView? = itemView.findViewById(R.id.media_gallery_check)
     protected val title: TextView? = itemView.findViewById(R.id.media_gallery_title)
   }
 
   class FolderViewHolder(itemView: View, private val onMediaFolderClicked: OnMediaFolderClicked) : BaseViewHolder<FolderModel>(itemView) {
     override fun bind(model: FolderModel) {
-      GlideApp.with(imageView)
-        .load(DecryptableStreamUriLoader.DecryptableUri(model.mediaFolder.thumbnailUri))
+      Glide.with(imageView)
+        .load(model.mediaFolder.thumbnailUri.toGlideModel())
         .into(imageView)
 
-      playOverlay.visible = false
+      playOverlay?.visible = false
       itemView.setOnClickListener { onMediaFolderClicked(model.mediaFolder) }
       title?.text = model.mediaFolder.title
       title?.visible = true
@@ -95,7 +118,7 @@ object MediaGallerySelectableItem {
     }
   }
 
-  class FileViewHolder(itemView: View, private val onMediaClicked: OnMediaClicked) : BaseViewHolder<FileModel>(itemView) {
+  class FileViewHolder(itemView: View, private val onMediaClicked: OnMediaClicked, private val mediaGalleryGridItemTouchListener: MediaGalleryGridItemTouchListener) : BaseViewHolder<FileModel>(itemView) {
 
     private val selectedPadding = DimensionUnit.DP.toPixels(12f)
     private val selectedRadius = DimensionUnit.DP.toPixels(12f)
@@ -105,7 +128,11 @@ object MediaGallerySelectableItem {
       checkView?.visible = model.isSelected
       checkView?.text = "${model.selectionOneBasedIndex}"
       itemView.setOnClickListener { onMediaClicked(model.media, model.isSelected) }
-      playOverlay.visible = MediaUtil.isVideo(model.media.mimeType) && !model.media.isVideoGif
+      itemView.setOnLongClickListener {
+        mediaGalleryGridItemTouchListener.startDragSelection(bindingAdapterPosition)
+        true
+      }
+      playOverlay?.visible = MediaUtil.isVideo(model.media.contentType) && !model.media.isVideoGif
       title?.visible = false
 
       if (PAYLOAD_INDEX_CHANGED in payload) {
@@ -120,8 +147,9 @@ object MediaGallerySelectableItem {
         updateImageView(if (model.isSelected) 1f else 0f)
       }
 
-      GlideApp.with(imageView)
-        .load(DecryptableStreamUriLoader.DecryptableUri(model.media.uri))
+      Glide.with(imageView)
+        .load(model.media.uri.toGlideModel())
+        .diskCacheStrategy(DiskCacheStrategy.ALL)
         .addListener(ErrorLoggingRequestListener(FILE_VIEW_HOLDER_TAG))
         .into(imageView)
     }

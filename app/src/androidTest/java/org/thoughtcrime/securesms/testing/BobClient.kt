@@ -6,9 +6,11 @@ import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SignalProtocolAddress
+import org.signal.libsignal.protocol.UsePqRatchet
 import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord
 import org.signal.libsignal.protocol.state.IdentityKeyStore
+import org.signal.libsignal.protocol.state.IdentityKeyStore.IdentityChange
 import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.PreKeyBundle
 import org.signal.libsignal.protocol.state.PreKeyRecord
@@ -17,7 +19,8 @@ import org.signal.libsignal.protocol.state.SignedPreKeyRecord
 import org.signal.libsignal.protocol.util.KeyHelper
 import org.signal.libsignal.zkgroup.profiles.ProfileKey
 import org.thoughtcrime.securesms.crypto.ProfileKeyUtil
-import org.thoughtcrime.securesms.crypto.UnidentifiedAccessUtil
+import org.thoughtcrime.securesms.crypto.SealedSenderAccessUtil
+import org.thoughtcrime.securesms.database.KyberPreKeyTable
 import org.thoughtcrime.securesms.database.OneTimePreKeyTable
 import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.SignedPreKeyTable
@@ -25,14 +28,13 @@ import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.testing.FakeClientHelpers.toEnvelope
 import org.whispersystems.signalservice.api.SignalServiceAccountDataStore
 import org.whispersystems.signalservice.api.SignalSessionLock
+import org.whispersystems.signalservice.api.crypto.SealedSenderAccess
 import org.whispersystems.signalservice.api.crypto.SignalServiceCipher
 import org.whispersystems.signalservice.api.crypto.SignalSessionBuilder
-import org.whispersystems.signalservice.api.crypto.UnidentifiedAccess
 import org.whispersystems.signalservice.api.push.DistributionId
 import org.whispersystems.signalservice.api.push.ServiceId
 import org.whispersystems.signalservice.api.push.SignalServiceAddress
 import org.whispersystems.signalservice.internal.push.Envelope
-import java.util.Optional
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 
@@ -67,7 +69,7 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
 
     if (!aciStore.containsSession(getAliceProtocolAddress())) {
       val sessionBuilder = SignalSessionBuilder(sessionLock, SessionBuilder(aciStore, getAliceProtocolAddress()))
-      sessionBuilder.process(getAlicePreKeyBundle())
+      sessionBuilder.process(getAlicePreKeyBundle(), UsePqRatchet.NO)
     }
 
     return cipher.encrypt(getAliceProtocolAddress(), getAliceUnidentifiedAccess(), envelopeContent)
@@ -75,12 +77,12 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
   }
 
   fun decrypt(envelope: Envelope, serverDeliveredTimestamp: Long) {
-    val cipher = SignalServiceCipher(serviceAddress, 1, aciStore, sessionLock, UnidentifiedAccessUtil.getCertificateValidator())
-    cipher.decrypt(envelope, serverDeliveredTimestamp)
+    val cipher = SignalServiceCipher(serviceAddress, 1, aciStore, sessionLock, SealedSenderAccessUtil.getCertificateValidator())
+    cipher.decrypt(envelope, serverDeliveredTimestamp, UsePqRatchet.NO)
   }
 
   private fun getAliceServiceId(): ServiceId {
-    return SignalStore.account().requireAci()
+    return SignalStore.account.requireAci()
   }
 
   private fun getAlicePreKeyBundle(): PreKeyBundle {
@@ -102,32 +104,44 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
 
     val selfSignedPreKeyRecord = SignalDatabase.signedPreKeys.get(getAliceServiceId(), selfSignedPreKeyId)!!
 
+    val selfSignedKyberPreKeyId = SignalDatabase.rawDatabase
+      .select(KyberPreKeyTable.KEY_ID)
+      .from(KyberPreKeyTable.TABLE_NAME)
+      .where("${KyberPreKeyTable.ACCOUNT_ID} = ?", getAliceServiceId().toString())
+      .run()
+      .readToSingleInt(-1)
+
+    val selfSignedKyberPreKeyRecord = SignalDatabase.kyberPreKeys.get(getAliceServiceId(), selfSignedKyberPreKeyId)!!.record
+
     return PreKeyBundle(
-      SignalStore.account().registrationId,
+      SignalStore.account.registrationId,
       1,
       selfPreKeyId,
       selfPreKeyRecord.keyPair.publicKey,
       selfSignedPreKeyId,
       selfSignedPreKeyRecord.keyPair.publicKey,
       selfSignedPreKeyRecord.signature,
-      getAlicePublicKey()
+      getAlicePublicKey(),
+      selfSignedKyberPreKeyId,
+      selfSignedKyberPreKeyRecord.keyPair.publicKey,
+      selfSignedKyberPreKeyRecord.signature
     )
   }
 
   private fun getAliceProtocolAddress(): SignalProtocolAddress {
-    return SignalProtocolAddress(SignalStore.account().requireAci().toString(), 1)
+    return SignalProtocolAddress(SignalStore.account.requireAci().toString(), 1)
   }
 
   private fun getAlicePublicKey(): IdentityKey {
-    return SignalStore.account().aciIdentityKey.publicKey
+    return SignalStore.account.aciIdentityKey.publicKey
   }
 
   private fun getAliceProfileKey(): ProfileKey {
     return ProfileKeyUtil.getSelfProfileKey()
   }
 
-  private fun getAliceUnidentifiedAccess(): Optional<UnidentifiedAccess> {
-    return FakeClientHelpers.getTargetUnidentifiedAccess(profileKey, getAliceProfileKey(), senderCertificate)
+  private fun getAliceUnidentifiedAccess(): SealedSenderAccess? {
+    return FakeClientHelpers.getSealedSenderAccess(getAliceProfileKey(), senderCertificate)
   }
 
   private class BobSignalServiceAccountDataStore(private val registrationId: Int, private val identityKeyPair: IdentityKeyPair) : SignalServiceAccountDataStore {
@@ -138,11 +152,13 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
     override fun getLocalRegistrationId(): Int = registrationId
     override fun isTrustedIdentity(address: SignalProtocolAddress?, identityKey: IdentityKey?, direction: IdentityKeyStore.Direction?): Boolean = true
     override fun loadSession(address: SignalProtocolAddress?): SessionRecord = aliceSessionRecord ?: SessionRecord()
-    override fun saveIdentity(address: SignalProtocolAddress?, identityKey: IdentityKey?): Boolean = false
-    override fun storeSession(address: SignalProtocolAddress?, record: SessionRecord?) { aliceSessionRecord = record }
+    override fun saveIdentity(address: SignalProtocolAddress?, identityKey: IdentityKey?): IdentityKeyStore.IdentityChange = IdentityChange.NEW_OR_UNCHANGED
+    override fun storeSession(address: SignalProtocolAddress?, record: SessionRecord?) {
+      aliceSessionRecord = record
+    }
     override fun getSubDeviceSessions(name: String?): List<Int> = emptyList()
     override fun containsSession(address: SignalProtocolAddress?): Boolean = aliceSessionRecord != null
-    override fun getIdentity(address: SignalProtocolAddress?): IdentityKey = SignalStore.account().aciIdentityKey.publicKey
+    override fun getIdentity(address: SignalProtocolAddress?): IdentityKey = SignalStore.account.aciIdentityKey.publicKey
     override fun loadPreKey(preKeyId: Int): PreKeyRecord = throw UnsupportedOperationException()
     override fun storePreKey(preKeyId: Int, record: PreKeyRecord?) = throw UnsupportedOperationException()
     override fun containsPreKey(preKeyId: Int): Boolean = throw UnsupportedOperationException()
@@ -165,7 +181,7 @@ class BobClient(val serviceId: ServiceId, val e164: String, val identityKeyPair:
     override fun storeSenderKey(sender: SignalProtocolAddress?, distributionId: UUID?, record: SenderKeyRecord?) = throw UnsupportedOperationException()
     override fun loadSenderKey(sender: SignalProtocolAddress?, distributionId: UUID?): SenderKeyRecord = throw UnsupportedOperationException()
     override fun archiveSession(address: SignalProtocolAddress?) = throw UnsupportedOperationException()
-    override fun getAllAddressesWithActiveSessions(addressNames: MutableList<String>?): MutableSet<SignalProtocolAddress> = throw UnsupportedOperationException()
+    override fun getAllAddressesWithActiveSessions(addressNames: MutableList<String>?): MutableMap<SignalProtocolAddress, SessionRecord> = throw UnsupportedOperationException()
     override fun getSenderKeySharedWith(distributionId: DistributionId?): MutableSet<SignalProtocolAddress> = throw UnsupportedOperationException()
     override fun markSenderKeySharedWith(distributionId: DistributionId?, addresses: MutableCollection<SignalProtocolAddress>?) = throw UnsupportedOperationException()
     override fun clearSenderKeySharedWith(addresses: MutableCollection<SignalProtocolAddress>?) = throw UnsupportedOperationException()

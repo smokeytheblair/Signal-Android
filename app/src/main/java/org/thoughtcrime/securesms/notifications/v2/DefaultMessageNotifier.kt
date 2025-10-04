@@ -15,9 +15,8 @@ import org.signal.core.util.PendingIntentFlags
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.database.SignalDatabase
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.keyvalue.SignalStore
-import org.thoughtcrime.securesms.messages.IncomingMessageObserver
 import org.thoughtcrime.securesms.notifications.MessageNotifier
 import org.thoughtcrime.securesms.notifications.MessageNotifier.ReminderReceiver
 import org.thoughtcrime.securesms.notifications.NotificationCancellationHelper
@@ -30,7 +29,6 @@ import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.service.KeyCachingService
 import org.thoughtcrime.securesms.util.BubbleUtil.BubbleState
 import org.thoughtcrime.securesms.util.ServiceUtil
-import org.thoughtcrime.securesms.webrtc.CallNotificationBuilder
 import org.whispersystems.signalservice.internal.util.Util
 import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
@@ -47,6 +45,8 @@ import kotlin.math.max
 class DefaultMessageNotifier(context: Application) : MessageNotifier {
   @Volatile private var visibleThread: ConversationId? = null
 
+  @Volatile private var visibleBubbleThread: ConversationId? = null
+
   @Volatile private var lastDesktopActivityTimestamp: Long = -1
 
   @Volatile private var lastAudibleNotification: Long = -1
@@ -55,7 +55,7 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
 
   @Volatile private var previousLockedStatus: Boolean = KeyCachingService.isLocked(context)
 
-  @Volatile private var previousPrivacyPreference: NotificationPrivacyPreference = SignalStore.settings().messageNotificationsPrivacy
+  @Volatile private var previousPrivacyPreference: NotificationPrivacyPreference = SignalStore.settings.messageNotificationsPrivacy
 
   @Volatile private var previousState: NotificationState = NotificationState.EMPTY
 
@@ -81,12 +81,20 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
     setVisibleThread(null)
   }
 
+  override fun setVisibleBubbleThread(conversationId: ConversationId?) {
+    visibleBubbleThread = conversationId
+  }
+
+  override fun clearVisibleBubbleThread() {
+    setVisibleBubbleThread(null)
+  }
+
   override fun setLastDesktopActivityTimestamp(timestamp: Long) {
     lastDesktopActivityTimestamp = timestamp
   }
 
   override fun notifyMessageDeliveryFailed(context: Context, recipient: Recipient, conversationId: ConversationId) {
-    NotificationFactory.notifyMessageDeliveryFailed(context, recipient, conversationId, visibleThread)
+    NotificationFactory.notifyMessageDeliveryFailed(context, recipient, conversationId, visibleThread, visibleBubbleThread)
   }
 
   override fun notifyStoryDeliveryFailed(context: Context, recipient: Recipient, conversationId: ConversationId) {
@@ -102,7 +110,7 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
   }
 
   override fun updateNotification(context: Context) {
-    updateNotification(context, null, false, 0, BubbleState.HIDDEN)
+    updateNotification(context, null, BubbleState.HIDDEN)
   }
 
   override fun updateNotification(context: Context, conversationId: ConversationId) {
@@ -110,33 +118,28 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
       Log.i(TAG, "Scheduling delayed notification...")
       executor.enqueue(context, conversationId)
     } else {
-      updateNotification(context, conversationId, true)
+      updateNotification(context, conversationId, BubbleState.HIDDEN)
     }
   }
 
-  override fun updateNotification(context: Context, conversationId: ConversationId, defaultBubbleState: BubbleState) {
-    updateNotification(context, conversationId, false, 0, defaultBubbleState)
+  override fun forceBubbleNotification(context: Context, conversationId: ConversationId) {
+    updateNotification(context, conversationId, BubbleState.SHOWN)
   }
 
-  override fun updateNotification(context: Context, conversationId: ConversationId, signal: Boolean) {
-    updateNotification(context, conversationId, signal, 0, BubbleState.HIDDEN)
-  }
-
-  /**
-   * @param signal is no longer used
-   * @param reminderCount is not longer used
-   */
-  override fun updateNotification(
+  private fun updateNotification(
     context: Context,
     conversationId: ConversationId?,
-    signal: Boolean,
-    reminderCount: Int,
     defaultBubbleState: BubbleState
   ) {
     NotificationChannels.getInstance().ensureCustomChannelConsistency()
 
+    if (!Recipient.isSelfSet) {
+      Log.w(TAG, "Attempting to update notifications without local self, aborting")
+      return
+    }
+
     val currentLockStatus: Boolean = KeyCachingService.isLocked(context)
-    val currentPrivacyPreference: NotificationPrivacyPreference = SignalStore.settings().messageNotificationsPrivacy
+    val currentPrivacyPreference: NotificationPrivacyPreference = SignalStore.settings.messageNotificationsPrivacy
     val notificationConfigurationChanged: Boolean = currentLockStatus != previousLockedStatus || currentPrivacyPreference != previousPrivacyPreference
     previousLockedStatus = currentLockStatus
     previousPrivacyPreference = currentPrivacyPreference
@@ -165,7 +168,7 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
       }
     }
 
-    if (!SignalStore.settings().isMessageNotificationsEnabled) {
+    if (!SignalStore.settings.isMessageNotificationsEnabled) {
       Log.i(TAG, "Marking ${state.conversations.size} conversations as notified to skip notification")
       state.conversations.forEach { conversation ->
         conversation.notificationItems.forEach { item ->
@@ -173,22 +176,6 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
         }
       }
       return
-    }
-
-    val displayedNotifications: Set<Int>? = ServiceUtil.getNotificationManager(context).getDisplayedNotificationIds().getOrNull()
-    if (displayedNotifications != null) {
-      val cleanedUpThreads: MutableSet<ConversationId> = mutableSetOf()
-      state.conversations.filterNot { it.hasNewNotifications() || displayedNotifications.contains(it.notificationId) }
-        .forEach { conversation ->
-          cleanedUpThreads += conversation.thread
-          conversation.notificationItems.forEach { item ->
-            SignalDatabase.messages.markAsNotified(item.id)
-          }
-        }
-      if (cleanedUpThreads.isNotEmpty()) {
-        Log.i(TAG, "Cleaned up ${cleanedUpThreads.size} thread(s) with dangling notifications")
-        state = state.copy(conversations = state.conversations.filterNot { cleanedUpThreads.contains(it.thread) })
-      }
     }
 
     val retainStickyThreadIds: Set<ConversationId> = state.getThreadsWithMostRecentNotificationFromSelf()
@@ -240,10 +227,6 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
     }
   }
 
-  override fun clearReminder(context: Context) {
-    // Intentionally left blank
-  }
-
   override fun addStickyThread(conversationId: ConversationId, earliestTimestamp: Long) {
     stickyThreads[conversationId] = StickyThread(conversationId, NotificationIds.getNotificationIdForThread(conversationId), earliestTimestamp)
   }
@@ -253,7 +236,7 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
   }
 
   private fun updateReminderTimestamps(context: Context, alertOverrides: Set<ConversationId>, threadsThatAlerted: Set<ConversationId>) {
-    if (SignalStore.settings().messageNotificationsRepeatAlerts == 0) {
+    if (SignalStore.settings.messageNotificationsRepeatAlerts == 0) {
       return
     }
 
@@ -263,7 +246,7 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
       val (id: ConversationId, reminder: Reminder) = entry
       if (alertOverrides.contains(id)) {
         val notifyCount: Int = reminder.count + 1
-        if (notifyCount >= SignalStore.settings().messageNotificationsRepeatAlerts) {
+        if (notifyCount >= SignalStore.settings.messageNotificationsRepeatAlerts) {
           iterator.remove()
         } else {
           entry.setValue(Reminder(lastAudibleNotification, notifyCount))
@@ -332,11 +315,7 @@ class DefaultMessageNotifier(context: Application) : MessageNotifier {
 }
 
 private fun StatusBarNotification.isMessageNotification(): Boolean {
-  return id != NotificationIds.MESSAGE_SUMMARY &&
-    id != KeyCachingService.SERVICE_RUNNING_ID &&
-    id != IncomingMessageObserver.FOREGROUND_ID &&
-    id != NotificationIds.PENDING_MESSAGES &&
-    !CallNotificationBuilder.isWebRtcNotification(id)
+  return NotificationIds.isMessageNotificationId(id)
 }
 
 private fun NotificationManager.getDisplayedNotificationIds(): Result<Set<Int>> {
@@ -409,8 +388,8 @@ private class CancelableExecutor {
       }
       if (!canceled.get()) {
         Log.i(TAG, "Not canceled, notifying...")
-        ApplicationDependencies.getMessageNotifier().updateNotification(context, thread, true)
-        ApplicationDependencies.getMessageNotifier().cancelDelayedNotifications()
+        AppDependencies.messageNotifier.cancelDelayedNotifications()
+        AppDependencies.messageNotifier.updateNotification(context, thread)
       } else {
         Log.w(TAG, "Canceled, not notifying...")
       }

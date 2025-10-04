@@ -7,14 +7,15 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.signal.core.util.ThreadUtil
+import org.thoughtcrime.securesms.attachments.Cdn
 import org.thoughtcrime.securesms.attachments.PointerAttachment
 import org.thoughtcrime.securesms.conversation.v2.ConversationActivity
+import org.thoughtcrime.securesms.database.MessageType
 import org.thoughtcrime.securesms.database.SignalDatabase
-import org.thoughtcrime.securesms.mms.IncomingMediaMessage
+import org.thoughtcrime.securesms.mms.IncomingMessage
 import org.thoughtcrime.securesms.mms.OutgoingMessage
 import org.thoughtcrime.securesms.profiles.ProfileName
 import org.thoughtcrime.securesms.recipients.Recipient
-import org.thoughtcrime.securesms.releasechannel.ReleaseChannel
 import org.thoughtcrime.securesms.testing.SignalActivityRule
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentPointer
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentRemoteId
@@ -64,7 +65,8 @@ class ConversationItemPreviewer {
       attachment()
     }
 
-    val message = IncomingMediaMessage(
+    val message = IncomingMessage(
+      type = MessageType.NORMAL,
       from = other.id,
       body = body,
       sentTimeMillis = System.currentTimeMillis(),
@@ -73,7 +75,7 @@ class ConversationItemPreviewer {
       attachments = PointerAttachment.forPointers(Optional.of(attachments))
     )
 
-    SignalDatabase.messages.insertSecureDecryptedMessageInbox(message, SignalDatabase.threads.getOrCreateThreadIdFor(other)).get()
+    SignalDatabase.messages.insertMessageInbox(message, SignalDatabase.threads.getOrCreateThreadIdFor(other)).get()
 
     ThreadUtil.sleep(1)
   }
@@ -83,7 +85,8 @@ class ConversationItemPreviewer {
       attachment()
     }
 
-    val message = IncomingMediaMessage(
+    val message = IncomingMessage(
+      type = MessageType.NORMAL,
       from = other.id,
       body = body,
       sentTimeMillis = System.currentTimeMillis(),
@@ -92,7 +95,7 @@ class ConversationItemPreviewer {
       attachments = PointerAttachment.forPointers(Optional.of(attachments))
     )
 
-    val insert = SignalDatabase.messages.insertSecureDecryptedMessageInbox(message, SignalDatabase.threads.getOrCreateThreadIdFor(other)).get()
+    val insert = SignalDatabase.messages.insertMessageInbox(message, SignalDatabase.threads.getOrCreateThreadIdFor(other)).get()
 
     SignalDatabase.attachments.getAttachmentsForMessage(insert.messageId).forEachIndexed { index, attachment ->
 //      if (index != 1) {
@@ -123,7 +126,7 @@ class ConversationItemPreviewer {
       SignalDatabase.threads.getOrCreateThreadIdFor(other),
       false,
       null
-    )
+    ).messageId
 
     SignalDatabase.attachments.getAttachmentsForMessage(insert).forEachIndexed { index, attachment ->
       SignalDatabase.attachments.setTransferProgressPermanentFailure(attachment.attachmentId, insert)
@@ -134,7 +137,7 @@ class ConversationItemPreviewer {
 
   private fun attachment(): SignalServiceAttachmentPointer {
     return SignalServiceAttachmentPointer(
-      ReleaseChannel.CDN_NUMBER,
+      Cdn.CDN_3.cdnNumber,
       SignalServiceAttachmentRemoteId.from(""),
       "image/webp",
       null,
@@ -144,13 +147,15 @@ class ConversationItemPreviewer {
       1024,
       Optional.empty(),
       Optional.empty(),
+      0,
       Optional.of("/not-there.jpg"),
       false,
       false,
       false,
       Optional.empty(),
       Optional.empty(),
-      System.currentTimeMillis()
+      System.currentTimeMillis(),
+      null
     )
   }
 }

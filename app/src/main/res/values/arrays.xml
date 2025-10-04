@@ -11,6 +11,7 @@
 <!-- af --><item>Afrikaans</item>
 <!-- ar --><item> العربية</item>
 <!-- az --><item>Azərbaycan</item>
+<!-- be --><item>Беларуская мова</item>
 <!-- bn --><item>বাংলা</item>
 <!-- bs --><item>Bosanski</item>
 <!-- bg --><item>български</item>
@@ -83,6 +84,7 @@
       <item>af</item>
       <item>ar</item>
       <item>az</item>
+      <item>be</item>
       <item>bn</item>
       <item>bs</item>
       <item>bg</item>
@@ -249,14 +251,14 @@
   </string-array>
 
   <!-- discrete MIME type (the part before the "/") -->
-  <string-array name="pref_media_download_entries">
+  <string-array name="pref_media_download_values">
       <item>image</item>
       <item>audio</item>
       <item>video</item>
       <item>documents</item>
   </string-array>
 
-  <string-array name="pref_media_download_values">
+  <string-array name="pref_media_download_entries">
       <item>@string/arrays__images</item>
       <item>@string/arrays__audio</item>
       <item>@string/arrays__video</item>
@@ -360,6 +362,24 @@
         <item>@string/CustomExpireTimerSelectorView__hours</item>
         <item>@string/CustomExpireTimerSelectorView__days</item>
         <item>@string/CustomExpireTimerSelectorView__weeks</item>
+    </string-array>
+
+    <string-array name="ScreenLockSettingsFragment__labels">
+        <item>@string/ScreenLockSettingsFragment__after_1_min</item>
+        <item>@string/ScreenLockSettingsFragment__after_5_min</item>
+        <item>@string/ScreenLockSettingsFragment__after_30_min</item>
+    </string-array>
+
+    <integer-array name="ScreenLockSettingsFragment__values">
+        <item>60</item>
+        <item>300</item>
+        <item>1800</item>
+    </integer-array>
+
+    <string-array name="CustomScreenLockTimerSelectorView__unit_labels">
+        <item>@string/CustomExpireTimerSelectorView__minutes</item>
+        <item>@string/CustomExpireTimerSelectorView__hours</item>
+        <item>@string/CustomExpireTimerSelectorView__days</item>
     </string-array>
 
     <string-array name="PermissionsSettingsFragment__editor_labels">

@@ -5,17 +5,17 @@ import androidx.annotation.Nullable;
 
 import org.signal.core.util.logging.Log;
 import org.signal.libsignal.protocol.state.PreKeyRecord;
-import org.signal.libsignal.protocol.state.SignalProtocolStore;
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord;
 import org.thoughtcrime.securesms.crypto.PreKeyUtil;
 import org.thoughtcrime.securesms.crypto.storage.PreKeyMetadataStore;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.jobmanager.Job;
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
+import org.thoughtcrime.securesms.net.SignalNetwork;
 import org.thoughtcrime.securesms.recipients.Recipient;
+import org.whispersystems.signalservice.api.NetworkResultUtil;
 import org.whispersystems.signalservice.api.SignalServiceAccountDataStore;
-import org.whispersystems.signalservice.api.SignalServiceAccountManager;
 import org.whispersystems.signalservice.api.account.PreKeyUpload;
 import org.whispersystems.signalservice.api.push.ServiceId.PNI;
 import org.whispersystems.signalservice.api.push.ServiceIdType;
@@ -57,6 +57,11 @@ public class PniAccountInitializationMigrationJob extends MigrationJob {
 
   @Override
   public void performMigration() throws IOException {
+    if (SignalStore.account().isLinkedDevice()) {
+      Log.i(TAG, "Linked device, skipping");
+      return;
+    }
+
     PNI pni = SignalStore.account().getPni();
 
     if (pni == null || SignalStore.account().getAci() == null || !Recipient.self().isRegistered()) {
@@ -71,8 +76,7 @@ public class PniAccountInitializationMigrationJob extends MigrationJob {
       Log.w(TAG, "Already generated the PNI identity. Skipping this step.");
     }
 
-    SignalServiceAccountManager   accountManager = ApplicationDependencies.getSignalServiceAccountManager();
-    SignalServiceAccountDataStore protocolStore  = ApplicationDependencies.getProtocolStore().pni();
+    SignalServiceAccountDataStore protocolStore  = AppDependencies.getProtocolStore().pni();
     PreKeyMetadataStore           metadataStore  = SignalStore.account().pniPreKeys();
 
     if (!metadataStore.isSignedPreKeyRegistered()) {
@@ -80,7 +84,7 @@ public class PniAccountInitializationMigrationJob extends MigrationJob {
       SignedPreKeyRecord signedPreKey   = PreKeyUtil.generateAndStoreSignedPreKey(protocolStore, metadataStore);
       List<PreKeyRecord> oneTimePreKeys = PreKeyUtil.generateAndStoreOneTimeEcPreKeys(protocolStore, metadataStore);
 
-      accountManager.setPreKeys(new PreKeyUpload(ServiceIdType.PNI, protocolStore.getIdentityKeyPair().getPublicKey(), signedPreKey, oneTimePreKeys, null, null));
+      NetworkResultUtil.toPreKeysLegacy(SignalNetwork.keys().setPreKeys(new PreKeyUpload(ServiceIdType.PNI, signedPreKey, oneTimePreKeys, null, null)));
       metadataStore.setActiveSignedPreKeyId(signedPreKey.getId());
       metadataStore.setSignedPreKeyRegistered(true);
     } else {

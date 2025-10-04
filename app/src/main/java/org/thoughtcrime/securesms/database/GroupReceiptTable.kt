@@ -2,9 +2,13 @@ package org.thoughtcrime.securesms.database
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
 import androidx.core.content.contentValuesOf
 import org.signal.core.util.SqlUtil
 import org.signal.core.util.delete
+import org.signal.core.util.deleteAll
+import org.signal.core.util.forEach
+import org.signal.core.util.logging.Log
 import org.signal.core.util.readToList
 import org.signal.core.util.requireBoolean
 import org.signal.core.util.requireInt
@@ -17,19 +21,22 @@ import org.thoughtcrime.securesms.recipients.RecipientId
 
 class GroupReceiptTable(context: Context?, databaseHelper: SignalDatabase?) : DatabaseTable(context, databaseHelper), RecipientIdDatabaseReference {
   companion object {
+    private val TAG = Log.tag(GroupReceiptTable::class)
+
     const val TABLE_NAME = "group_receipts"
     private const val ID = "_id"
     const val MMS_ID = "mms_id"
     const val RECIPIENT_ID = "address"
-    private const val STATUS = "status"
-    private const val TIMESTAMP = "timestamp"
-    private const val UNIDENTIFIED = "unidentified"
+    const val STATUS = "status"
+    const val TIMESTAMP = "timestamp"
+    const val UNIDENTIFIED = "unidentified"
     const val STATUS_UNKNOWN = -1
     const val STATUS_UNDELIVERED = 0
     const val STATUS_DELIVERED = 1
     const val STATUS_READ = 2
     const val STATUS_VIEWED = 3
     const val STATUS_SKIPPED = 4
+    const val STATUS_FAILED = 5
 
     const val CREATE_TABLE = """
       CREATE TABLE $TABLE_NAME (
@@ -59,8 +66,8 @@ class GroupReceiptTable(context: Context?, databaseHelper: SignalDatabase?) : Da
     }
 
     val statements = SqlUtil.buildBulkInsert(TABLE_NAME, arrayOf(MMS_ID, RECIPIENT_ID, STATUS, TIMESTAMP), contentValues)
-    for (statement in statements) {
-      writableDatabase.execSQL(statement.where, statement.whereArgs)
+    writableDatabase.withinTransaction { db ->
+      statements.forEach { db.execSQL(it.where, it.whereArgs) }
     }
   }
 
@@ -76,22 +83,46 @@ class GroupReceiptTable(context: Context?, databaseHelper: SignalDatabase?) : Da
   }
 
   fun setUnidentified(results: Collection<Pair<RecipientId, Boolean>>, mmsId: Long) {
+    val mmsMatchPrefix = "$MMS_ID = $mmsId AND"
+    val unidentifiedQueries = SqlUtil.buildCollectionQuery(
+      column = RECIPIENT_ID,
+      values = results.filter { it.second() }.map { it.first().serialize() },
+      prefix = mmsMatchPrefix
+    )
+    val identifiedQueries = SqlUtil.buildCollectionQuery(
+      column = RECIPIENT_ID,
+      values = results.filterNot { it.second() }.map { it.first().serialize() },
+      prefix = mmsMatchPrefix
+    )
     writableDatabase.withinTransaction { db ->
-      for (result in results) {
+      unidentifiedQueries.forEach {
         db.update(TABLE_NAME)
-          .values(UNIDENTIFIED to if (result.second()) 1 else 0)
-          .where("$MMS_ID = ? AND $RECIPIENT_ID = ?", mmsId.toString(), result.first().serialize())
+          .values(UNIDENTIFIED to 1)
+          .where(it.where, it.whereArgs)
+          .run()
+      }
+
+      identifiedQueries.forEach {
+        db.update(TABLE_NAME)
+          .values(UNIDENTIFIED to 0)
+          .where(it.where, it.whereArgs)
           .run()
       }
     }
   }
 
   fun setSkipped(recipients: Collection<RecipientId>, mmsId: Long) {
+    val mmsMatchPrefix = "$MMS_ID = $mmsId AND"
+    val queries = SqlUtil.buildCollectionQuery(
+      column = RECIPIENT_ID,
+      values = recipients.map { it.serialize() },
+      prefix = mmsMatchPrefix
+    )
     writableDatabase.withinTransaction { db ->
-      for (recipient in recipients) {
+      queries.forEach {
         db.update(TABLE_NAME)
           .values(STATUS to STATUS_SKIPPED)
-          .where("$MMS_ID = ? AND $RECIPIENT_ID = ?", mmsId.toString(), recipient.serialize())
+          .where(it.where, it.whereArgs)
           .run()
       }
     }
@@ -103,14 +134,29 @@ class GroupReceiptTable(context: Context?, databaseHelper: SignalDatabase?) : Da
       .from(TABLE_NAME)
       .where("$MMS_ID = ?", mmsId)
       .run()
-      .readToList { cursor ->
-        GroupReceiptInfo(
-          recipientId = RecipientId.from(cursor.requireLong(RECIPIENT_ID)),
-          status = cursor.requireInt(STATUS),
-          timestamp = cursor.requireLong(TIMESTAMP),
-          isUnidentified = cursor.requireBoolean(UNIDENTIFIED)
-        )
+      .readToList { it.toGroupReceiptInfo() }
+  }
+
+  fun getGroupReceiptInfoForMessages(ids: Collection<Long>): Map<Long, List<GroupReceiptInfo>> {
+    if (ids.isEmpty()) {
+      return emptyMap()
+    }
+
+    val messageIdsToGroupReceipts: MutableMap<Long, MutableList<GroupReceiptInfo>> = mutableMapOf()
+
+    val query = SqlUtil.buildFastCollectionQuery(MMS_ID, ids)
+    readableDatabase
+      .select()
+      .from(TABLE_NAME)
+      .where(query.where, query.whereArgs)
+      .run()
+      .forEach { cursor ->
+        val messageId = cursor.requireLong(MMS_ID)
+        val receipts = messageIdsToGroupReceipts.getOrPut(messageId) { mutableListOf() }
+        receipts += cursor.toGroupReceiptInfo()
       }
+
+    return messageIdsToGroupReceipts
   }
 
   fun deleteRowsForMessage(mmsId: Long) {
@@ -128,15 +174,26 @@ class GroupReceiptTable(context: Context?, databaseHelper: SignalDatabase?) : Da
   }
 
   fun deleteAllRows() {
-    writableDatabase.delete(TABLE_NAME).run()
+    writableDatabase.deleteAll(TABLE_NAME)
   }
 
   override fun remapRecipient(fromId: RecipientId, toId: RecipientId) {
-    writableDatabase
+    val count = writableDatabase
       .update(TABLE_NAME)
       .values(RECIPIENT_ID to toId.serialize())
       .where("$RECIPIENT_ID = ?", fromId)
       .run()
+
+    Log.d(TAG, "Remapped $fromId to $toId. count: $count")
+  }
+
+  private fun Cursor.toGroupReceiptInfo(): GroupReceiptInfo {
+    return GroupReceiptInfo(
+      recipientId = RecipientId.from(this.requireLong(RECIPIENT_ID)),
+      status = this.requireInt(STATUS),
+      timestamp = this.requireLong(TIMESTAMP),
+      isUnidentified = this.requireBoolean(UNIDENTIFIED)
+    )
   }
 
   data class GroupReceiptInfo(

@@ -1,3 +1,8 @@
+/*
+ * Copyright 2023 Signal Messenger, LLC
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 package org.thoughtcrime.securesms.util;
 
 import android.content.ContentResolver;
@@ -19,6 +24,7 @@ import androidx.annotation.RequiresApi;
 import androidx.annotation.WorkerThread;
 import androidx.exifinterface.media.ExifInterface;
 
+import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.resource.gif.GifDrawable;
 
@@ -28,10 +34,9 @@ import org.thoughtcrime.securesms.attachments.AttachmentId;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.mediasend.Media;
 import org.thoughtcrime.securesms.mms.AudioSlide;
-import org.thoughtcrime.securesms.mms.DecryptableStreamUriLoader.DecryptableUri;
+import org.thoughtcrime.securesms.mms.DecryptableUri;
 import org.thoughtcrime.securesms.mms.DocumentSlide;
 import org.thoughtcrime.securesms.mms.GifSlide;
-import org.thoughtcrime.securesms.mms.GlideApp;
 import org.thoughtcrime.securesms.mms.ImageSlide;
 import org.thoughtcrime.securesms.mms.MmsSlide;
 import org.thoughtcrime.securesms.mms.PartAuthority;
@@ -46,6 +51,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 public class MediaUtil {
@@ -70,7 +76,7 @@ public class MediaUtil {
   public static final String UNKNOWN           = "*/*";
   public static final String OCTET             = "application/octet-stream";
 
-  public static SlideType getSlideTypeFromContentType(@NonNull String contentType) {
+  public static @NonNull SlideType getSlideTypeFromContentType(@Nullable String contentType) {
     if (isGif(contentType)) {
       return SlideType.GIF;
     } else if (isImageType(contentType)) {
@@ -95,7 +101,7 @@ public class MediaUtil {
       return new StickerSlide(attachment);
     }
 
-    switch (getSlideTypeFromContentType(attachment.getContentType())) {
+    switch (getSlideTypeFromContentType(attachment.contentType)) {
       case GIF       : return new GifSlide(attachment);
       case IMAGE     : return new ImageSlide(attachment);
       case VIDEO     : return new VideoSlide(attachment);
@@ -132,6 +138,35 @@ public class MediaUtil {
     return getCorrectedMimeType(type);
   }
 
+  public static @NonNull Optional<String> getFileType(@NonNull Context context, Optional<String> fileName, Uri uri) {
+    if (fileName.isPresent()) {
+      String fileType = getFileType(fileName);
+      if (!fileType.isEmpty()) {
+        return Optional.of(fileType);
+      }
+    }
+
+    return Optional.ofNullable(MediaUtil.getExtension(context, uri));
+  }
+
+  private static @NonNull String getFileType(Optional<String> fileName) {
+    if (!fileName.isPresent()) return "";
+
+    String[] parts = fileName.get().split("\\.");
+
+    if (parts.length < 2) {
+      return "";
+    }
+
+    String suffix = parts[parts.length - 1];
+
+    if (suffix.length() <= 3) {
+      return suffix;
+    }
+
+    return "";
+  }
+
   public static @Nullable String getExtension(@NonNull Context context, @Nullable Uri uri) {
     return MimeTypeMap.getSingleton()
                       .getExtensionFromMimeType(getMimeType(context, uri));
@@ -148,12 +183,10 @@ public class MediaUtil {
     if (fileExtension == null) {
       return mimeType;
     }
-    switch (fileExtension.toLowerCase()) {
-      case "m4a":
-        return safeMimeTypeOverride(mimeType, AUDIO_MP4);
-      default:
-        return mimeType;
+    if (fileExtension.toLowerCase().equals("m4a")) {
+      return safeMimeTypeOverride(mimeType, AUDIO_MP4);
     }
+    return mimeType;
   }
 
   public static @Nullable String getCorrectedMimeType(@Nullable String mimeType) {
@@ -199,7 +232,7 @@ public class MediaUtil {
 
     if (MediaUtil.isGif(contentType)) {
       try {
-        GifDrawable drawable = GlideApp.with(context)
+        GifDrawable drawable = Glide.with(context)
                                        .asGif()
                                        .skipMemoryCache(true)
                                        .diskCacheStrategy(DiskCacheStrategy.NONE)
@@ -259,31 +292,31 @@ public class MediaUtil {
   }
 
   public static boolean isGif(Attachment attachment) {
-    return isGif(attachment.getContentType());
+    return isGif(attachment.contentType);
   }
 
   public static boolean isJpeg(Attachment attachment) {
-    return isJpegType(attachment.getContentType());
+    return isJpegType(attachment.contentType);
   }
 
   public static boolean isHeic(Attachment attachment) {
-    return isHeicType(attachment.getContentType());
+    return isHeicType(attachment.contentType);
   }
 
   public static boolean isHeif(Attachment attachment) {
-    return isHeifType(attachment.getContentType());
+    return isHeifType(attachment.contentType);
   }
 
   public static boolean isImage(Attachment attachment) {
-    return isImageType(attachment.getContentType());
+    return isImageType(attachment.contentType);
   }
 
   public static boolean isAudio(Attachment attachment) {
-    return isAudioType(attachment.getContentType());
+    return isAudioType(attachment.contentType);
   }
 
   public static boolean isVideo(Attachment attachment) {
-    return isVideoType(attachment.getContentType());
+    return isVideoType(attachment.contentType);
   }
 
   public static boolean isVideo(String contentType) {
@@ -314,6 +347,14 @@ public class MediaUtil {
     return !TextUtils.isEmpty(contentType) && contentType.trim().equals(IMAGE_AVIF);
   }
 
+  public static boolean isWebpType(String contentType) {
+    return !TextUtils.isEmpty(contentType) && contentType.trim().equals(IMAGE_WEBP);
+  }
+
+  public static boolean isPngType(String contentType) {
+    return !TextUtils.isEmpty(contentType) && contentType.trim().equals(IMAGE_PNG);
+  }
+
   public static boolean isFile(Attachment attachment) {
     return !isGif(attachment) && !isImage(attachment) && !isAudio(attachment) && !isVideo(attachment);
   }
@@ -323,7 +364,7 @@ public class MediaUtil {
   }
 
   public static boolean isNonGifVideo(Media media) {
-    return isVideo(media.getMimeType()) && !media.isVideoGif();
+    return isVideo(media.getContentType()) && !media.isVideoGif();
   }
 
   public static boolean isImageType(String contentType) {
@@ -381,6 +422,10 @@ public class MediaUtil {
     return OCTET.equals(contentType);
   }
 
+  public static boolean isDocumentType(String contentType) {
+    return !isImageOrVideoType(contentType) && !isGif(contentType) && !isLongTextType(contentType) && !isViewOnceType(contentType);
+  }
+
   public static boolean hasVideoThumbnail(@NonNull Context context, @Nullable Uri uri) {
     if (uri == null) {
       return false;
@@ -401,11 +446,12 @@ public class MediaUtil {
     } else if (uri.toString().startsWith("file://") &&
                MediaUtil.isVideo(URLConnection.guessContentTypeFromName(uri.toString()))) {
       return true;
-    } else if (PartAuthority.isAttachmentUri(uri) && MediaUtil.isVideoType(PartAuthority.getAttachmentContentType(context, uri))) {
-      return true;
-    } else {
-      return false;
-    }
+    } else return PartAuthority.isAttachmentUri(uri) && MediaUtil.isVideoType(PartAuthority.getAttachmentContentType(context, uri));
+  }
+
+  @WorkerThread
+  public static @Nullable Bitmap getVideoThumbnail(@NonNull Context context, @Nullable Uri uri) {
+    return getVideoThumbnail(context, uri, 1000);
   }
 
   @WorkerThread
@@ -469,12 +515,11 @@ public class MediaUtil {
   }
 
   public static boolean isInstantVideoSupported(Slide slide) {
-    if (!FeatureFlags.instantVideoPlayback()) {
-      return false;
-    }
-    final boolean isIncremental        = slide.asAttachment().getIncrementalDigest() != null;
-    final boolean contentTypeSupported = isVideoType(slide.getContentType());
-    return isIncremental && contentTypeSupported;
+    final Attachment attachment                        = slide.asAttachment();
+    final boolean    isIncremental                     = attachment.getIncrementalDigest() != null;
+    final boolean    hasIncrementalMacChunkSizeDefined = attachment.incrementalMacChunkSize > 0;
+    final boolean    contentTypeSupported              = isVideoType(slide.getContentType());
+    return isIncremental && contentTypeSupported && hasIncrementalMacChunkSizeDefined;
   }
 
   public static @Nullable String getDiscreteMimeType(@NonNull String mimeType) {
@@ -485,7 +530,7 @@ public class MediaUtil {
   public static class ThumbnailData implements AutoCloseable {
 
     @NonNull private final Bitmap bitmap;
-             private final float  aspectRatio;
+    private final          float  aspectRatio;
 
     public ThumbnailData(@NonNull Bitmap bitmap) {
       this.bitmap      = bitmap;

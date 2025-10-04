@@ -17,7 +17,7 @@ import org.thoughtcrime.securesms.database.BodyRangeUtil;
 import org.thoughtcrime.securesms.database.MentionUtil;
 import org.thoughtcrime.securesms.database.NoSuchMessageException;
 import org.thoughtcrime.securesms.database.SignalDatabase;
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord;
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord;
 import org.thoughtcrime.securesms.database.model.Mention;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.databaseprotos.BodyRangeList;
@@ -138,6 +138,10 @@ public class ConversationMessage {
            getBottomButton() == null;
   }
 
+  public boolean isPoll() {
+    return MessageRecordUtil.isPoll(messageRecord);
+  }
+
   public long getConversationTimestamp() {
     if (originalMessage != null) {
       return originalMessage.getDateSent();
@@ -161,7 +165,7 @@ public class ConversationMessage {
   }
 
   public static @NonNull FormattedDate getFormattedDate(@NonNull Context context, @NonNull MessageRecord messageRecord) {
-    return MessageRecordUtil.isScheduled(messageRecord) ? new FormattedDate(false, DateUtils.getOnlyTimeString(context, Locale.getDefault(), ((MediaMmsMessageRecord) messageRecord).getScheduledDate()))
+    return MessageRecordUtil.isScheduled(messageRecord) ? new FormattedDate(false, false, DateUtils.getOnlyTimeString(context, ((MmsMessageRecord) messageRecord).getScheduledDate()))
                                                         : DateUtils.getDatelessRelativeTimeSpanFormattedDate(context, Locale.getDefault(), messageRecord.getTimestamp());
   }
 

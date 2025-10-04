@@ -18,7 +18,9 @@ import org.thoughtcrime.securesms.backup.FullBackupImporter;
 import org.thoughtcrime.securesms.crypto.AttachmentSecretProvider;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.jobmanager.impl.DataRestoreConstraint;
+import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.notifications.NotificationChannels;
+import org.thoughtcrime.securesms.util.RemoteConfig;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,14 +44,15 @@ final class NewDeviceServerTask implements ServerTask {
       DataRestoreConstraint.setRestoringData(true);
       SQLiteDatabase database = SignalDatabase.getBackupDatabase();
 
-      String passphrase = "deadbeef";
+      String passphrase = SignalStore.account().getAccountEntropyPool().getValue();
 
       BackupPassphrase.set(context, passphrase);
       FullBackupImporter.importFile(context,
                                     AttachmentSecretProvider.getInstance(context).getOrCreateAttachmentSecret(),
                                     database,
                                     inputStream,
-                                    passphrase);
+                                    passphrase,
+                                    true);
 
       SignalDatabase.runPostBackupRestoreTasks(database);
       NotificationChannels.getInstance().restoreContactNotificationChannels();
@@ -73,6 +76,8 @@ final class NewDeviceServerTask implements ServerTask {
 
     long end = System.currentTimeMillis();
     Log.i(TAG, "Receive took: " + (end - start));
+
+    EventBus.getDefault().post(new Status(0, Status.State.RESTORE_COMPLETE));
   }
 
   @Subscribe(threadMode = ThreadMode.POSTING)
@@ -80,7 +85,7 @@ final class NewDeviceServerTask implements ServerTask {
     if (event.getType() == BackupEvent.Type.PROGRESS) {
       EventBus.getDefault().post(new Status(event.getCount(), Status.State.IN_PROGRESS));
     } else if (event.getType() == BackupEvent.Type.FINISHED) {
-      EventBus.getDefault().post(new Status(event.getCount(), Status.State.SUCCESS));
+      EventBus.getDefault().post(new Status(event.getCount(), Status.State.TRANSFER_COMPLETE));
     }
   }
 
@@ -103,7 +108,8 @@ final class NewDeviceServerTask implements ServerTask {
 
     public enum State {
       IN_PROGRESS,
-      SUCCESS,
+      TRANSFER_COMPLETE,
+      RESTORE_COMPLETE,
       FAILURE_VERSION_DOWNGRADE,
       FAILURE_FOREIGN_KEY,
       FAILURE_UNKNOWN

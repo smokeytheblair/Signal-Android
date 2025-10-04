@@ -6,6 +6,8 @@ import androidx.activity.OnBackPressedCallback
 import androidx.core.app.ActivityOptionsCompat
 import androidx.core.view.ViewCompat
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import org.signal.core.util.concurrent.LifecycleDisposable
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.settings.DSLConfiguration
@@ -14,8 +16,8 @@ import org.thoughtcrime.securesms.components.settings.DSLSettingsText
 import org.thoughtcrime.securesms.components.settings.configure
 import org.thoughtcrime.securesms.conversation.mutiselect.forward.MultiselectForwardFragment
 import org.thoughtcrime.securesms.conversation.mutiselect.forward.MultiselectForwardFragmentArgs
-import org.thoughtcrime.securesms.database.model.MediaMmsMessageRecord
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord
+import org.thoughtcrime.securesms.permissions.Permissions
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.safety.SafetyNumberBottomSheet
 import org.thoughtcrime.securesms.stories.StoryTextPostModel
@@ -79,7 +81,12 @@ class MyStoriesFragment : DSLSettingsFragment(
                   openStoryViewer(it, preview, false)
                 },
                 onSaveClick = {
-                  StoryContextMenu.save(requireContext(), it.distributionStory.messageRecord)
+                  lifecycleScope.launch {
+                    StoryContextMenu.save(
+                      fragment = this@MyStoriesFragment,
+                      messageRecord = it.distributionStory.messageRecord
+                    )
+                  }
                 },
                 onDeleteClick = this@MyStoriesFragment::handleDeleteClick,
                 onForwardClick = { item ->
@@ -91,7 +98,7 @@ class MyStoriesFragment : DSLSettingsFragment(
                   }
                 },
                 onShareClick = {
-                  StoryContextMenu.share(this@MyStoriesFragment, it.distributionStory.messageRecord as MediaMmsMessageRecord)
+                  StoryContextMenu.share(this@MyStoriesFragment, it.distributionStory.messageRecord as MmsMessageRecord)
                 },
                 onInfoClick = { model, preview ->
                   openStoryViewer(model, preview, true)
@@ -140,7 +147,7 @@ class MyStoriesFragment : DSLSettingsFragment(
           storyViewerArgs = StoryViewerArgs(
             recipientId = recipient.id,
             storyId = it.distributionStory.messageRecord.id,
-            isInHiddenStoryMode = recipient.shouldHideStory(),
+            isInHiddenStoryMode = recipient.shouldHideStory,
             storyThumbTextModel = text,
             storyThumbUri = image,
             storyThumbBlur = blur,
@@ -155,5 +162,10 @@ class MyStoriesFragment : DSLSettingsFragment(
 
   private fun handleDeleteClick(model: MyStoriesItem.Model) {
     lifecycleDisposable += StoryContextMenu.delete(requireContext(), setOf(model.distributionStory.messageRecord)).subscribe()
+  }
+
+  @Suppress("OVERRIDE_DEPRECATION")
+  override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    Permissions.onRequestPermissionsResult(this, requestCode, permissions, grantResults)
   }
 }

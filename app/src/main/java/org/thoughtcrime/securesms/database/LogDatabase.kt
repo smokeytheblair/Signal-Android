@@ -5,10 +5,10 @@ import android.app.Application
 import android.database.Cursor
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import net.zetetic.database.sqlcipher.SQLiteOpenHelper
-import org.signal.core.util.CursorUtil
 import org.signal.core.util.SqlUtil
 import org.signal.core.util.Stopwatch
 import org.signal.core.util.delete
+import org.signal.core.util.deleteAll
 import org.signal.core.util.exists
 import org.signal.core.util.getTableRowCount
 import org.signal.core.util.insertInto
@@ -16,7 +16,11 @@ import org.signal.core.util.logging.Log
 import org.signal.core.util.mebiBytes
 import org.signal.core.util.readToList
 import org.signal.core.util.readToSingleInt
+import org.signal.core.util.readToSingleLong
+import org.signal.core.util.requireBoolean
+import org.signal.core.util.requireLong
 import org.signal.core.util.requireNonNullString
+import org.signal.core.util.requireString
 import org.signal.core.util.select
 import org.signal.core.util.update
 import org.signal.core.util.withinTransaction
@@ -56,7 +60,7 @@ class LogDatabase private constructor(
   companion object {
     private val TAG = Log.tag(LogDatabase::class.java)
 
-    private const val DATABASE_VERSION = 3
+    private const val DATABASE_VERSION = 4
     private const val DATABASE_NAME = "signal-logs.db"
 
     @SuppressLint("StaticFieldLeak") // We hold an Application context, not a view context
@@ -83,11 +87,15 @@ class LogDatabase private constructor(
   @get:JvmName("crashes")
   val crashes: CrashTable by lazy { CrashTable(this) }
 
+  @get:JvmName("anrs")
+  val anrs: AnrTable by lazy { AnrTable(this) }
+
   override fun onCreate(db: SQLiteDatabase) {
     Log.i(TAG, "onCreate()")
 
     db.execSQL(LogTable.CREATE_TABLE)
     db.execSQL(CrashTable.CREATE_TABLE)
+    db.execSQL(AnrTable.CREATE_TABLE)
 
     LogTable.CREATE_INDEXES.forEach { db.execSQL(it) }
     CrashTable.CREATE_INDEXES.forEach { db.execSQL(it) }
@@ -107,6 +115,10 @@ class LogDatabase private constructor(
       db.execSQL("CREATE TABLE crash (_id INTEGER PRIMARY KEY, created_at INTEGER, name TEXT, message TEXT, stack_trace TEXT, last_prompted_at INTEGER)")
       db.execSQL("CREATE INDEX crash_created_at ON crash (created_at)")
       db.execSQL("CREATE INDEX crash_name_message ON crash (name, message)")
+    }
+
+    if (oldVersion < 4) {
+      db.execSQL("CREATE TABLE anr (_id INTEGER PRIMARY KEY, created_at INTEGER NOT NULL, thread_dump TEXT NOT NULL)")
     }
   }
 
@@ -137,20 +149,24 @@ class LogDatabase private constructor(
         )
       """
 
+      private const val KEEP_LONGER_INDEX = "keep_longer_index"
+      private const val CREATED_AT_KEEP_LONGER_INDEX = "log_created_at_keep_longer_index"
+
       val CREATE_INDEXES = arrayOf(
-        "CREATE INDEX keep_longer_index ON $TABLE_NAME ($KEEP_LONGER)",
-        "CREATE INDEX log_created_at_keep_longer_index ON $TABLE_NAME ($CREATED_AT, $KEEP_LONGER)"
+        "CREATE INDEX $KEEP_LONGER_INDEX ON $TABLE_NAME ($KEEP_LONGER)",
+        "CREATE INDEX $CREATED_AT_KEEP_LONGER_INDEX ON $TABLE_NAME ($CREATED_AT, $KEEP_LONGER)"
       )
 
       val MAX_FILE_SIZE = 20L.mebiBytes.inWholeBytes
       val DEFAULT_LIFESPAN = 3.days.inWholeMilliseconds
       val LONGER_LIFESPAN = 21.days.inWholeMilliseconds
+      val KEEP_LONGER_MARKER = "\u200B"
     }
 
     private val readableDatabase: SQLiteDatabase get() = openHelper.readableDatabase
     private val writableDatabase: SQLiteDatabase get() = openHelper.writableDatabase
 
-    fun insert(logs: List<LogEntry>, currentTime: Long) {
+    fun insert(logs: Sequence<LogEntry>, currentTime: Long) {
       writableDatabase.withinTransaction { db ->
         logs.forEach { log ->
           db.insertInto(TABLE_NAME)
@@ -163,16 +179,16 @@ class LogDatabase private constructor(
             .run()
         }
 
-        db.delete(TABLE_NAME)
-          .where("($CREATED_AT < ? AND $KEEP_LONGER = 0) OR ($CREATED_AT < ? AND $KEEP_LONGER = 1)", currentTime - DEFAULT_LIFESPAN, currentTime - LONGER_LIFESPAN)
+        db.delete("$TABLE_NAME INDEXED BY $CREATED_AT_KEEP_LONGER_INDEX")
+          .where("($CREATED_AT < ${currentTime - DEFAULT_LIFESPAN} AND $KEEP_LONGER <= 0) OR ($CREATED_AT < ${currentTime - LONGER_LIFESPAN} AND $KEEP_LONGER >= 1)")
           .run()
       }
     }
 
     fun getAllBeforeTime(time: Long): Reader {
       return readableDatabase
-        .select(BODY)
-        .from(TABLE_NAME)
+        .select(BODY, KEEP_LONGER)
+        .from("$TABLE_NAME INDEXED BY $CREATED_AT_KEEP_LONGER_INDEX")
         .where("$CREATED_AT < $time")
         .run()
         .toReader()
@@ -181,7 +197,7 @@ class LogDatabase private constructor(
     fun getRangeBeforeTime(start: Int, length: Int, time: Long): List<String> {
       return readableDatabase
         .select(BODY)
-        .from(TABLE_NAME)
+        .from("$TABLE_NAME INDEXED BY $CREATED_AT_KEEP_LONGER_INDEX")
         .where("$CREATED_AT < $time")
         .limit(limit = length, offset = start)
         .run()
@@ -192,20 +208,22 @@ class LogDatabase private constructor(
       val currentTime = System.currentTimeMillis()
       val stopwatch = Stopwatch("trim")
 
-      val sizeOfSpecialLogs: Long = getSize("$KEEP_LONGER = ?", arrayOf("1"))
-      val remainingSize = MAX_FILE_SIZE - sizeOfSpecialLogs
+      val sizeOfKeepLongerLogs: Long = getSize("$KEEP_LONGER = ?", arrayOf("1"), KEEP_LONGER_INDEX)
+      val remainingSizeAfterKeepLonger = MAX_FILE_SIZE - sizeOfKeepLongerLogs
 
       stopwatch.split("keepers-size")
 
-      if (remainingSize <= 0) {
-        if (abs(remainingSize) > MAX_FILE_SIZE / 2) {
+      // If we can't even fit our keep_longer logs within the size limit
+      if (remainingSizeAfterKeepLonger <= 0) {
+        if (abs(remainingSizeAfterKeepLonger) > MAX_FILE_SIZE / 2) {
           // Not only are KEEP_LONGER logs putting us over the storage limit, it's doing it by a lot! Delete half.
           val logCount = readableDatabase.getTableRowCount(TABLE_NAME)
           writableDatabase.execSQL("DELETE FROM $TABLE_NAME WHERE $ID < (SELECT MAX($ID) FROM (SELECT $ID FROM $TABLE_NAME LIMIT ${logCount / 2}))")
         } else {
           writableDatabase
-            .delete(TABLE_NAME)
+            .delete("$TABLE_NAME INDEXED BY $KEEP_LONGER_INDEX")
             .where("$KEEP_LONGER = 0")
+            .run()
         }
         return
       }
@@ -219,12 +237,12 @@ class LogDatabase private constructor(
 
       while (lhs < rhs - 2) {
         mid = (lhs + rhs) / 2
-        sizeOfChunk = getSize("$CREATED_AT > ? AND $CREATED_AT < ? AND $KEEP_LONGER = ?", SqlUtil.buildArgs(mid, currentTime, 0))
+        sizeOfChunk = getSize("$CREATED_AT > ? AND $CREATED_AT < ? AND $KEEP_LONGER <= ?", SqlUtil.buildArgs(mid, currentTime, 0), CREATED_AT_KEEP_LONGER_INDEX)
 
-        if (sizeOfChunk > remainingSize) {
+        if (sizeOfChunk > remainingSizeAfterKeepLonger) {
           lhs = mid
-        } else if (sizeOfChunk < remainingSize) {
-          if (remainingSize - sizeOfChunk < sizeDiffThreshold) {
+        } else if (sizeOfChunk < remainingSizeAfterKeepLonger) {
+          if (remainingSizeAfterKeepLonger - sizeOfChunk < sizeDiffThreshold) {
             break
           } else {
             rhs = mid
@@ -236,7 +254,10 @@ class LogDatabase private constructor(
 
       stopwatch.split("binary-search")
 
-      writableDatabase.delete(TABLE_NAME, "$CREATED_AT < ? AND $KEEP_LONGER = ?", SqlUtil.buildArgs(mid, 0))
+      writableDatabase
+        .delete("$TABLE_NAME INDEXED BY $CREATED_AT_KEEP_LONGER_INDEX")
+        .where("$CREATED_AT < $mid AND $KEEP_LONGER <= 0")
+        .run()
 
       stopwatch.split("delete")
       stopwatch.stop(TAG)
@@ -245,7 +266,7 @@ class LogDatabase private constructor(
     fun getLogCountBeforeTime(time: Long): Int {
       return readableDatabase
         .select("COUNT(*)")
-        .from(TABLE_NAME)
+        .from("$TABLE_NAME INDEXED BY $CREATED_AT_KEEP_LONGER_INDEX")
         .where("$CREATED_AT < $time")
         .run()
         .readToSingleInt()
@@ -253,19 +274,22 @@ class LogDatabase private constructor(
 
     fun clearKeepLonger() {
       writableDatabase
-        .delete(TABLE_NAME)
+        .delete("$TABLE_NAME INDEXED BY $KEEP_LONGER_INDEX")
         .where("$KEEP_LONGER = 1")
         .run()
     }
 
-    private fun getSize(query: String?, args: Array<String>?): Long {
-      readableDatabase.query(TABLE_NAME, arrayOf("SUM($SIZE)"), query, args, null, null, null).use { cursor ->
-        return if (cursor.moveToFirst()) {
-          cursor.getLong(0)
-        } else {
-          0
-        }
-      }
+    fun clearAll() {
+      writableDatabase.deleteAll(TABLE_NAME)
+    }
+
+    private fun getSize(query: String, args: Array<String>, index: String): Long {
+      return readableDatabase
+        .select("SUM($SIZE)")
+        .from("$TABLE_NAME INDEXED BY $index")
+        .where(query, args)
+        .run()
+        .readToSingleLong(0)
     }
 
     private fun Cursor.toReader(): CursorReader {
@@ -281,7 +305,14 @@ class LogDatabase private constructor(
 
       override fun next(): String {
         cursor.moveToNext()
-        return CursorUtil.requireString(cursor, LogTable.BODY)
+        val body = cursor.requireString(BODY) ?: ""
+        val keepLonger = cursor.requireBoolean(KEEP_LONGER)
+
+        return if (keepLonger) {
+          "$KEEP_LONGER_MARKER$body"
+        } else {
+          body
+        }
       }
 
       override fun close() {
@@ -387,6 +418,10 @@ class LogDatabase private constructor(
         .run()
     }
 
+    fun clear() {
+      writableDatabase.deleteAll(TABLE_NAME)
+    }
+
     private fun CrashConfig.CrashPattern.asLikeQuery(): Pair<String, Array<String>> {
       val query = StringBuilder()
       var args = arrayOf<String>()
@@ -414,5 +449,81 @@ class LogDatabase private constructor(
 
       return query.toString() to args
     }
+  }
+
+  class AnrTable(private val openHelper: LogDatabase) {
+    companion object {
+      const val TABLE_NAME = "anr"
+      const val ID = "_id"
+      const val CREATED_AT = "created_at"
+      const val THREAD_DUMP = "thread_dump"
+
+      const val CREATE_TABLE = """
+        CREATE TABLE $TABLE_NAME (
+          $ID INTEGER PRIMARY KEY,
+          $CREATED_AT INTEGER NOT NULL,
+          $THREAD_DUMP TEXT NOT NULL
+        )
+      """
+
+      val MAX_DUMP_SIZE = 1.mebiBytes.inWholeBytes.toInt()
+      const val TRIMMED_FOOTER = "...\n\nTruncated because the dump exceeded 1MiB in size!"
+    }
+
+    private val readableDatabase: SQLiteDatabase get() = openHelper.readableDatabase
+    private val writableDatabase: SQLiteDatabase get() = openHelper.writableDatabase
+
+    fun save(currentTime: Long, threadDumps: String) {
+      val trimmedDump = if (threadDumps.length > MAX_DUMP_SIZE) {
+        Log.w(TAG, "Large ANR thread dump! Size: ${threadDumps.length}")
+        threadDumps.substring(0, MAX_DUMP_SIZE - TRIMMED_FOOTER.length) + TRIMMED_FOOTER
+      } else {
+        threadDumps
+      }
+
+      writableDatabase
+        .insertInto(TABLE_NAME)
+        .values(
+          CREATED_AT to currentTime,
+          THREAD_DUMP to trimmedDump
+        )
+        .run()
+
+      val count = writableDatabase
+        .delete(TABLE_NAME)
+        .where(
+          """
+          $ID NOT IN (SELECT $ID FROM $TABLE_NAME ORDER BY $CREATED_AT DESC LIMIT 10)
+          """.trimIndent()
+        )
+        .run()
+
+      if (count > 0) {
+        Log.i(TAG, "Deleted $count old ANRs")
+      }
+    }
+
+    fun getAll(): List<AnrRecord> {
+      return readableDatabase
+        .select()
+        .from(TABLE_NAME)
+        .run()
+        .readToList { cursor ->
+          AnrRecord(
+            createdAt = cursor.requireLong(CREATED_AT),
+            threadDump = cursor.requireNonNullString(THREAD_DUMP)
+          )
+        }
+        .sortedBy { it.createdAt }
+    }
+
+    fun clear() {
+      writableDatabase.deleteAll(TABLE_NAME)
+    }
+
+    data class AnrRecord(
+      val createdAt: Long,
+      val threadDump: String
+    )
   }
 }

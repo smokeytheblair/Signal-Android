@@ -13,6 +13,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ZoomState;
 import androidx.camera.video.FileDescriptorOutputOptions;
 import androidx.camera.video.Recording;
@@ -20,10 +21,9 @@ import androidx.camera.video.VideoRecordEvent;
 import androidx.camera.view.CameraController;
 import androidx.camera.view.PreviewView;
 import androidx.camera.view.video.AudioConfig;
+import androidx.core.content.ContextCompat;
 import androidx.core.util.Consumer;
 import androidx.fragment.app.Fragment;
-
-import com.bumptech.glide.util.Executors;
 
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
@@ -31,6 +31,7 @@ import org.thoughtcrime.securesms.mediasend.camerax.CameraXModePolicy;
 import org.thoughtcrime.securesms.permissions.Permissions;
 import org.thoughtcrime.securesms.util.ContextUtil;
 import org.thoughtcrime.securesms.util.Debouncer;
+import org.thoughtcrime.securesms.util.RemoteConfig;
 import org.thoughtcrime.securesms.util.MemoryFileDescriptor;
 import org.thoughtcrime.securesms.video.VideoUtil;
 
@@ -42,7 +43,7 @@ import java.util.concurrent.TimeUnit;
 @RequiresApi(26)
 class CameraXVideoCaptureHelper implements CameraButtonView.VideoCaptureListener {
 
-  private static final String TAG               = CameraXVideoCaptureHelper.class.getName();
+  private static final String TAG               = Log.tag(CameraXVideoCaptureHelper.class);
   private static final String VIDEO_DEBUG_LABEL = "video-capture";
   private static final long   VIDEO_SIZE        = 10 * 1024 * 1024;
 
@@ -74,7 +75,7 @@ class CameraXVideoCaptureHelper implements CameraButtonView.VideoCaptureListener
         } else {
           try {
             debouncer.clear();
-            cameraController.setZoomRatio(Objects.requireNonNull(cameraController.getZoomState().getValue()).getMinZoomRatio());
+            cameraController.setZoomRatio(getDefaultVideoZoomRatio());
             memoryFileDescriptor.seek(0);
             callback.onVideoSaved(memoryFileDescriptor.getFileDescriptor());
           } catch (IOException e) {
@@ -118,11 +119,15 @@ class CameraXVideoCaptureHelper implements CameraButtonView.VideoCaptureListener
   public void onVideoCaptureStarted() {
     Log.d(TAG, "onVideoCaptureStarted");
 
-    if (canRecordAudio()) {
+    if (canUseCamera() && canRecordAudio()) {
       beginCameraRecording();
-    } else {
+    } else if (!canRecordAudio()) {
       displayAudioRecordingPermissionsDialog();
     }
+  }
+
+  private boolean canUseCamera() {
+    return Permissions.hasAll(fragment.requireContext(), Manifest.permission.CAMERA);
   }
 
   private boolean canRecordAudio() {
@@ -133,23 +138,24 @@ class CameraXVideoCaptureHelper implements CameraButtonView.VideoCaptureListener
     Permissions.with(fragment)
                .request(Manifest.permission.RECORD_AUDIO)
                .ifNecessary()
-               .withRationaleDialog(fragment.getString(R.string.ConversationActivity_enable_the_microphone_permission_to_capture_videos_with_sound), R.drawable.ic_mic_solid_24)
-               .withPermanentDenialDialog(fragment.getString(R.string.ConversationActivity_signal_needs_the_recording_permissions_to_capture_video))
-               .onAnyDenied(() -> Toast.makeText(fragment.requireContext(), R.string.ConversationActivity_signal_needs_recording_permissions_to_capture_video, Toast.LENGTH_LONG).show())
+               .withRationaleDialog(fragment.getString(R.string.CameraXFragment_allow_access_microphone), fragment.getString(R.string.CameraXFragment_to_capture_videos_with_sound), R.drawable.ic_mic_24)
+               .withPermanentDenialDialog(fragment.getString(R.string.ConversationActivity_signal_needs_the_recording_permissions_to_capture_video), null, R.string.CameraXFragment_allow_access_microphone, R.string.CameraXFragment_to_capture_videos, fragment.getParentFragmentManager())
+               .onAnyDenied(() -> Toast.makeText(fragment.requireContext(), R.string.CameraXFragment_signal_needs_microphone_access_video, Toast.LENGTH_LONG).show())
                .execute();
   }
 
-  @SuppressLint("RestrictedApi")
+  @SuppressLint({"RestrictedApi", "MissingPermission"})
   private void beginCameraRecording() {
     cameraXModePolicy.setToVideo(cameraController);
-    this.cameraController.setZoomRatio(Objects.requireNonNull(this.cameraController.getZoomState().getValue()).getMinZoomRatio());
+    this.cameraController.setZoomRatio(getDefaultVideoZoomRatio());
     callback.onVideoRecordStarted();
     shrinkCaptureArea();
 
     FileDescriptorOutputOptions outputOptions = new FileDescriptorOutputOptions.Builder(memoryFileDescriptor.getParcelFileDescriptor()).build();
     AudioConfig                 audioConfig   = AudioConfig.create(true);
 
-    activeRecording = cameraController.startRecording(outputOptions, audioConfig, Executors.mainThreadExecutor(), videoSavedListener);
+    cameraController.enableTorch(cameraController.getImageCaptureFlashMode() <= ImageCapture.FLASH_MODE_ON);
+    activeRecording = cameraController.startRecording(outputOptions, audioConfig, ContextCompat.getMainExecutor(fragment.requireContext()), videoSavedListener);
 
     updateProgressAnimator.start();
     debouncer.publish(this::onVideoCaptureComplete);
@@ -232,8 +238,8 @@ class CameraXVideoCaptureHelper implements CameraButtonView.VideoCaptureListener
   @Override
   public void onZoomIncremented(float increment) {
     ZoomState zoomState = Objects.requireNonNull(cameraController.getZoomState().getValue());
-    float range = zoomState.getMaxZoomRatio() - zoomState.getMinZoomRatio();
-    cameraController.setZoomRatio((range * increment) + zoomState.getMinZoomRatio());
+    float range = zoomState.getMaxZoomRatio() - getDefaultVideoZoomRatio();
+    cameraController.setZoomRatio((range * increment) + getDefaultVideoZoomRatio());
   }
 
   @Override
@@ -252,6 +258,14 @@ class CameraXVideoCaptureHelper implements CameraButtonView.VideoCaptureListener
         VIDEO_DEBUG_LABEL,
         VIDEO_SIZE
     );
+  }
+
+  public float getDefaultVideoZoomRatio() {
+    if (RemoteConfig.startVideoRecordAt1x()) {
+      return 1f;
+    } else {
+      return Objects.requireNonNull(cameraController.getZoomState().getValue()).getMinZoomRatio();
+    }
   }
 
   interface Callback {

@@ -18,15 +18,20 @@ package org.thoughtcrime.securesms.video;
 
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
+import android.os.Build;
 import android.util.AttributeSet;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-
 import androidx.annotation.OptIn;
+import androidx.core.content.ContextCompat;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
@@ -34,22 +39,25 @@ import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.source.ClippingMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.source.LoadEventInfo;
+import androidx.media3.exoplayer.source.MediaLoadData;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.LegacyPlayerControlView;
-import androidx.media3.ui.PlayerControlView;
 import androidx.media3.ui.PlayerView;
 
 import org.signal.core.util.logging.Log;
+import org.signal.libsignal.protocol.incrementalmac.InvalidMacException;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.mediapreview.MediaPreviewPlayerControlView;
 import org.thoughtcrime.securesms.mms.VideoSlide;
 
+import java.io.IOException;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 
 @OptIn(markerClass = UnstableApi.class)
 public class VideoPlayer extends FrameLayout {
@@ -58,6 +66,7 @@ public class VideoPlayer extends FrameLayout {
   private static final String TAG = Log.tag(VideoPlayer.class);
 
   private final PlayerView                exoView;
+  private final View                      progressBar;
   private final DefaultMediaSourceFactory mediaSourceFactory;
 
   private ExoPlayer                           exoPlayer;
@@ -70,7 +79,10 @@ public class VideoPlayer extends FrameLayout {
   private long                                clippedStartUs;
   private ExoPlayerListener                   exoPlayerListener;
   private Player.Listener                     playerListener;
+  private AnalyticsListener                   analyticsListener;
   private boolean                             muted;
+  private AudioFocusRequest                   audioFocusRequest;
+  private boolean                             requestAudioFocus = true;
 
   public VideoPlayer(Context context) {
     this(context, null);
@@ -92,10 +104,78 @@ public class VideoPlayer extends FrameLayout {
     this.mediaSourceFactory = new DefaultMediaSourceFactory(context);
 
     this.exoView     = findViewById(R.id.video_view);
+    this.progressBar = findViewById(R.id.progress_bar);
     this.exoControls = createPlayerControls(getContext());
 
+    final AudioManager      audioManager = ContextCompat.getSystemService(context, AudioManager.class);
+    if (Build.VERSION.SDK_INT >= 26) {
+      audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+          .setAudioAttributes(
+              new AudioAttributes.Builder()
+                  .setUsage(AudioAttributes.USAGE_MEDIA)
+                  .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                  .build()
+          )
+          .setOnAudioFocusChangeListener(focusChange -> {
+
+          })
+          .build();
+    } else {
+      audioFocusRequest = null;
+    }
+
     this.exoPlayerListener = new ExoPlayerListener();
+    this.analyticsListener = new AnalyticsListener() {
+      @Override
+      public void onLoadError(EventTime eventTime, LoadEventInfo loadEventInfo, MediaLoadData mediaLoadData, IOException error, boolean wasCanceled) {
+        if (error instanceof InvalidMacException) {
+          Log.w(TAG, "Bad incremental mac!", error);
+          playerCallback.onError(error);
+        }
+      }
+    };
     this.playerListener    = new Player.Listener() {
+
+      @Override
+      public void onIsPlayingChanged(boolean isPlaying) {
+        if (!isPlaying && exoPlayer.getCurrentPosition() >= exoPlayer.getDuration()) {
+          exoPlayer.seekTo(0);
+          exoPlayer.setPlayWhenReady(false);
+        }
+
+        if (audioManager == null) {
+          return;
+        }
+
+        if (Build.VERSION.SDK_INT >= 26 && audioFocusRequest != null) {
+          if (isPlaying) {
+            if (requestAudioFocus) {
+              audioManager.requestAudioFocus(audioFocusRequest);
+            }
+          } else {
+            audioManager.abandonAudioFocusRequest(audioFocusRequest);
+          }
+        } else {
+          if (isPlaying) {
+            if (requestAudioFocus) {
+              audioManager.requestAudioFocus(
+                  focusChange -> {
+                    // Do nothing
+                  },
+                  AudioManager.STREAM_MUSIC,
+                  AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+              );
+            }
+          } else {
+            audioManager.abandonAudioFocus(
+                focusChange -> {
+                  // Do nothing
+                }
+            );
+          }
+        }
+      }
+
       @Override
       public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
         onPlaybackStateChanged(playWhenReady, exoPlayer.getPlaybackState());
@@ -107,6 +187,13 @@ public class VideoPlayer extends FrameLayout {
       }
 
       private void onPlaybackStateChanged(boolean playWhenReady, int playbackState) {
+        if (progressBar != null) {
+          if (playbackState == Player.STATE_BUFFERING) {
+            progressBar.setVisibility(View.VISIBLE);
+          } else {
+            progressBar.setVisibility(View.GONE);
+          }
+        }
         if (playerCallback != null) {
           switch (playbackState) {
             case Player.STATE_READY:
@@ -128,7 +215,7 @@ public class VideoPlayer extends FrameLayout {
       public void onPlayerError(@NonNull PlaybackException error) {
         Log.w(TAG, "A player error occurred", error);
         if (playerCallback != null) {
-          playerCallback.onError();
+          playerCallback.onError(error);
         }
       }
     };
@@ -150,9 +237,10 @@ public class VideoPlayer extends FrameLayout {
 
   public void setVideoSource(@NonNull VideoSlide videoSource, boolean autoplay, String poolTag, long clipStartMs, long clipEndMs) {
     if (exoPlayer == null) {
-      exoPlayer = ApplicationDependencies.getExoPlayerPool().require(poolTag);
+      exoPlayer = AppDependencies.getExoPlayerPool().require(poolTag);
       exoPlayer.addListener(exoPlayerListener);
       exoPlayer.addListener(playerListener);
+      exoPlayer.addAnalyticsListener(analyticsListener);
       exoView.setPlayer(exoPlayer);
       exoControls.setPlayer(exoPlayer);
       if (muted) {
@@ -264,7 +352,7 @@ public class VideoPlayer extends FrameLayout {
       exoPlayer.removeListener(playerListener);
       exoPlayer.removeListener(exoPlayerListener);
 
-      ApplicationDependencies.getExoPlayerPool().pool(exoPlayer);
+      AppDependencies.getExoPlayerPool().pool(exoPlayer);
       this.exoPlayer = null;
     }
   }
@@ -289,11 +377,17 @@ public class VideoPlayer extends FrameLayout {
     return 0L;
   }
 
-  public long getPlaybackPositionUs() {
+  /**
+   * After calling {@link #setPlaybackPosition}, the underlying {@link Player} resets the current position to 0.
+   * We manually store the offset of where we clipped to, and add that here.
+   *
+   * @return the current playback position, rounded to the nearest millisecond
+   */
+  public long getTruePlaybackPosition() {
     if (this.exoPlayer != null) {
-      return TimeUnit.MILLISECONDS.toMicros(this.exoPlayer.getCurrentPosition()) + clippedStartUs;
+      return this.exoPlayer.getCurrentPosition() + Math.round(clippedStartUs / 1000.0);
     }
-    return 0L;
+    return -1L;
   }
 
   public void setPlaybackPosition(long positionMs) {
@@ -353,6 +447,10 @@ public class VideoPlayer extends FrameLayout {
         exoPlayer.seekTo(0);
       }
     }
+  }
+
+  public void disableAudioFocus() {
+    requestAudioFocus = false;
   }
 
   private @NonNull MediaItem.ClippingConfiguration getClippingConfiguration(long startMs, long endMs) {
@@ -430,6 +528,6 @@ public class VideoPlayer extends FrameLayout {
 
     void onStopped();
 
-    void onError();
+    void onError(Exception e);
   }
 }

@@ -33,24 +33,24 @@ public interface MessageTypes {
   // Base Types
   long BASE_TYPE_MASK = 0x1F;
 
-  long INCOMING_AUDIO_CALL_TYPE = 1;
-  long OUTGOING_AUDIO_CALL_TYPE = 2;
-  long MISSED_AUDIO_CALL_TYPE   = 3;
-  long JOINED_TYPE              = 4;
-  long UNSUPPORTED_MESSAGE_TYPE = 5;
-  long INVALID_MESSAGE_TYPE     = 6;
-  long PROFILE_CHANGE_TYPE      = 7;
-  long MISSED_VIDEO_CALL_TYPE   = 8;
-  long GV1_MIGRATION_TYPE       = 9;
-  long INCOMING_VIDEO_CALL_TYPE = 10;
-  long OUTGOING_VIDEO_CALL_TYPE = 11;
-  long GROUP_CALL_TYPE          = 12;
-  long BAD_DECRYPT_TYPE         = 13;
-  long CHANGE_NUMBER_TYPE       = 14;
-  long BOOST_REQUEST_TYPE       = 15;
-  long THREAD_MERGE_TYPE        = 16;
-  long SMS_EXPORT_TYPE          = 17;
-  long SESSION_SWITCHOVER_TYPE  = 18;
+  long INCOMING_AUDIO_CALL_TYPE              = 1;
+  long OUTGOING_AUDIO_CALL_TYPE              = 2;
+  long MISSED_AUDIO_CALL_TYPE                = 3;
+  long JOINED_TYPE                           = 4;
+  long UNSUPPORTED_MESSAGE_TYPE              = 5;
+  long INVALID_MESSAGE_TYPE                  = 6;
+  long PROFILE_CHANGE_TYPE                   = 7;
+  long MISSED_VIDEO_CALL_TYPE                = 8;
+  long GV1_MIGRATION_TYPE                    = 9;
+  long INCOMING_VIDEO_CALL_TYPE              = 10;
+  long OUTGOING_VIDEO_CALL_TYPE              = 11;
+  long GROUP_CALL_TYPE                       = 12;
+  long BAD_DECRYPT_TYPE                      = 13;
+  long CHANGE_NUMBER_TYPE                    = 14;
+  long RELEASE_CHANNEL_DONATION_REQUEST_TYPE = 15;
+  long THREAD_MERGE_TYPE                     = 16;
+  long SMS_EXPORT_TYPE                       = 17;
+  long SESSION_SWITCHOVER_TYPE               = 18;
 
   long BASE_INBOX_TYPE                    = 20;
   long BASE_OUTBOX_TYPE                   = 21;
@@ -59,13 +59,15 @@ public interface MessageTypes {
   long BASE_SENT_FAILED_TYPE              = 24;
   long BASE_PENDING_SECURE_SMS_FALLBACK   = 25;
   long BASE_PENDING_INSECURE_SMS_FALLBACK = 26;
-  long BASE_DRAFT_TYPE = 27;
+  long BASE_DRAFT_TYPE                    = 27;
+  long BASE_SENDING_SKIPPED_TYPE          = 28;
 
   long[] OUTGOING_MESSAGE_TYPES = { BASE_OUTBOX_TYPE, BASE_SENT_TYPE,
                                     BASE_SENDING_TYPE, BASE_SENT_FAILED_TYPE,
                                     BASE_PENDING_SECURE_SMS_FALLBACK,
                                     BASE_PENDING_INSECURE_SMS_FALLBACK,
-                                    OUTGOING_AUDIO_CALL_TYPE, OUTGOING_VIDEO_CALL_TYPE };
+                                    OUTGOING_AUDIO_CALL_TYPE, OUTGOING_VIDEO_CALL_TYPE,
+                                    BASE_SENDING_SKIPPED_TYPE };
 
   // Message attributes
   long MESSAGE_ATTRIBUTE_MASK   = 0xE0;
@@ -78,11 +80,11 @@ public interface MessageTypes {
   long KEY_EXCHANGE_BIT                   = 0x8000;
   long KEY_EXCHANGE_IDENTITY_VERIFIED_BIT = 0x4000;
   long KEY_EXCHANGE_IDENTITY_DEFAULT_BIT  = 0x2000;
-  long KEY_EXCHANGE_CORRUPTED_BIT         = 0x1000;
+//  long KEY_EXCHANGE_CORRUPTED_BIT         = 0x1000;
   long KEY_EXCHANGE_INVALID_VERSION_BIT   = 0x800;
   long KEY_EXCHANGE_BUNDLE_BIT            = 0x400;
   long KEY_EXCHANGE_IDENTITY_UPDATE_BIT   = 0x200;
-  long KEY_EXCHANGE_CONTENT_FORMAT        = 0x100;
+//  long KEY_EXCHANGE_CONTENT_FORMAT        = 0x100;
 
   // Secure Message Information
   long SECURE_MESSAGE_BIT = 0x800000;
@@ -90,6 +92,7 @@ public interface MessageTypes {
   long PUSH_MESSAGE_BIT   = 0x200000;
 
   // Group Message Information
+  long GROUP_MASK                  = 0xF0000;
   long GROUP_UPDATE_BIT            = 0x10000;
   // Note: Leave bit was previous QUIT bit for GV1, now also general member leave for GV2
   long GROUP_LEAVE_BIT             = 0x20000;
@@ -113,7 +116,13 @@ public interface MessageTypes {
   long SPECIAL_TYPE_GIFT_BADGE                = 0x200000000L;
   long SPECIAL_TYPE_PAYMENTS_NOTIFICATION     = 0x300000000L;
   long SPECIAL_TYPE_PAYMENTS_ACTIVATE_REQUEST = 0x400000000L;
+  long SPECIAL_TYPE_REPORTED_SPAM             = 0x500000000L;
+  long SPECIAL_TYPE_MESSAGE_REQUEST_ACCEPTED  = 0x600000000L;
   long SPECIAL_TYPE_PAYMENTS_ACTIVATED        = 0x800000000L;
+  long SPECIAL_TYPE_PAYMENTS_TOMBSTONE        = 0x900000000L;
+  long SPECIAL_TYPE_BLOCKED                   = 0xA00000000L;
+  long SPECIAL_TYPE_UNBLOCKED                 = 0xB00000000L;
+  long SPECIAL_TYPE_POLL_TERMINATE            = 0xC00000000L;
 
   long IGNORABLE_TYPESMASK_WHEN_COUNTING = END_SESSION_BIT | KEY_EXCHANGE_IDENTITY_UPDATE_BIT | KEY_EXCHANGE_IDENTITY_VERIFIED_BIT;
 
@@ -129,12 +138,36 @@ public interface MessageTypes {
     return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_PAYMENTS_NOTIFICATION;
   }
 
+  static boolean isPaymentTombstone(long type) {
+    return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_PAYMENTS_TOMBSTONE;
+  }
+
   static boolean isPaymentsRequestToActivate(long type) {
     return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_PAYMENTS_ACTIVATE_REQUEST;
   }
 
   static boolean isPaymentsActivated(long type) {
     return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_PAYMENTS_ACTIVATED;
+  }
+
+  static boolean isReportedSpam(long type) {
+    return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_REPORTED_SPAM;
+  }
+
+  static boolean isMessageRequestAccepted(long type) {
+    return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_MESSAGE_REQUEST_ACCEPTED;
+  }
+
+  static boolean isBlocked(long type) {
+    return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_BLOCKED;
+  }
+
+  static boolean isUnblocked(long type) {
+    return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_UNBLOCKED;
+  }
+
+  static boolean isPollTerminate(long type) {
+    return (type & SPECIAL_TYPES_MASK) == SPECIAL_TYPE_POLL_TERMINATE;
   }
 
   static boolean isDraftMessageType(long type) {
@@ -236,20 +269,12 @@ public interface MessageTypes {
     return (type & KEY_EXCHANGE_IDENTITY_DEFAULT_BIT) != 0;
   }
 
-  static boolean isCorruptedKeyExchange(long type) {
-    return (type & KEY_EXCHANGE_CORRUPTED_BIT) != 0;
-  }
-
   static boolean isInvalidVersionKeyExchange(long type) {
     return (type & KEY_EXCHANGE_INVALID_VERSION_BIT) != 0;
   }
 
   static boolean isBundleKeyExchange(long type) {
     return (type & KEY_EXCHANGE_BUNDLE_BIT) != 0;
-  }
-
-  static boolean isContentBundleKeyExchange(long type) {
-    return (type & KEY_EXCHANGE_CONTENT_FORMAT) != 0;
   }
 
   static boolean isIdentityUpdate(long type) {
@@ -343,8 +368,8 @@ public interface MessageTypes {
     return type == CHANGE_NUMBER_TYPE;
   }
 
-  static boolean isBoostRequest(long type) {
-    return type == BOOST_REQUEST_TYPE;
+  static boolean isReleaseChannelDonationRequest(long type) {
+    return type == RELEASE_CHANNEL_DONATION_REQUEST_TYPE;
   }
 
   static boolean isSmsExport(long type) {

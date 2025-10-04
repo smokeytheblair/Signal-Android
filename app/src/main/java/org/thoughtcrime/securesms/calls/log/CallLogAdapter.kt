@@ -7,14 +7,16 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.widget.TextViewCompat
+import com.bumptech.glide.Glide
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.database.CallTable
 import org.thoughtcrime.securesms.database.MessageTypes
 import org.thoughtcrime.securesms.databinding.CallLogAdapterItemBinding
 import org.thoughtcrime.securesms.databinding.CallLogCreateCallLinkItemBinding
 import org.thoughtcrime.securesms.databinding.ConversationListItemClearFilterBinding
-import org.thoughtcrime.securesms.mms.GlideApp
+import org.thoughtcrime.securesms.databinding.ConversationListItemClearFilterEmptyBinding
 import org.thoughtcrime.securesms.recipients.Recipient
+import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.util.DateUtils
 import org.thoughtcrime.securesms.util.SearchUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.BindingFactory
@@ -31,6 +33,11 @@ import java.util.Locale
 class CallLogAdapter(
   callbacks: Callbacks
 ) : PagingMappingAdapter<CallLogRow.Id>() {
+
+  companion object {
+    private const val PAYLOAD_SELECTION_STATE = "PAYLOAD_SELECTION_STATE"
+    private const val PAYLOAD_TIMESTAMP = "PAYLOAD_TIMESTAMP"
+  }
 
   init {
     registerFactory(
@@ -56,13 +63,19 @@ class CallLogAdapter(
       )
     )
     registerFactory(
+      ClearFilterEmptyModel::class.java,
+      BindingFactory(
+        creator = { ClearFilterEmptyViewHolder(it, callbacks::onClearFilterClicked) },
+        inflater = ConversationListItemClearFilterEmptyBinding::inflate
+      )
+    )
+    registerFactory(
       CreateCallLinkModel::class.java,
       BindingFactory(
         creator = { CreateCallLinkViewHolder(it, callbacks::onCreateACallLinkClicked) },
         inflater = CallLogCreateCallLinkItemBinding::inflate
       )
     )
-
     registerFactory(
       CallLinkModel::class.java,
       BindingFactory(
@@ -72,18 +85,24 @@ class CallLogAdapter(
     )
   }
 
+  fun onTimestampTick() {
+    notifyItemRangeChanged(0, itemCount, PAYLOAD_TIMESTAMP)
+  }
+
   fun submitCallRows(
     rows: List<CallLogRow?>,
     selectionState: CallLogSelectionState,
+    localCallRecipientId: RecipientId,
     onCommit: () -> Unit
   ): Int {
     val filteredRows = rows
       .filterNotNull()
       .map {
         when (it) {
-          is CallLogRow.Call -> CallModel(it, selectionState, itemCount)
-          is CallLogRow.CallLink -> CallLinkModel(it, selectionState, itemCount)
+          is CallLogRow.Call -> CallModel(it, selectionState, itemCount, it.peer.id == localCallRecipientId)
+          is CallLogRow.CallLink -> CallLinkModel(it, selectionState, itemCount, it.recipient.id == localCallRecipientId)
           is CallLogRow.ClearFilter -> ClearFilterModel()
+          is CallLogRow.ClearFilterEmpty -> ClearFilterEmptyModel()
           is CallLogRow.CreateCallLink -> CreateCallLinkModel()
         }
       }
@@ -96,17 +115,16 @@ class CallLogAdapter(
   private class CallModel(
     val call: CallLogRow.Call,
     val selectionState: CallLogSelectionState,
-    val itemCount: Int
+    val itemCount: Int,
+    val isLocalDeviceInCall: Boolean
   ) : MappingModel<CallModel> {
-    companion object {
-      const val PAYLOAD_SELECTION_STATE = "PAYLOAD_SELECTION_STATE"
-    }
 
     override fun areItemsTheSame(newItem: CallModel): Boolean = call.id == newItem.call.id
     override fun areContentsTheSame(newItem: CallModel): Boolean {
       return call == newItem.call &&
         isSelectionStateTheSame(newItem) &&
-        isItemCountTheSame(newItem)
+        isItemCountTheSame(newItem) &&
+        isLocalDeviceInCall == newItem.isLocalDeviceInCall
     }
 
     override fun getChangePayload(newItem: CallModel): Any? {
@@ -130,12 +148,9 @@ class CallLogAdapter(
   private class CallLinkModel(
     val callLink: CallLogRow.CallLink,
     val selectionState: CallLogSelectionState,
-    val itemCount: Int
+    val itemCount: Int,
+    val isLocalDeviceInCall: Boolean
   ) : MappingModel<CallLinkModel> {
-
-    companion object {
-      const val PAYLOAD_SELECTION_STATE = "PAYLOAD_SELECTION_STATE"
-    }
 
     override fun areItemsTheSame(newItem: CallLinkModel): Boolean {
       return callLink.record.roomId == newItem.callLink.record.roomId
@@ -144,12 +159,13 @@ class CallLogAdapter(
     override fun areContentsTheSame(newItem: CallLinkModel): Boolean {
       return callLink == newItem.callLink &&
         isSelectionStateTheSame(newItem) &&
-        isItemCountTheSame(newItem)
+        isItemCountTheSame(newItem) &&
+        isLocalDeviceInCall == newItem.isLocalDeviceInCall
     }
 
     override fun getChangePayload(newItem: CallLinkModel): Any? {
       return if (callLink == newItem.callLink && (!isSelectionStateTheSame(newItem) || !isItemCountTheSame(newItem))) {
-        CallModel.PAYLOAD_SELECTION_STATE
+        PAYLOAD_SELECTION_STATE
       } else {
         null
       }
@@ -170,6 +186,11 @@ class CallLogAdapter(
     override fun areContentsTheSame(newItem: ClearFilterModel): Boolean = true
   }
 
+  private class ClearFilterEmptyModel : MappingModel<ClearFilterEmptyModel> {
+    override fun areItemsTheSame(newItem: ClearFilterEmptyModel): Boolean = true
+    override fun areContentsTheSame(newItem: ClearFilterEmptyModel): Boolean = true
+  }
+
   private class CreateCallLinkModel : MappingModel<CreateCallLinkModel> {
     override fun areItemsTheSame(newItem: CreateCallLinkModel): Boolean = true
 
@@ -180,9 +201,13 @@ class CallLogAdapter(
     binding: CallLogAdapterItemBinding,
     private val onCallLinkClicked: (CallLogRow.CallLink) -> Unit,
     private val onCallLinkLongClicked: (View, CallLogRow.CallLink) -> Boolean,
-    private val onStartVideoCallClicked: (Recipient) -> Unit
+    private val onStartVideoCallClicked: (Recipient, Boolean) -> Unit
   ) : BindingViewHolder<CallLinkModel, CallLogAdapterItemBinding>(binding) {
     override fun bind(model: CallLinkModel) {
+      if (payload.size == 1 && payload.contains(PAYLOAD_TIMESTAMP)) {
+        return
+      }
+
       itemView.setOnClickListener {
         onCallLinkClicked(model.callLink)
       }
@@ -195,7 +220,7 @@ class CallLogAdapter(
       binding.callSelected.isChecked = model.selectionState.contains(model.callLink.id)
       binding.callSelected.visible = model.selectionState.isNotEmpty(model.itemCount)
 
-      if (payload.contains(CallModel.PAYLOAD_SELECTION_STATE)) {
+      if (payload.isNotEmpty()) {
         return
       }
 
@@ -222,13 +247,28 @@ class CallLogAdapter(
         )
       )
 
-      binding.callType.setImageResource(R.drawable.symbol_video_24)
-      binding.callType.contentDescription = context.getString(R.string.CallLogAdapter__start_a_video_call)
-      binding.callType.setOnClickListener {
-        onStartVideoCallClicked(model.callLink.recipient)
+      if (model.callLink.callLinkPeekInfo?.isActive == true) {
+        binding.groupCallButton.setText(
+          if (model.callLink.callLinkPeekInfo.isJoined && model.isLocalDeviceInCall) {
+            R.string.CallLogAdapter__return
+          } else {
+            R.string.CallLogAdapter__join
+          }
+        )
+        binding.groupCallButton.setOnClickListener {
+          onStartVideoCallClicked(model.callLink.recipient, true)
+        }
+        binding.callType.visible = false
+        binding.groupCallButton.visible = true
+      } else {
+        binding.callType.setImageResource(R.drawable.symbol_video_24)
+        binding.callType.contentDescription = context.getString(R.string.CallLogAdapter__start_a_video_call)
+        binding.callType.setOnClickListener {
+          onStartVideoCallClicked(model.callLink.recipient, true)
+        }
+        binding.callType.visible = true
+        binding.groupCallButton.visible = false
       }
-      binding.callType.visible = true
-      binding.groupCallButton.visible = false
     }
   }
 
@@ -237,7 +277,7 @@ class CallLogAdapter(
     private val onCallClicked: (CallLogRow.Call) -> Unit,
     private val onCallLongClicked: (View, CallLogRow.Call) -> Boolean,
     private val onStartAudioCallClicked: (Recipient) -> Unit,
-    private val onStartVideoCallClicked: (Recipient) -> Unit
+    private val onStartVideoCallClicked: (Recipient, Boolean) -> Unit
   ) : BindingViewHolder<CallModel, CallLogAdapterItemBinding>(binding) {
     override fun bind(model: CallModel) {
       itemView.setOnClickListener {
@@ -252,7 +292,11 @@ class CallLogAdapter(
       binding.callSelected.isChecked = model.selectionState.contains(model.call.id)
       binding.callSelected.visible = model.selectionState.isNotEmpty(model.itemCount)
 
-      if (payload.contains(CallModel.PAYLOAD_SELECTION_STATE)) {
+      if (payload.contains(PAYLOAD_TIMESTAMP)) {
+        presentCallInfo(model.call, model.call.date)
+      }
+
+      if (payload.isNotEmpty()) {
         return
       }
 
@@ -262,7 +306,7 @@ class CallLogAdapter(
     }
 
     private fun presentRecipientDetails(recipient: Recipient, searchQuery: String?) {
-      binding.callRecipientAvatar.setAvatar(GlideApp.with(binding.callRecipientAvatar), recipient, true)
+      binding.callRecipientAvatar.setAvatar(Glide.with(binding.callRecipientAvatar), recipient, true)
       binding.callRecipientBadge.setBadgeFromRecipient(recipient)
       binding.callRecipientName.text = if (searchQuery != null) {
         SearchUtil.getHighlightedSpan(
@@ -295,7 +339,7 @@ class CallLogAdapter(
 
       val color = ContextCompat.getColor(
         context,
-        if (call.record.event == CallTable.Event.MISSED) {
+        if (call.record.isDisplayedAsMissedCallInUi) {
           R.color.signal_colorError
         } else {
           R.color.signal_colorOnSurfaceVariant
@@ -323,16 +367,39 @@ class CallLogAdapter(
         CallTable.Type.VIDEO_CALL -> {
           binding.callType.setImageResource(R.drawable.symbol_video_24)
           binding.callType.contentDescription = context.getString(R.string.CallLogAdapter__start_a_video_call)
-          binding.callType.setOnClickListener { onStartVideoCallClicked(model.call.peer) }
+          binding.callType.setOnClickListener { onStartVideoCallClicked(model.call.peer, true) }
           binding.callType.visible = true
           binding.groupCallButton.visible = false
         }
 
-        CallTable.Type.GROUP_CALL, CallTable.Type.AD_HOC_CALL -> {
+        CallTable.Type.AD_HOC_CALL -> {
           binding.callType.setImageResource(R.drawable.symbol_video_24)
           binding.callType.contentDescription = context.getString(R.string.CallLogAdapter__start_a_video_call)
-          binding.callType.setOnClickListener { onStartVideoCallClicked(model.call.peer) }
-          binding.groupCallButton.setOnClickListener { onStartVideoCallClicked(model.call.peer) }
+          binding.callType.setOnClickListener { onStartVideoCallClicked(model.call.peer, model.call.canUserBeginCall) }
+          binding.groupCallButton.setOnClickListener { onStartVideoCallClicked(model.call.peer, model.call.canUserBeginCall) }
+
+          if (model.call.callLinkPeekInfo?.isActive == true) {
+            binding.callType.visible = false
+            binding.groupCallButton.visible = true
+
+            binding.groupCallButton.setText(
+              if (model.call.callLinkPeekInfo.isJoined && model.isLocalDeviceInCall) {
+                R.string.CallLogAdapter__return
+              } else {
+                R.string.CallLogAdapter__join
+              }
+            )
+          } else {
+            binding.callType.visible = true
+            binding.groupCallButton.visible = false
+          }
+        }
+
+        CallTable.Type.GROUP_CALL -> {
+          binding.callType.setImageResource(R.drawable.symbol_video_24)
+          binding.callType.contentDescription = context.getString(R.string.CallLogAdapter__start_a_video_call)
+          binding.callType.setOnClickListener { onStartVideoCallClicked(model.call.peer, model.call.canUserBeginCall) }
+          binding.groupCallButton.setOnClickListener { onStartVideoCallClicked(model.call.peer, model.call.canUserBeginCall) }
 
           when (model.call.groupCallState) {
             CallLogRow.GroupCallState.NONE, CallLogRow.GroupCallState.FULL -> {
@@ -345,7 +412,7 @@ class CallLogAdapter(
               binding.groupCallButton.visible = true
 
               binding.groupCallButton.setText(
-                if (model.call.groupCallState == CallLogRow.GroupCallState.LOCAL_USER_JOINED) {
+                if (model.call.groupCallState == CallLogRow.GroupCallState.LOCAL_USER_JOINED && model.isLocalDeviceInCall) {
                   R.string.CallLogAdapter__return
                 } else {
                   R.string.CallLogAdapter__join
@@ -361,11 +428,11 @@ class CallLogAdapter(
     private fun getCallStateDrawableRes(call: CallTable.Call): Int {
       return when (call.messageType) {
         MessageTypes.MISSED_VIDEO_CALL_TYPE, MessageTypes.MISSED_AUDIO_CALL_TYPE -> R.drawable.symbol_missed_incoming_compact_16
-        MessageTypes.INCOMING_AUDIO_CALL_TYPE, MessageTypes.INCOMING_VIDEO_CALL_TYPE -> R.drawable.symbol_arrow_downleft_compact_16
+        MessageTypes.INCOMING_AUDIO_CALL_TYPE, MessageTypes.INCOMING_VIDEO_CALL_TYPE -> if (call.isDisplayedAsMissedCallInUi) R.drawable.symbol_missed_incoming_compact_16 else R.drawable.symbol_arrow_downleft_compact_16
         MessageTypes.OUTGOING_AUDIO_CALL_TYPE, MessageTypes.OUTGOING_VIDEO_CALL_TYPE -> R.drawable.symbol_arrow_upright_compact_16
         MessageTypes.GROUP_CALL_TYPE -> when {
           call.type == CallTable.Type.AD_HOC_CALL -> R.drawable.symbol_link_compact_16
-          call.event == CallTable.Event.MISSED -> R.drawable.symbol_missed_incoming_compact_16
+          call.isDisplayedAsMissedCallInUi -> R.drawable.symbol_missed_incoming_compact_16
           call.event == CallTable.Event.GENERIC_GROUP_CALL || call.event == CallTable.Event.JOINED -> R.drawable.symbol_group_compact_16
           call.direction == CallTable.Direction.INCOMING -> R.drawable.symbol_arrow_downleft_compact_16
           call.direction == CallTable.Direction.OUTGOING -> R.drawable.symbol_arrow_upright_compact_16
@@ -379,22 +446,20 @@ class CallLogAdapter(
     @StringRes
     private fun getCallStateStringRes(call: CallTable.Call): Int {
       return when (call.messageType) {
-        MessageTypes.MISSED_VIDEO_CALL_TYPE -> R.string.CallLogAdapter__missed
-        MessageTypes.MISSED_AUDIO_CALL_TYPE -> R.string.CallLogAdapter__missed
-        MessageTypes.INCOMING_AUDIO_CALL_TYPE -> R.string.CallLogAdapter__incoming
-        MessageTypes.INCOMING_VIDEO_CALL_TYPE -> R.string.CallLogAdapter__incoming
+        MessageTypes.MISSED_VIDEO_CALL_TYPE, MessageTypes.MISSED_AUDIO_CALL_TYPE -> if (call.event == CallTable.Event.MISSED) R.string.CallLogAdapter__missed else R.string.CallLogAdapter__missed_notification_profile
         MessageTypes.OUTGOING_AUDIO_CALL_TYPE -> R.string.CallLogAdapter__outgoing
         MessageTypes.OUTGOING_VIDEO_CALL_TYPE -> R.string.CallLogAdapter__outgoing
         MessageTypes.GROUP_CALL_TYPE -> when {
           call.type == CallTable.Type.AD_HOC_CALL -> R.string.CallLogAdapter__call_link
-          call.event == CallTable.Event.MISSED -> R.string.CallLogAdapter__missed
+          call.event == CallTable.Event.MISSED_NOTIFICATION_PROFILE -> R.string.CallLogAdapter__missed_notification_profile
+          call.isDisplayedAsMissedCallInUi -> R.string.CallLogAdapter__missed
           call.event == CallTable.Event.GENERIC_GROUP_CALL || call.event == CallTable.Event.JOINED -> R.string.CallPreference__group_call
           call.direction == CallTable.Direction.INCOMING -> R.string.CallLogAdapter__incoming
           call.direction == CallTable.Direction.OUTGOING -> R.string.CallLogAdapter__outgoing
           else -> throw AssertionError()
         }
 
-        else -> error("Unexpected type ${call.messageType}")
+        else -> if (call.isDisplayedAsMissedCallInUi) R.string.CallLogAdapter__missed else R.string.CallLogAdapter__incoming
       }
     }
   }
@@ -409,6 +474,19 @@ class CallLogAdapter(
     }
 
     override fun bind(model: ClearFilterModel) = Unit
+  }
+
+  private class ClearFilterEmptyViewHolder(
+    binding: ConversationListItemClearFilterEmptyBinding,
+    onClearFilterClicked: () -> Unit
+  ) : BindingViewHolder<ClearFilterEmptyModel, ConversationListItemClearFilterEmptyBinding>(binding) {
+
+    init {
+      binding.clearFilter.setOnClickListener { onClearFilterClicked() }
+      binding.clearFilterTitle.setText(R.string.CallLogAdapter__no_missed_calls)
+    }
+
+    override fun bind(model: ClearFilterEmptyModel) = Unit
   }
 
   private class CreateCallLinkViewHolder(
@@ -461,6 +539,6 @@ class CallLogAdapter(
     /**
      * Invoked when user presses the video icon
      */
-    fun onStartVideoCallClicked(recipient: Recipient)
+    fun onStartVideoCallClicked(recipient: Recipient, canUserBeginCall: Boolean)
   }
 }

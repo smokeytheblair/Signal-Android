@@ -1,9 +1,6 @@
 package org.thoughtcrime.securesms.database.documents;
 
-import android.content.Context;
 import android.text.TextUtils;
-
-import androidx.annotation.NonNull;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -21,7 +18,7 @@ import org.signal.libsignal.protocol.IdentityKey;
 import org.signal.libsignal.protocol.InvalidKeyException;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
-import org.thoughtcrime.securesms.util.Base64;
+import org.signal.core.util.Base64;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -51,11 +48,16 @@ public class IdentityKeyMismatch {
   }
 
   @JsonIgnore
-  public RecipientId getRecipientId(@NonNull Context context) {
+  public RecipientId getRecipientId() {
     if (!TextUtils.isEmpty(recipientId)) {
       return RecipientId.from(recipientId);
     } else {
-      return Recipient.external(context, address).getId();
+      Recipient recipient = Recipient.external(address);
+      if (recipient != null) {
+        return recipient.getId();
+      } else {
+        return RecipientId.UNKNOWN;
+      }
     }
   }
 
@@ -83,7 +85,7 @@ public class IdentityKeyMismatch {
     public void serialize(IdentityKey value, JsonGenerator jsonGenerator, SerializerProvider serializers)
         throws IOException
     {
-      jsonGenerator.writeString(Base64.encodeBytes(value.serialize()));
+      jsonGenerator.writeString(Base64.encodeWithPadding(value.serialize()));
     }
   }
 

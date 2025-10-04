@@ -1,7 +1,6 @@
 package org.thoughtcrime.securesms.payments.confirm;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -29,6 +28,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import org.signal.core.util.StringUtil;
 import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.BiometricDeviceAuthentication;
@@ -43,7 +43,6 @@ import org.thoughtcrime.securesms.payments.preferences.PaymentsHomeFragmentDirec
 import org.thoughtcrime.securesms.payments.preferences.RecipientHasNotEnabledPaymentsDialog;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.util.BottomSheetUtil;
-import org.signal.core.util.StringUtil;
 import org.thoughtcrime.securesms.util.ServiceUtil;
 import org.thoughtcrime.securesms.util.WindowUtil;
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingModelList;
@@ -218,7 +217,7 @@ public class ConfirmPaymentFragment extends BottomSheetDialogFragment {
 
 
   private boolean isPaymentLockEnabled(Context context) {
-    return SignalStore.paymentsValues().isPaymentLockEnabled() && ServiceUtil.getKeyguardManager(context).isKeyguardSecure();
+    return SignalStore.payments().isPaymentLockEnabled() && ServiceUtil.getKeyguardManager(context).isKeyguardSecure();
   }
 
   private class Callbacks implements ConfirmPaymentAdapter.Callbacks {

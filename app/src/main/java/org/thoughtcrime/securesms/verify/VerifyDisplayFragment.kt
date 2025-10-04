@@ -36,7 +36,7 @@ import org.thoughtcrime.securesms.crypto.IdentityKeyParcelable
 import org.thoughtcrime.securesms.databinding.VerifyDisplayFragmentBinding
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.thoughtcrime.securesms.util.FeatureFlags
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.Util
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.visible
@@ -82,10 +82,6 @@ class VerifyDisplayFragment : Fragment(), OnScrollChangedListener {
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     initializeViewModel()
 
-    binding.safetyNumberUpdatingBannerText.text = getString(R.string.verify_display_fragment__safety_numbers_are_updating_banner_no_learn_more)
-    binding.safetyNumberUpdatingBannerText.setLink("https://signal.org/redirect/safety-numbers")
-    binding.safetyNumberUpdatingBannerText.setLinkColor(ContextCompat.getColor(requireContext(), R.color.signal_colorPrimary))
-
     updateVerifyButton(requireArguments().getBoolean(VERIFIED_STATE, false), false)
 
     binding.verifyButton.setOnClickListener { updateVerifyButton(!currentVerifiedState, true) }
@@ -116,12 +112,11 @@ class VerifyDisplayFragment : Fragment(), OnScrollChangedListener {
         return@observe
       }
       val multipleCards = fingerprints.size > 1
-      binding.safetyNumberChangeBanner.visible = multipleCards
       binding.dotIndicators.visible = multipleCards
 
       if (fingerprints.isEmpty()) {
         val resolved = viewModel.recipient.resolve()
-        Log.w(TAG, String.format(Locale.ENGLISH, "Could not show proper verification! verifyV2: %s, hasUuid: %s, hasE164: %s", FeatureFlags.verifyV2(), resolved.serviceId.isPresent, resolved.e164.isPresent))
+        Log.w(TAG, String.format(Locale.ENGLISH, "Could not show proper verification! verifyV2: %s, hasUuid: %s, hasE164: %s", RemoteConfig.verifyV2, resolved.serviceId.isPresent, resolved.e164.isPresent))
         MaterialAlertDialogBuilder(requireContext())
           .setMessage(getString(R.string.VerifyIdentityActivity_you_must_first_exchange_messages_in_order_to_view, resolved.getDisplayName(requireContext())))
           .setPositiveButton(android.R.string.ok) { dialog: DialogInterface?, which: Int -> requireActivity().finish() }
@@ -143,14 +138,6 @@ class VerifyDisplayFragment : Fragment(), OnScrollChangedListener {
     val remoteIdentity = requireArguments().requireParcelableCompat(REMOTE_IDENTITY, IdentityKeyParcelable::class.java).get()!!
 
     viewModel = ViewModelProvider(this, VerifySafetyNumberViewModel.Factory(recipientId, localIdentity, remoteIdentity)).get(VerifySafetyNumberViewModel::class.java)
-  }
-
-  override fun onStart() {
-    super.onStart()
-    if (!viewModel.showedSafetyNumberEducationDialog) {
-      PnpSafetyNumberEducationDialogFragment.show(childFragmentManager)
-      viewModel.showedSafetyNumberEducationDialog = true
-    }
   }
 
   override fun onResume() {

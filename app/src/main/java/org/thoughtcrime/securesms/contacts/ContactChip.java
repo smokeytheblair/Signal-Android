@@ -11,13 +11,19 @@ import android.util.AttributeSet;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.bumptech.glide.RequestManager;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.transition.Transition;
 import com.google.android.material.chip.Chip;
+import com.google.android.material.shape.MaterialShapeDrawable;
+import com.google.android.material.shape.RelativeCornerSize;
+import com.google.android.material.shape.RoundedCornerTreatment;
+import com.google.android.material.shape.ShapeAppearanceModel;
+import com.google.android.material.shape.Shapeable;
 
+import org.thoughtcrime.securesms.avatar.fallback.FallbackAvatarDrawable;
 import org.thoughtcrime.securesms.contacts.avatars.ContactPhoto;
-import org.thoughtcrime.securesms.mms.GlideRequests;
 import org.thoughtcrime.securesms.recipients.Recipient;
 
 public final class ContactChip extends Chip {
@@ -44,14 +50,20 @@ public final class ContactChip extends Chip {
     return contact;
   }
 
-  public void setAvatar(@NonNull GlideRequests requestManager, @Nullable Recipient recipient, @Nullable Runnable onAvatarSet) {
+  public void setAvatar(@NonNull RequestManager requestManager, @Nullable Recipient recipient, @Nullable Runnable onAvatarSet) {
     if (recipient != null) {
       requestManager.clear(this);
 
-      Drawable     fallbackContactPhotoDrawable = new HalfScaleDrawable(recipient.getFallbackContactPhotoDrawable(getContext(), false));
-      ContactPhoto contactPhoto                 = recipient.getContactPhoto();
+      FallbackAvatarDrawable fallbackContactPhotoDrawable = new FallbackAvatarDrawable(getContext(), recipient.getFallbackAvatar());
+      ContactPhoto           contactPhoto                 = recipient.getContactPhoto();
 
       if (contactPhoto == null) {
+        fallbackContactPhotoDrawable.setShapeAppearanceModel(
+            ShapeAppearanceModel.builder()
+                .setAllCorners(new RoundedCornerTreatment())
+                .setAllCornerSizes(new RelativeCornerSize(0.5f)).build()
+        );
+
         setChipIcon(fallbackContactPhotoDrawable);
         if (onAvatarSet != null) {
           onAvatarSet.run();

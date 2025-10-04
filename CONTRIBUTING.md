@@ -15,6 +15,11 @@ Truths which we believe to be self-evident:
 1. **There is no such thing as time.**  Protocol ideas that require synchronized clocks are doomed to failure.
 
 
+## Building
+
+1. Most things are pretty straightforward, and opening the project in Android Studio should get you most of the way there.
+1. Depending on your configuration, you'll also likely need to install additional SDK Tool components, namely the versions of NDK and CMake we are currently using in our [Docker](https://github.com/signalapp/Signal-Android/blob/main/reproducible-builds/Dockerfile#L30) configuration.
+
 ## Issues
 
 ### Useful bug reports
@@ -56,6 +61,8 @@ You will need to [sign our CLA](https://signal.org/cla/) before your pull reques
 
 ### Follow the Code Style Guidelines
 Ensure that your code adheres to the [Code Style Guidelines](https://github.com/signalapp/Signal-Android/wiki/Code-Style-Guidelines) before submitting a pull request.
+
+You can run `./gradlew format` to automatically check conformance with some of these guidelines.
 
 ### Submit finished and well-tested pull requests
 Please do not submit pull requests that are still a work in progress. Pull requests should be thoroughly tested and ready to merge before they are submitted.

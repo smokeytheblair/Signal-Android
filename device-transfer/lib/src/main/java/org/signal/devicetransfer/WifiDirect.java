@@ -92,7 +92,7 @@ public final class WifiDirect {
     if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
       Log.i(TAG, "Nearby Wifi permission required");
       return AvailableStatus.REQUIRED_PERMISSION_NOT_GRANTED;
-    } else if (Build.VERSION.SDK_INT >= 23 && context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+    } else if (Build.VERSION.SDK_INT < 33 && Build.VERSION.SDK_INT >= 23 && context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
       Log.i(TAG, "Fine location permission required");
       return AvailableStatus.REQUIRED_PERMISSION_NOT_GRANTED;
     }
@@ -299,7 +299,7 @@ public final class WifiDirect {
     ensureInitialized();
 
     manager.requestConnectionInfo(channel, info -> {
-      Log.i(TAG, "Connection information available. group_formed: " + info.groupFormed + " group_owner: " + info.isGroupOwner);
+      Log.i(TAG, "Connection information available. group_formed: " + info.groupFormed + " is_group_owner: " + info.isGroupOwner + " has_group_owner_address: " +  (info.groupOwnerAddress != null));
       WifiDirectConnectionListener listener = connectionListener;
       if (listener != null) {
         listener.onNetworkConnected(info);

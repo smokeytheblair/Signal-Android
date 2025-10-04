@@ -5,9 +5,9 @@ import org.signal.libsignal.zkgroup.groups.GroupMasterKey
 import org.signal.storageservice.protos.groups.AccessControl
 import org.signal.storageservice.protos.groups.local.EnabledState
 import org.thoughtcrime.securesms.database.GroupTable
+import org.thoughtcrime.securesms.database.RecipientTable
 import org.thoughtcrime.securesms.groups.GroupAccessControl
 import org.thoughtcrime.securesms.groups.GroupId
-import org.thoughtcrime.securesms.groups.GroupsV1MigrationUtil
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
@@ -31,7 +31,8 @@ class GroupRecord(
   groupRevision: Int,
   decryptedGroupBytes: ByteArray?,
   val distributionId: DistributionId?,
-  val lastForceUpdateTimestamp: Long
+  val lastForceUpdateTimestamp: Long,
+  val groupSendEndorsementExpiration: Long
 ) {
 
   val members: List<RecipientId> by lazy {
@@ -87,7 +88,7 @@ class GroupRecord(
   val membershipAdditionAccessControl: GroupAccessControl
     get() {
       return if (isV2Group) {
-        if (requireV2GroupProperties().decryptedGroup.accessControl!!.members == AccessControl.AccessRequired.MEMBER) {
+        if ((requireV2GroupProperties().decryptedGroup.accessControl ?: AccessControl()).members == AccessControl.AccessRequired.MEMBER) {
           GroupAccessControl.ALL_MEMBERS
         } else {
           GroupAccessControl.ONLY_ADMINS
@@ -105,7 +106,7 @@ class GroupRecord(
   val attributesAccessControl: GroupAccessControl
     get() {
       return if (isV2Group) {
-        if (requireV2GroupProperties().decryptedGroup.accessControl!!.attributes == AccessControl.AccessRequired.MEMBER) {
+        if ((requireV2GroupProperties().decryptedGroup.accessControl ?: AccessControl()).attributes == AccessControl.AccessRequired.MEMBER) {
           GroupAccessControl.ALL_MEMBERS
         } else {
           GroupAccessControl.ONLY_ADMINS
@@ -134,7 +135,7 @@ class GroupRecord(
       unmigratedV1Members
         .filterNot { members.contains(it) }
         .map { Recipient.resolved(it) }
-        .filter { GroupsV1MigrationUtil.isAutoMigratable(it) }
+        .filter { it.isAutoMigratable() }
         .map { it.id }
     }
   }
@@ -155,7 +156,7 @@ class GroupRecord(
     return if (isV2Group) {
       val memberLevel = requireV2GroupProperties().memberLevel(recipient.serviceId)
       if (recipient.isSelf && memberLevel == GroupTable.MemberLevel.NOT_A_MEMBER) {
-        requireV2GroupProperties().memberLevel(Optional.ofNullable(SignalStore.account().pni))
+        requireV2GroupProperties().memberLevel(Optional.ofNullable(SignalStore.account.pni))
       } else {
         memberLevel
       }
@@ -180,5 +181,14 @@ class GroupRecord(
       }
     }
     return false
+  }
+
+  companion object {
+    /**
+     * True if the user meets all the requirements to be auto-migrated, otherwise false.
+     */
+    private fun Recipient.isAutoMigratable(): Boolean {
+      return hasServiceId && registered === RecipientTable.RegisteredState.REGISTERED && profileKey != null
+    }
   }
 }

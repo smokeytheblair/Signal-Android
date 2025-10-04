@@ -8,6 +8,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
+import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
@@ -16,7 +17,6 @@ import com.bumptech.glide.request.target.Target;
 
 import org.signal.core.util.ByteSize;
 import org.signal.core.util.logging.Log;
-import org.thoughtcrime.securesms.mms.GlideApp;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -45,7 +45,7 @@ public final class ImageCompressionUtil {
     }
   };
 
-  private ImageCompressionUtil () {}
+  private ImageCompressionUtil() {}
 
   /**
    * A result satisfying the provided constraints, or null if they could not be met.
@@ -59,7 +59,7 @@ public final class ImageCompressionUtil {
                                                            @IntRange(from = 0, to = 100) int quality)
       throws BitmapDecodingException
   {
-    Result result = compress(context, mimeType, glideModel, maxDimension, quality);
+    Result result = compress(context, mimeType, mimeType, glideModel, maxDimension, quality);
 
     if (result.getData().length <= maxBytes) {
       return result;
@@ -73,16 +73,33 @@ public final class ImageCompressionUtil {
    */
   @WorkerThread
   public static @NonNull Result compress(@NonNull Context context,
-                                          @NonNull String mimeType,
-                                          @NonNull Object glideModel,
-                                          int maxDimension,
-                                          @IntRange(from = 0, to = 100) int quality)
+                                         @Nullable String contentType,
+                                         @Nullable String targetContentType,
+                                         @NonNull Object glideModel,
+                                         int maxDimension,
+                                         @IntRange(from = 0, to = 100) int quality)
+      throws BitmapDecodingException
+  {
+    return compress(context, contentType, targetContentType, glideModel, maxDimension, quality, false);
+  }
+
+  /**
+   * Compresses the image to match the requested parameters.
+   */
+  @WorkerThread
+  public static @NonNull Result compress(@NonNull Context context,
+                                         @Nullable String contentType,
+                                         @Nullable String targetContentType,
+                                         @NonNull Object glideModel,
+                                         int maxDimension,
+                                         @IntRange(from = 0, to = 100) int quality,
+                                         boolean quiet)
       throws BitmapDecodingException
   {
     Bitmap scaledBitmap;
 
     try {
-      scaledBitmap = GlideApp.with(context.getApplicationContext())
+      scaledBitmap = Glide.with(context.getApplicationContext())
                              .asBitmap()
                              .addListener(bitmapRequestListener)
                              .load(glideModel)
@@ -92,6 +109,10 @@ public final class ImageCompressionUtil {
                              .submit(maxDimension, maxDimension)
                              .get();
     } catch (ExecutionException | InterruptedException e) {
+      if (quiet) {
+        throw new BitmapDecodingException(e);
+      }
+
       Log.w(TAG, "Verbose logging to try to give all possible debug information for Glide issues. Exceptions below may be duplicated.", e);
       if (e.getCause() instanceof GlideException) {
         List<Throwable> rootCauses = ((GlideException) e.getCause()).getRootCauses();
@@ -121,22 +142,24 @@ public final class ImageCompressionUtil {
     }
 
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Bitmap.CompressFormat format = mimeTypeToCompressFormat(mimeType);
+    Bitmap.CompressFormat format = mimeTypeToCompressFormat(targetContentType);
     scaledBitmap.compress(format, quality, output);
 
     byte[] data = output.toByteArray();
 
-    Log.d(TAG, "[Input] mimeType: " + mimeType + " [Output] format: " + format + ", maxDimension: " + maxDimension + ", quality: " + quality + ", size(KiB): " + new ByteSize(data.length).getInWholeKibiBytes());
+    Log.d(TAG, "[Input] mimeType: " + contentType + " [Output] format: " + format + ", maxDimension: " + maxDimension + ", quality: " + quality + ", size(KiB): " + new ByteSize(data.length).getInWholeKibiBytes());
     return new Result(data, compressFormatToMimeType(format), scaledBitmap.getWidth(), scaledBitmap.getHeight());
   }
 
-  private static @NonNull Bitmap.CompressFormat mimeTypeToCompressFormat(@NonNull String mimeType) {
+  private static @NonNull Bitmap.CompressFormat mimeTypeToCompressFormat(@Nullable String mimeType) {
     if (MediaUtil.isJpegType(mimeType) ||
         MediaUtil.isHeicType(mimeType) ||
         MediaUtil.isHeifType(mimeType) ||
         MediaUtil.isAvifType(mimeType) ||
         MediaUtil.isVideoType(mimeType)) {
       return Bitmap.CompressFormat.JPEG;
+    } else if (MediaUtil.isWebpType(mimeType)) {
+      return Bitmap.CompressFormat.WEBP;
     } else {
       return Bitmap.CompressFormat.PNG;
     }
@@ -148,6 +171,8 @@ public final class ImageCompressionUtil {
         return MediaUtil.IMAGE_JPEG;
       case PNG:
         return MediaUtil.IMAGE_PNG;
+      case WEBP:
+        return MediaUtil.IMAGE_WEBP;
       default:
         throw new AssertionError("Unsupported format!");
     }

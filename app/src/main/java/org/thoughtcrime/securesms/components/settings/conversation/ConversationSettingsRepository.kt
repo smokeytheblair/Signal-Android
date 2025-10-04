@@ -7,6 +7,7 @@ import androidx.lifecycle.LiveData
 import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.schedulers.Schedulers
+import kotlinx.coroutines.rx3.asObservable
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.logging.Log
 import org.signal.storageservice.protos.groups.local.DecryptedGroup
@@ -18,19 +19,21 @@ import org.thoughtcrime.securesms.database.model.GroupRecord
 import org.thoughtcrime.securesms.database.model.IdentityRecord
 import org.thoughtcrime.securesms.database.model.MessageRecord
 import org.thoughtcrime.securesms.database.model.StoryViewState
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.groups.GroupProtoUtil
+import org.thoughtcrime.securesms.groups.GroupsInCommonRepository
 import org.thoughtcrime.securesms.groups.LiveGroup
+import org.thoughtcrime.securesms.groups.ui.GroupChangeFailureReason
+import org.thoughtcrime.securesms.groups.ui.GroupChangeResult
 import org.thoughtcrime.securesms.groups.v2.GroupAddMembersResult
 import org.thoughtcrime.securesms.groups.v2.GroupManagementRepository
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.recipients.RecipientUtil
-import org.thoughtcrime.securesms.util.FeatureFlags
+import org.thoughtcrime.securesms.util.RemoteConfig
 import java.io.IOException
-import java.util.Optional
 
 private val TAG = Log.tag(ConversationSettingsRepository::class.java)
 
@@ -56,11 +59,11 @@ class ConversationSettingsRepository(
   }
 
   @WorkerThread
-  fun getThreadMedia(threadId: Long): Optional<Cursor> {
-    return if (threadId <= 0) {
-      Optional.empty()
+  fun getThreadMedia(threadId: Long, limit: Int): Cursor? {
+    return if (threadId > 0) {
+      SignalDatabase.media.getGalleryMediaForThread(threadId, MediaTable.Sorting.Newest, limit)
     } else {
-      Optional.of(SignalDatabase.media.getGalleryMediaForThread(threadId, MediaTable.Sorting.Newest))
+      null
     }
   }
 
@@ -85,7 +88,7 @@ class ConversationSettingsRepository(
     }
   }
 
-  fun isInternalRecipientDetailsEnabled(): Boolean = SignalStore.internalValues().recipientDetails()
+  fun isInternalRecipientDetailsEnabled(): Boolean = SignalStore.internal.recipientDetails
 
   fun hasGroups(consumer: (Boolean) -> Unit) {
     SignalExecutors.BOUNDED.execute { consumer(SignalDatabase.groups.getActiveGroupCount() > 0) }
@@ -93,28 +96,17 @@ class ConversationSettingsRepository(
 
   fun getIdentity(recipientId: RecipientId, consumer: (IdentityRecord?) -> Unit) {
     SignalExecutors.BOUNDED.execute {
-      if (SignalStore.account().aci != null && SignalStore.account().pni != null) {
-        consumer(ApplicationDependencies.getProtocolStore().aci().identities().getIdentityRecord(recipientId).orElse(null))
+      if (SignalStore.account.aci != null && SignalStore.account.pni != null) {
+        consumer(AppDependencies.protocolStore.aci().identities().getIdentityRecord(recipientId).orElse(null))
       } else {
         consumer(null)
       }
     }
   }
 
-  fun getGroupsInCommon(recipientId: RecipientId, consumer: (List<Recipient>) -> Unit) {
-    SignalExecutors.BOUNDED.execute {
-      consumer(
-        SignalDatabase
-          .groups
-          .getPushGroupsContainingMember(recipientId)
-          .asSequence()
-          .filter { it.members.contains(Recipient.self().id) }
-          .map(GroupRecord::recipientId)
-          .map(Recipient::resolved)
-          .sortedBy { gr -> gr.getDisplayName(context) }
-          .toList()
-      )
-    }
+  fun getGroupsInCommon(recipientId: RecipientId): Observable<List<Recipient>> {
+    return GroupsInCommonRepository.getGroupsInCommon(context, recipientId)
+      .asObservable()
   }
 
   fun getGroupMembership(recipientId: RecipientId, consumer: (List<RecipientId>) -> Unit) {
@@ -160,9 +152,9 @@ class ConversationSettingsRepository(
           members.addAll(groupRecord.members)
           members.addAll(pendingMembers)
 
-          GroupCapacityResult(Recipient.self().id, members, FeatureFlags.groupLimits(), groupRecord.isAnnouncementGroup)
+          GroupCapacityResult(Recipient.self().id, members, RemoteConfig.groupLimits, groupRecord.isAnnouncementGroup)
         } else {
-          GroupCapacityResult(Recipient.self().id, groupRecord.members, FeatureFlags.groupLimits(), false)
+          GroupCapacityResult(Recipient.self().id, groupRecord.members, RemoteConfig.groupLimits, false)
         }
       )
     }
@@ -179,14 +171,19 @@ class ConversationSettingsRepository(
     }
   }
 
-  fun block(recipientId: RecipientId) {
-    SignalExecutors.BOUNDED.execute {
+  @WorkerThread
+  fun block(recipientId: RecipientId): GroupChangeResult {
+    return try {
       val recipient = Recipient.resolved(recipientId)
       if (recipient.isGroup) {
         RecipientUtil.block(context, recipient)
       } else {
         RecipientUtil.blockNonGroup(context, recipient)
       }
+      GroupChangeResult.SUCCESS
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to block recipient.", e)
+      GroupChangeResult.failure(GroupChangeFailureReason.fromException(e))
     }
   }
 
@@ -197,10 +194,15 @@ class ConversationSettingsRepository(
     }
   }
 
-  fun block(groupId: GroupId) {
-    SignalExecutors.BOUNDED.execute {
+  @WorkerThread
+  fun block(groupId: GroupId): GroupChangeResult {
+    return try {
       val recipient = Recipient.externalGroupExact(groupId)
       RecipientUtil.block(context, recipient)
+      GroupChangeResult.SUCCESS
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to block group.", e)
+      GroupChangeResult.failure(GroupChangeFailureReason.fromException(e))
     }
   }
 

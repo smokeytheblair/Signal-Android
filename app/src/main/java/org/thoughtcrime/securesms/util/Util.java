@@ -17,17 +17,16 @@
 package org.thoughtcrime.securesms.util;
 
 import android.annotation.SuppressLint;
-import android.annotation.TargetApi;
 import android.app.ActivityManager;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.net.Uri;
-import android.os.Build.VERSION;
-import android.os.Build.VERSION_CODES;
-import android.provider.Telephony;
 import android.telephony.TelephonyManager;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -39,22 +38,22 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresPermission;
 
 import com.annimon.stream.Stream;
-import com.google.android.mms.pdu_alt.CharacterSets;
-import com.google.android.mms.pdu_alt.EncodedStringValue;
 import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.Phonenumber;
 
+import org.signal.core.util.Base64;
+import org.signal.core.util.PendingIntentFlags;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.components.ComposeText;
 import org.thoughtcrime.securesms.keyvalue.SignalStore;
-import org.thoughtcrime.securesms.mms.OutgoingLegacyMmsConnection;
+import org.thoughtcrime.securesms.payments.backup.phrase.ClearClipboardAlarmReceiver;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -143,10 +142,6 @@ public class Util {
     return out.toString();
   }
 
-  public static boolean isEmpty(EncodedStringValue[] value) {
-    return value == null || value.length == 0;
-  }
-
   public static boolean isEmpty(ComposeText value) {
     return value == null || value.getText() == null || TextUtils.isEmpty(value.getTextTrimmed());
   }
@@ -197,28 +192,8 @@ public class Util {
     return spanned;
   }
 
-  public static @NonNull String toIsoString(byte[] bytes) {
-    try {
-      return new String(bytes, CharacterSets.MIMENAME_ISO_8859_1);
-    } catch (UnsupportedEncodingException e) {
-      throw new AssertionError("ISO_8859_1 must be supported!");
-    }
-  }
-
   public static byte[] toIsoBytes(String isoString) {
-    try {
-      return isoString.getBytes(CharacterSets.MIMENAME_ISO_8859_1);
-    } catch (UnsupportedEncodingException e) {
-      throw new AssertionError("ISO_8859_1 must be supported!");
-    }
-  }
-
-  public static byte[] toUtf8Bytes(String utf8String) {
-    try {
-      return utf8String.getBytes(CharacterSets.MIMENAME_UTF_8);
-    } catch (UnsupportedEncodingException e) {
-      throw new AssertionError("UTF_8 must be supported!");
-    }
+    return isoString.getBytes(StandardCharsets.ISO_8859_1);
   }
 
   public static void wait(Object lock, long timeout) {
@@ -231,7 +206,6 @@ public class Util {
 
   @RequiresPermission(anyOf = {
       android.Manifest.permission.READ_PHONE_STATE,
-      android.Manifest.permission.READ_SMS,
       android.Manifest.permission.READ_PHONE_NUMBERS
   })
   @SuppressLint("MissingPermission")
@@ -253,6 +227,11 @@ public class Util {
   public static Optional<String> getSimCountryIso(Context context) {
     String simCountryIso = ((TelephonyManager)context.getSystemService(Context.TELEPHONY_SERVICE)).getSimCountryIso();
     return Optional.ofNullable(simCountryIso != null ? simCountryIso.toUpperCase() : null);
+  }
+
+  public static @Nullable String getNetworkCountryIso(Context context) {
+    String networkCountryIso = ((TelephonyManager)context.getSystemService(Context.TELEPHONY_SERVICE)).getNetworkCountryIso();
+    return networkCountryIso == null ? null : networkCountryIso.toUpperCase();
   }
 
   public static @NonNull <T> T firstNonNull(@Nullable T optional, @NonNull T fallback) {
@@ -328,11 +307,6 @@ public class Util {
     return result;
   }
 
-  @SuppressLint("NewApi")
-  public static boolean isDefaultSmsProvider(Context context){
-    return context.getPackageName().equals(Telephony.Sms.getDefaultSmsPackage(context));
-  }
-
   /**
    * The app version.
    * <p>
@@ -360,7 +334,7 @@ public class Util {
 
   public static String getSecret(int size) {
     byte[] secret = getSecretBytes(size);
-    return Base64.encodeBytes(secret);
+    return Base64.encodeWithPadding(secret);
   }
 
   public static byte[] getSecretBytes(int size) {
@@ -377,14 +351,14 @@ public class Util {
    * @return The amount of time (in ms) until this build of Signal will be considered 'expired'.
    *         Takes into account both the build age as well as any remote deprecation values.
    */
-  public static long getTimeUntilBuildExpiry() {
+  public static long getTimeUntilBuildExpiry(long currentTime) {
     if (SignalStore.misc().isClientDeprecated()) {
       return 0;
     }
 
-    long buildAge                   = System.currentTimeMillis() - BuildConfig.BUILD_TIMESTAMP;
+    long buildAge                   = currentTime - BuildConfig.BUILD_TIMESTAMP;
     long timeUntilBuildDeprecation  = BUILD_LIFESPAN - buildAge;
-    long timeUntilRemoteDeprecation = RemoteDeprecation.getTimeUntilDeprecation();
+    long timeUntilRemoteDeprecation = RemoteDeprecation.getTimeUntilDeprecation(currentTime);
 
     if (timeUntilRemoteDeprecation != -1) {
       long timeUntilDeprecation = Math.min(timeUntilBuildDeprecation, timeUntilRemoteDeprecation);
@@ -392,14 +366,6 @@ public class Util {
     } else {
       return Math.max(timeUntilBuildDeprecation, 0);
     }
-  }
-
-  public static boolean isMmsCapable(Context context) {
-    return (VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) || OutgoingLegacyMmsConnection.isConnectionPossible(context);
-  }
-
-  public static <T> T getRandomElement(T[] elements) {
-    return elements[new SecureRandom().nextInt(elements.length)];
   }
 
   public static <T> T getRandomElement(List<T> elements) {
@@ -475,37 +441,21 @@ public class Util {
     return (int)value;
   }
 
-  public static boolean isEquals(@Nullable Long first, long second) {
-    return first != null && first == second;
-  }
-
-  public static String getPrettyFileSize(long sizeBytes) {
-    return MemoryUnitFormat.formatBytes(sizeBytes);
-  }
-
   public static void copyToClipboard(@NonNull Context context, @NonNull CharSequence text) {
     ServiceUtil.getClipboardManager(context).setPrimaryClip(ClipData.newPlainText(COPY_LABEL, text));
   }
 
-  @SafeVarargs
-  public static <T> List<T> concatenatedList(Collection <T>... items) {
-    final List<T> concat = new ArrayList<>(Stream.of(items).reduce(0, (sum, list) -> sum + list.size()));
+  public static void copyToClipboard(@NonNull Context context, @NonNull CharSequence text, int expiresInSeconds) {
+    ClipboardManager clipboardManager = ServiceUtil.getClipboardManager(context);
+    clipboardManager.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), text));
 
-    for (Collection<T> list : items) {
-      concat.addAll(list);
-    }
+    AlarmManager  alarmManager       = ServiceUtil.getAlarmManager(context);
+    Intent        alarmIntent        = new Intent(context, ClearClipboardAlarmReceiver.class);
+    PendingIntent pendingAlarmIntent = PendingIntent.getBroadcast(context, 0, alarmIntent, PendingIntentFlags.mutable());
 
-    return concat;
+    alarmManager.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(expiresInSeconds), pendingAlarmIntent);
   }
 
-  public static boolean isLong(String value) {
-    try {
-      Long.parseLong(value);
-      return true;
-    } catch (NumberFormatException e) {
-      return false;
-    }
-  }
 
   public static int parseInt(String integer, int defaultValue) {
     try {

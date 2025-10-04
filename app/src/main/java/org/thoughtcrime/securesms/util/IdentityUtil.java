@@ -6,12 +6,15 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
+import org.signal.core.util.concurrent.ListenableFuture;
+import org.signal.core.util.concurrent.SettableFuture;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.concurrent.SimpleTask;
 import org.signal.core.util.logging.Log;
 import org.signal.libsignal.protocol.IdentityKey;
 import org.signal.libsignal.protocol.InvalidKeyException;
 import org.signal.libsignal.protocol.SignalProtocolAddress;
+import org.signal.libsignal.protocol.state.IdentityKeyStore;
 import org.signal.libsignal.protocol.state.SessionRecord;
 import org.signal.libsignal.protocol.state.SessionStore;
 import org.thoughtcrime.securesms.R;
@@ -24,18 +27,13 @@ import org.thoughtcrime.securesms.database.MessageTable.InsertResult;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.GroupRecord;
 import org.thoughtcrime.securesms.database.model.IdentityRecord;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
+import org.thoughtcrime.securesms.mms.IncomingMessage;
 import org.thoughtcrime.securesms.mms.MmsException;
 import org.thoughtcrime.securesms.mms.OutgoingMessage;
 import org.thoughtcrime.securesms.notifications.v2.ConversationId;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
-import org.thoughtcrime.securesms.sms.IncomingIdentityDefaultMessage;
-import org.thoughtcrime.securesms.sms.IncomingIdentityUpdateMessage;
-import org.thoughtcrime.securesms.sms.IncomingIdentityVerifiedMessage;
-import org.thoughtcrime.securesms.sms.IncomingTextMessage;
-import org.thoughtcrime.securesms.util.concurrent.ListenableFuture;
-import org.thoughtcrime.securesms.util.concurrent.SettableFuture;
 import org.whispersystems.signalservice.api.SignalSessionLock;
 import org.whispersystems.signalservice.api.messages.multidevice.VerifiedMessage;
 import org.whispersystems.signalservice.api.push.ServiceId;
@@ -56,7 +54,7 @@ public final class IdentityUtil {
     final RecipientId                              recipientId = recipient.getId();
 
     SimpleTask.run(SignalExecutors.BOUNDED,
-                   () -> ApplicationDependencies.getProtocolStore().aci().identities().getIdentityRecord(recipientId),
+                   () -> AppDependencies.getProtocolStore().aci().identities().getIdentityRecord(recipientId),
                    future::set);
 
     return future;
@@ -76,12 +74,14 @@ public final class IdentityUtil {
         if (groupRecord.getMembers().contains(recipient.getId()) && groupRecord.isActive() && !groupRecord.isMms()) {
 
           if (remote) {
-            IncomingTextMessage incoming = new IncomingTextMessage(recipient.getId(), 1, time, -1, time, null, Optional.of(groupRecord.getId()), 0, false, null);
+            IncomingMessage incoming = verified ? IncomingMessage.identityVerified(recipient.getId(), time, groupRecord.getId())
+                                                : IncomingMessage.identityDefault(recipient.getId(), time, groupRecord.getId());
 
-            if (verified) incoming = new IncomingIdentityVerifiedMessage(incoming);
-            else          incoming = new IncomingIdentityDefaultMessage(incoming);
-
-            smsDatabase.insertMessageInbox(incoming);
+            try {
+              smsDatabase.insertMessageInbox(incoming);
+            } catch (MmsException e) {
+              throw new AssertionError(e);
+            }
           } else {
             RecipientId recipientId    = SignalDatabase.recipients().getOrInsertFromGroupId(groupRecord.getId());
             Recipient   groupRecipient = Recipient.resolved(recipientId);
@@ -99,19 +99,21 @@ public final class IdentityUtil {
             } catch (MmsException e) {
               throw new AssertionError(e);
             }
-            SignalDatabase.threads().update(threadId, true);
+            SignalDatabase.threads().update(threadId, true, true);
           }
         }
       }
     }
 
     if (remote) {
-      IncomingTextMessage incoming = new IncomingTextMessage(recipient.getId(), 1, time, -1, time, null, Optional.empty(), 0, false, null);
+      IncomingMessage incoming = verified ? IncomingMessage.identityVerified(recipient.getId(), time, null)
+                                          : IncomingMessage.identityDefault(recipient.getId(), time, null);
 
-      if (verified) incoming = new IncomingIdentityVerifiedMessage(incoming);
-      else          incoming = new IncomingIdentityDefaultMessage(incoming);
-
-      smsDatabase.insertMessageInbox(incoming);
+      try {
+        smsDatabase.insertMessageInbox(incoming);
+      } catch (MmsException e) {
+        throw new AssertionError(e);
+      }
     } else {
       OutgoingMessage outgoing;
       if (verified) {
@@ -128,7 +130,7 @@ public final class IdentityUtil {
       } catch (MmsException e) {
         throw new AssertionError();
       }
-      SignalDatabase.threads().update(threadId, true);
+      SignalDatabase.threads().update(threadId, true, true);
     }
   }
 
@@ -144,29 +146,34 @@ public final class IdentityUtil {
 
       while ((groupRecord = reader.getNext()) != null) {
         if (groupRecord.getMembers().contains(recipientId) && groupRecord.isActive()) {
-          IncomingTextMessage           incoming    = new IncomingTextMessage(recipientId, 1, time, time, time, null, Optional.of(groupRecord.getId()), 0, false, null);
-          IncomingIdentityUpdateMessage groupUpdate = new IncomingIdentityUpdateMessage(incoming);
-
+          IncomingMessage groupUpdate = IncomingMessage.identityUpdate(recipientId, time, groupRecord.getId());
           smsDatabase.insertMessageInbox(groupUpdate);
         }
       }
+    } catch (MmsException e) {
+      throw new AssertionError(e);
     }
 
-    IncomingTextMessage           incoming         = new IncomingTextMessage(recipientId, 1, time, -1, time, null, Optional.empty(), 0, false, null);
-    IncomingIdentityUpdateMessage individualUpdate = new IncomingIdentityUpdateMessage(incoming);
-    Optional<InsertResult>        insertResult     = smsDatabase.insertMessageInbox(individualUpdate);
+    try {
+      IncomingMessage        individualUpdate = IncomingMessage.identityUpdate(recipientId, time, null);
+      Optional<InsertResult> insertResult     = smsDatabase.insertMessageInbox(individualUpdate);
 
-    if (insertResult.isPresent()) {
-      ApplicationDependencies.getMessageNotifier().updateNotification(context, ConversationId.forConversation(insertResult.get().getThreadId()));
+      if (insertResult.isPresent()) {
+        AppDependencies.getMessageNotifier().updateNotification(context, ConversationId.forConversation(insertResult.get().getThreadId()));
+      }
+    } catch (MmsException e) {
+      throw new AssertionError(e);
     }
+
+    SignalDatabase.messageLog().deleteAllForRecipient(recipientId);
   }
 
   public static void saveIdentity(String user, IdentityKey identityKey) {
     try(SignalSessionLock.Lock unused = ReentrantSessionLock.INSTANCE.acquire()) {
-      SessionStore          sessionStore     = ApplicationDependencies.getProtocolStore().aci();
+      SessionStore          sessionStore     = AppDependencies.getProtocolStore().aci();
       SignalProtocolAddress address          = new SignalProtocolAddress(user, SignalServiceAddress.DEFAULT_DEVICE_ID);
 
-      if (ApplicationDependencies.getProtocolStore().aci().identities().saveIdentity(address, identityKey)) {
+      if (AppDependencies.getProtocolStore().aci().identities().saveIdentity(address, identityKey) == IdentityKeyStore.IdentityChange.REPLACED_EXISTING) {
         if (sessionStore.containsSession(address)) {
           SessionRecord sessionRecord = sessionStore.loadSession(address);
           sessionRecord.archiveCurrentState();
@@ -201,7 +208,7 @@ public final class IdentityUtil {
 
   public static void processVerifiedMessage(Context context, VerifiedMessage verifiedMessage) {
     try(SignalSessionLock.Lock unused = ReentrantSessionLock.INSTANCE.acquire()) {
-      SignalIdentityKeyStore   identityStore  = ApplicationDependencies.getProtocolStore().aci().identities();
+      SignalIdentityKeyStore   identityStore  = AppDependencies.getProtocolStore().aci().identities();
       Recipient                recipient      = Recipient.externalPush(verifiedMessage.getDestination());
 
       if (recipient.isSelf()) {

@@ -1,31 +1,21 @@
 package org.thoughtcrime.securesms.sharing.v2
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.annotation.NonNull
 import androidx.annotation.WorkerThread
-import androidx.core.content.ContextCompat
 import androidx.core.util.toKotlinPair
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.schedulers.Schedulers
 import org.signal.core.util.logging.Log
-import org.thoughtcrime.securesms.attachments.Attachment
-import org.thoughtcrime.securesms.attachments.UriAttachment
-import org.thoughtcrime.securesms.conversation.MessageSendType
-import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.mediasend.Media
-import org.thoughtcrime.securesms.mms.MediaConstraints
 import org.thoughtcrime.securesms.providers.BlobProvider
-import org.thoughtcrime.securesms.util.FeatureFlags
 import org.thoughtcrime.securesms.util.MediaUtil
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.UriUtil
-import org.thoughtcrime.securesms.util.Util
 import java.io.IOException
 import java.io.InputStream
-import java.util.Optional
 
 class ShareRepository(context: Context) {
 
@@ -73,8 +63,7 @@ class ShareRepository(context: Context) {
     return ResolvedShareData.ExternalUri(
       uri = blobUri,
       mimeType = mimeType,
-      text = multiShareExternal.text,
-      isMmsOrSmsSupported = isMmsSupported(appContext, asUriAttachment(blobUri, mimeType, size))
+      text = multiShareExternal.text
     )
   }
 
@@ -82,6 +71,7 @@ class ShareRepository(context: Context) {
   @WorkerThread
   private fun resolve(externalMultiShare: UnresolvedShareData.ExternalMultiShare): ResolvedShareData {
     val mimeTypes: Map<Uri, String> = externalMultiShare.uris
+      .filter { UriUtil.isValidExternalUri(appContext, it) }
       .associateWith { uri -> getMimeType(appContext, uri, null) }
       .filterValues {
         MediaUtil.isImageType(it) || MediaUtil.isVideoType(it)
@@ -92,7 +82,7 @@ class ShareRepository(context: Context) {
     }
 
     val media: List<Media> = mimeTypes.toList()
-      .take(FeatureFlags.maxAttachmentCount())
+      .take(RemoteConfig.maxAttachmentCount)
       .map { (uri, mimeType) ->
         val stream: InputStream = try {
           appContext.contentResolver.openInputStream(uri)
@@ -115,25 +105,24 @@ class ShareRepository(context: Context) {
         }
 
         Media(
-          blobUri,
-          mimeType,
-          System.currentTimeMillis(),
-          dimens.first,
-          dimens.second,
-          size,
-          duration,
-          false,
-          false,
-          Optional.of(Media.ALL_MEDIA_BUCKET_ID),
-          Optional.empty(),
-          Optional.empty()
+          uri = blobUri,
+          contentType = mimeType,
+          date = System.currentTimeMillis(),
+          width = dimens.first,
+          height = dimens.second,
+          size = size,
+          duration = duration,
+          isBorderless = false,
+          isVideoGif = false,
+          bucketId = Media.ALL_MEDIA_BUCKET_ID,
+          caption = null,
+          transformProperties = null,
+          fileName = null
         )
       }.filterNotNull()
 
     return if (media.isNotEmpty()) {
-      val isMmsSupported = media.all { isMmsSupported(appContext, asUriAttachment(it.uri, it.mimeType, it.size)) }
-
-      ResolvedShareData.Media(media, isMmsSupported)
+      ResolvedShareData.Media(media)
     } else {
       ResolvedShareData.Failure
     }
@@ -178,22 +167,6 @@ class ShareRepository(context: Context) {
         }
       }
       return null
-    }
-
-    private fun asUriAttachment(uri: Uri, mimeType: String, size: Long): UriAttachment {
-      return UriAttachment(uri, mimeType, -1, size, null, false, false, false, false, null, null, null, null, null)
-    }
-
-    private fun isMmsSupported(context: Context, attachment: Attachment): Boolean {
-      val canReadPhoneState = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
-
-      if (!Util.isDefaultSmsProvider(context) || !canReadPhoneState || !Util.isMmsCapable(context) || !SignalStore.misc().smsExportPhase.allowSmsFeatures()) {
-        return false
-      }
-
-      val sendType: MessageSendType = MessageSendType.getFirstForTransport(MessageSendType.TransportType.SMS)
-      val mmsConstraints = MediaConstraints.getMmsMediaConstraints(sendType.simSubscriptionId ?: -1)
-      return mmsConstraints.isSatisfied(context, attachment) || mmsConstraints.canResize(attachment)
     }
   }
 }

@@ -6,14 +6,17 @@ import android.os.Parcelable
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.compose.runtime.Stable
+import com.bumptech.glide.Glide
 import com.bumptech.glide.load.Key
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import kotlinx.parcelize.Parcelize
+import kotlinx.serialization.Serializable
 import org.thoughtcrime.securesms.R
-import org.thoughtcrime.securesms.badges.glide.BadgeSpriteTransformation
+import org.thoughtcrime.securesms.badges.load.BadgeSpriteTransformation
 import org.thoughtcrime.securesms.components.settings.PreferenceModel
-import org.thoughtcrime.securesms.mms.GlideApp
+import org.thoughtcrime.securesms.serialization.UriSerializer
 import org.thoughtcrime.securesms.util.ThemeUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.LayoutFactory
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
@@ -25,13 +28,15 @@ typealias OnBadgeClicked = (Badge, Boolean, Boolean) -> Unit
 /**
  * A Badge that can be collected and displayed by a user.
  */
+@Stable
 @Parcelize
+@Serializable
 data class Badge(
   val id: String,
   val category: Category,
   val name: String,
   val description: String,
-  val imageUrl: Uri,
+  @Serializable(with = UriSerializer::class) val imageUrl: Uri,
   val imageDensity: String,
   val expirationTimestamp: Long,
   val visible: Boolean,
@@ -128,7 +133,7 @@ data class Badge(
 
       badge.alpha = if (model.badge.isExpired() || model.isFaded) 0.5f else 1f
 
-      GlideApp.with(badge)
+      Glide.with(badge)
         .load(model.badge)
         .downsample(DownsampleStrategy.NONE)
         .diskCacheStrategy(DiskCacheStrategy.NONE)

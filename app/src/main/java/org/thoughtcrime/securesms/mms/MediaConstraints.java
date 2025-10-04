@@ -14,11 +14,10 @@ import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.jobs.AttachmentUploadJob;
 import org.thoughtcrime.securesms.util.BitmapDecodingException;
 import org.thoughtcrime.securesms.util.BitmapUtil;
-import org.thoughtcrime.securesms.util.FeatureFlags;
+import org.thoughtcrime.securesms.util.RemoteConfig;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.MemoryFileDescriptor;
-import org.whispersystems.signalservice.api.crypto.AttachmentCipherOutputStream;
-import org.whispersystems.signalservice.internal.crypto.PaddingInputStream;
+import org.thoughtcrime.securesms.video.TranscodingPreset;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,16 +33,12 @@ public abstract class MediaConstraints {
     return new PushMediaConstraints(sentMediaQuality);
   }
 
-  public static MediaConstraints getMmsMediaConstraints(int subscriptionId) {
-    return new MmsMediaConstraints(subscriptionId);
-  }
-
   public abstract int getImageMaxWidth(Context context);
   public abstract int getImageMaxHeight(Context context);
   public abstract int getImageMaxSize(Context context);
 
-  public boolean isHighQuality() {
-    return false;
+  public TranscodingPreset getVideoTranscodingSettings() {
+    return TranscodingPreset.LEVEL_1;
   }
 
   /**
@@ -54,18 +49,18 @@ public abstract class MediaConstraints {
   public abstract int[] getImageDimensionTargets(Context context);
 
   public abstract long getGifMaxSize(Context context);
-  public abstract long getVideoMaxSize(Context context);
+  public abstract long getVideoMaxSize();
 
   public @IntRange(from = 0, to = 100) int getImageCompressionQualitySetting(@NonNull Context context) {
     return 70;
   }
 
   public long getUncompressedVideoMaxSize(Context context) {
-    return getVideoMaxSize(context);
+    return getVideoMaxSize();
   }
 
   public long getCompressedVideoMaxSize(Context context) {
-    return getVideoMaxSize(context);
+    return getVideoMaxSize();
   }
 
   public abstract long getAudioMaxSize(Context context);
@@ -77,14 +72,14 @@ public abstract class MediaConstraints {
 
   public boolean isSatisfied(@NonNull Context context, @NonNull Attachment attachment) {
     try {
-      long size = attachment.getSize();
+      long size = attachment.size;
       if (size > getMaxAttachmentSize()) {
         return false;
       }
       return (MediaUtil.isGif(attachment)    && size <= getGifMaxSize(context)   && isWithinBounds(context, attachment.getUri())) ||
              (MediaUtil.isImage(attachment)  && size <= getImageMaxSize(context) && isWithinBounds(context, attachment.getUri())) ||
              (MediaUtil.isAudio(attachment)  && size <= getAudioMaxSize(context)) ||
-             (MediaUtil.isVideo(attachment)  && size <= getVideoMaxSize(context)) ||
+             (MediaUtil.isVideo(attachment)  && size <= getVideoMaxSize()) ||
              (MediaUtil.isFile(attachment)   && size <= getDocumentMaxSize(context));
     } catch (IOException ioe) {
       Log.w(TAG, "Failed to determine if media's constraints are satisfied.", ioe);
@@ -100,7 +95,7 @@ public abstract class MediaConstraints {
       return (MediaUtil.isGif(contentType)       && size <= getGifMaxSize(context) && isWithinBounds(context, uri))   ||
              (MediaUtil.isImageType(contentType) && size <= getImageMaxSize(context) && isWithinBounds(context, uri)) ||
              (MediaUtil.isAudioType(contentType) && size <= getAudioMaxSize(context))                                 ||
-             (MediaUtil.isVideoType(contentType) && size <= getVideoMaxSize(context))                                 ||
+             (MediaUtil.isVideoType(contentType) && size <= getVideoMaxSize())                                        ||
              size <= getDocumentMaxSize(context);
     } catch (IOException ioe) {
       Log.w(TAG, "Failed to determine if media's constraints are satisfied.", ioe);
@@ -130,6 +125,6 @@ public abstract class MediaConstraints {
   }
 
   public static boolean isVideoTranscodeAvailable() {
-    return Build.VERSION.SDK_INT >= 26 && (FeatureFlags.useStreamingVideoMuxer() || MemoryFileDescriptor.supported());
+    return Build.VERSION.SDK_INT >= 26;
   }
 }
