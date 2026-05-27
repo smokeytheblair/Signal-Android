@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.lifecycle.ViewModelProvider;
 
+import org.signal.core.ui.view.Stub;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.components.ConversationItemFooter;
 import org.thoughtcrime.securesms.components.FullScreenDialogFragment;
@@ -26,8 +27,7 @@ import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.util.CommunicationActions;
 import org.thoughtcrime.securesms.util.LongClickMovementMethod;
 import org.thoughtcrime.securesms.util.Projection;
-import org.thoughtcrime.securesms.util.ThemeUtil;
-import org.thoughtcrime.securesms.util.views.Stub;
+import org.signal.core.ui.util.ThemeUtil;
 
 import java.util.Collections;
 import java.util.Locale;
@@ -129,9 +129,10 @@ public class LongMessageFragment extends FullScreenDialogFragment {
                                                      CommunicationActions.handlePotentialProxyLinkUrl(requireActivity(), url));
 
       bubble.setVisibility(View.VISIBLE);
-      text.setText(body);
       text.setMovementMethod(LongClickMovementMethod.getInstance(getContext()));
       text.setTextSize(TypedValue.COMPLEX_UNIT_SP, SignalStore.settings().getMessageFontSize());
+      text.setTextAsync(body);
+
       if (!message.get().getMessageRecord().isOutgoing()) {
         text.setMentionBackgroundTint(ContextCompat.getColor(requireContext(), ThemeUtil.isDarkTheme(requireActivity()) ? R.color.core_grey_60 : R.color.core_grey_20));
       } else {

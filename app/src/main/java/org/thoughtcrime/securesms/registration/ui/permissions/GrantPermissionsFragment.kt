@@ -8,7 +8,6 @@ package org.thoughtcrime.securesms.registration.ui.permissions
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -17,8 +16,8 @@ import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.setFragmentResult
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
+import org.signal.core.ui.compose.ComposeFragment
 import org.signal.core.util.logging.Log
-import org.thoughtcrime.securesms.compose.ComposeFragment
 import org.thoughtcrime.securesms.registration.fragments.WelcomePermissions
 import org.thoughtcrime.securesms.registration.ui.RegistrationCheckpoint
 import org.thoughtcrime.securesms.registration.ui.RegistrationViewModel
@@ -28,7 +27,6 @@ import org.thoughtcrime.securesms.util.BackupUtil
 /**
  * Screen in account registration that provides rationales for the suggested runtime permissions.
  */
-@RequiresApi(23)
 class GrantPermissionsFragment : ComposeFragment() {
 
   companion object {

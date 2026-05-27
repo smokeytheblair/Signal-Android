@@ -3,7 +3,7 @@ package org.thoughtcrime.securesms.mms;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Build;
-import android.util.Pair;
+import kotlin.Pair;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
@@ -16,7 +16,7 @@ import org.thoughtcrime.securesms.util.BitmapDecodingException;
 import org.thoughtcrime.securesms.util.BitmapUtil;
 import org.thoughtcrime.securesms.util.RemoteConfig;
 import org.thoughtcrime.securesms.util.MediaUtil;
-import org.thoughtcrime.securesms.util.MemoryFileDescriptor;
+import org.signal.core.util.MemoryFileDescriptor;
 import org.thoughtcrime.securesms.video.TranscodingPreset;
 
 import java.io.IOException;
@@ -107,8 +107,8 @@ public abstract class MediaConstraints {
     try {
       InputStream is = PartAuthority.getAttachmentStream(context, uri);
       Pair<Integer, Integer> dimensions = BitmapUtil.getDimensions(is);
-      return dimensions.first  > 0 && dimensions.first  <= getImageMaxWidth(context) &&
-             dimensions.second > 0 && dimensions.second <= getImageMaxHeight(context);
+return dimensions.getFirst()  > 0 && dimensions.getFirst()  <= getImageMaxWidth(context) &&
+              dimensions.getSecond() > 0 && dimensions.getSecond() <= getImageMaxHeight(context);
     } catch (BitmapDecodingException e) {
       throw new IOException(e);
     }

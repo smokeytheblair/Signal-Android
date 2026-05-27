@@ -8,12 +8,14 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.signal.libsignal.protocol.message.CiphertextMessage
 import org.thoughtcrime.securesms.database.MessageTable
 import org.thoughtcrime.securesms.database.MessageType
 import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.mms.IncomingMessage
+import org.thoughtcrime.securesms.polls.Voter
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.testing.GroupTestingUtils
@@ -98,7 +100,7 @@ class DataMessageProcessorTest_polls {
       envelope = MessageContentFuzzer.envelope(200),
       message = DataMessage(pollTerminate = DataMessage.PollTerminate(targetSentTimestamp = 100)),
       senderRecipient = alice,
-      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId()),
+      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId(), CiphertextMessage.WHISPER_TYPE),
       threadRecipient = bob,
       groupId = groupId,
       receivedTime = 200
@@ -119,7 +121,7 @@ class DataMessageProcessorTest_polls {
       envelope = MessageContentFuzzer.envelope(200),
       message = DataMessage(pollTerminate = DataMessage.PollTerminate(200)),
       senderRecipient = alice,
-      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId()),
+      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId(), CiphertextMessage.WHISPER_TYPE),
       threadRecipient = bob,
       groupId = groupId,
       receivedTime = 200
@@ -137,7 +139,7 @@ class DataMessageProcessorTest_polls {
       envelope = MessageContentFuzzer.envelope(200),
       message = DataMessage(pollTerminate = DataMessage.PollTerminate(100)),
       senderRecipient = bob,
-      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId()),
+      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId(), CiphertextMessage.WHISPER_TYPE),
       threadRecipient = bob,
       groupId = groupId,
       receivedTime = 200
@@ -153,7 +155,7 @@ class DataMessageProcessorTest_polls {
       envelope = MessageContentFuzzer.envelope(200),
       message = DataMessage(pollTerminate = DataMessage.PollTerminate(100)),
       senderRecipient = alice,
-      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId()),
+      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId(), CiphertextMessage.WHISPER_TYPE),
       threadRecipient = bob,
       groupId = groupId,
       receivedTime = 200
@@ -180,7 +182,7 @@ class DataMessageProcessorTest_polls {
     assertThat(messageId!!.id).isEqualTo(1)
     val poll = SignalDatabase.polls.getPoll(messageId.id)
     assert(poll != null)
-    assertThat(poll!!.pollOptions[0].voterIds).isEqualTo(listOf(bob.id.toLong()))
+    assertThat(poll!!.pollOptions[0].voters).isEqualTo(listOf(Voter(bob.id.toLong(), 1)))
   }
 
   @Test
@@ -200,9 +202,9 @@ class DataMessageProcessorTest_polls {
     assert(messageId != null)
     val poll = SignalDatabase.polls.getPoll(messageId!!.id)
     assert(poll != null)
-    assertThat(poll!!.pollOptions[0].voterIds).isEqualTo(listOf(bob.id.toLong()))
-    assertThat(poll.pollOptions[1].voterIds).isEqualTo(listOf(bob.id.toLong()))
-    assertThat(poll.pollOptions[2].voterIds).isEqualTo(listOf(bob.id.toLong()))
+    assertThat(poll!!.pollOptions[0].voters).isEqualTo(listOf(Voter(bob.id.toLong(), 1)))
+    assertThat(poll.pollOptions[1].voters).isEqualTo(listOf(Voter(bob.id.toLong(), 1)))
+    assertThat(poll.pollOptions[2].voters).isEqualTo(listOf(Voter(bob.id.toLong(), 1)))
   }
 
   @Test
@@ -298,7 +300,7 @@ class DataMessageProcessorTest_polls {
       groupId = groupId,
       receivedTime = 0,
       context = ApplicationProvider.getApplicationContext(),
-      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId())
+      metadata = EnvelopeMetadata(alice.requireServiceId(), null, 1, false, null, harness.self.requireServiceId(), CiphertextMessage.WHISPER_TYPE)
     )
   }
 
@@ -314,7 +316,7 @@ class DataMessageProcessorTest_polls {
 
   private fun insertPoll(allowMultiple: Boolean = true): Long {
     val envelope = MessageContentFuzzer.envelope(100)
-    val pollMessage = IncomingMessage(type = MessageType.NORMAL, from = alice.id, sentTimeMillis = envelope.timestamp!!, serverTimeMillis = envelope.serverTimestamp!!, receivedTimeMillis = 0, groupId = groupId)
+    val pollMessage = IncomingMessage(type = MessageType.NORMAL, from = alice.id, sentTimeMillis = envelope.clientTimestamp!!, serverTimeMillis = envelope.serverTimestamp!!, receivedTimeMillis = 0, groupId = groupId)
     val messageId = SignalDatabase.messages.insertMessageInbox(pollMessage).get()
     SignalDatabase.polls.insertPoll("question?", allowMultiple, listOf("a", "b", "c"), alice.id.toLong(), messageId.messageId)
     return messageId.messageId

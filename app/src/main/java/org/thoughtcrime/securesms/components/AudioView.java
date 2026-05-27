@@ -63,6 +63,7 @@ public final class AudioView extends FrameLayout {
   @NonNull  private final AnimatingToggle     controlToggle;
   @NonNull  private final View                progressAndPlay;
   @NonNull  private final LottieAnimationView playPauseButton;
+  @NonNull  private final View                downloadContainer;
   @NonNull  private final ImageView           downloadButton;
   @Nullable private final ProgressWheel       circleProgress;
   @NonNull  private final SeekBar             seekBar;
@@ -121,13 +122,14 @@ public final class AudioView extends FrameLayout {
           throw new IllegalStateException("Unsupported mode: " + mode);
       }
 
-      this.controlToggle   = findViewById(R.id.control_toggle);
-      this.playPauseButton = findViewById(R.id.play);
-      this.progressAndPlay = findViewById(R.id.progress_and_play);
-      this.downloadButton  = findViewById(R.id.download);
-      this.circleProgress  = findViewById(R.id.circle_progress);
-      this.seekBar         = findViewById(R.id.seek);
-      this.duration        = findViewById(R.id.duration);
+      this.controlToggle     = findViewById(R.id.control_toggle);
+      this.playPauseButton   = findViewById(R.id.play);
+      this.progressAndPlay   = findViewById(R.id.progress_and_play);
+      this.downloadContainer = findViewById(R.id.download_container);
+      this.downloadButton    = findViewById(R.id.download);
+      this.circleProgress    = findViewById(R.id.circle_progress);
+      this.seekBar           = findViewById(R.id.seek);
+      this.duration          = findViewById(R.id.duration);
 
       lottieDirection = REVERSE;
       this.playPauseButton.setOnClickListener(new PlayPauseClickedListener());
@@ -168,6 +170,7 @@ public final class AudioView extends FrameLayout {
 
   public void setProgressAndPlayBackgroundTint(@ColorInt int color) {
     progressAndPlay.getBackground().setColorFilter(color, PorterDuff.Mode.SRC_IN);
+    downloadContainer.getBackground().setColorFilter(color, PorterDuff.Mode.SRC_IN);
   }
 
   public Observer<VoiceNotePlaybackState> getPlaybackStateObserver() {
@@ -195,7 +198,7 @@ public final class AudioView extends FrameLayout {
     }
 
     if (showControls && audio.isPendingDownload()) {
-      controlToggle.displayQuick(downloadButton);
+      controlToggle.displayQuick(downloadContainer);
       seekBar.setEnabled(false);
       downloadButton.setOnClickListener(new DownloadClickedListener(audio));
       if (circleProgress != null) {
@@ -219,28 +222,21 @@ public final class AudioView extends FrameLayout {
     if (seekBar instanceof WaveFormSeekBarView) {
       WaveFormSeekBarView waveFormView = (WaveFormSeekBarView) seekBar;
       waveFormView.setColors(waveFormPlayedBarsColor, waveFormUnplayedBarsColor, waveFormThumbTint);
-      if (android.os.Build.VERSION.SDK_INT >= 23) {
-        if (audioSlide == null || !Objects.equals(audioSlide.getUri(), audio.getUri())) {
-          disposable.dispose();
-          disposable = AudioWaveForms.getWaveForm(getContext(), audio.asAttachment())
-                                     .observeOn(AndroidSchedulers.mainThread())
-                                     .subscribe(
-                                         data -> {
-                                           durationMillis = data.getDuration(TimeUnit.MILLISECONDS);
-                                           updateProgress(0, 0);
-                                           if (!forceHideDuration && duration != null) {
-                                             duration.setVisibility(VISIBLE);
-                                           }
-                                           waveFormView.setWaveData(data.getWaveForm());
-                                         },
-                                         t -> waveFormView.setWaveMode(false)
-                                     );
-        }
-      } else {
-        waveFormView.setWaveMode(false);
-        if (duration != null) {
-          duration.setVisibility(GONE);
-        }
+      if (audioSlide == null || !Objects.equals(audioSlide.getUri(), audio.getUri())) {
+        disposable.dispose();
+        disposable = AudioWaveForms.getWaveForm(getContext(), audio.asAttachment())
+                                   .observeOn(AndroidSchedulers.mainThread())
+                                   .subscribe(
+                                       data -> {
+                                         durationMillis = data.getDuration(TimeUnit.MILLISECONDS);
+                                         updateProgress(0, 0);
+                                         if (!forceHideDuration && duration != null) {
+                                           duration.setVisibility(VISIBLE);
+                                         }
+                                         waveFormView.setWaveData(data.getWaveForm());
+                                       },
+                                       t -> waveFormView.setWaveMode(false)
+                                   );
       }
     }
 

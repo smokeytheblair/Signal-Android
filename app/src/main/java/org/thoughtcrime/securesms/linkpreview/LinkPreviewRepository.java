@@ -17,12 +17,10 @@ import org.signal.core.util.Result;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
 import org.signal.libsignal.protocol.InvalidMessageException;
-import org.signal.libsignal.protocol.util.Pair;
 import org.signal.libsignal.zkgroup.VerificationFailedException;
 import org.signal.libsignal.zkgroup.groups.GroupMasterKey;
-import org.signal.ringrtc.CallLinkEpoch;
 import org.signal.ringrtc.CallLinkRootKey;
-import org.signal.storageservice.protos.groups.local.DecryptedGroupJoinInfo;
+import org.signal.storageservice.storage.protos.groups.local.DecryptedGroupJoinInfo;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.attachments.Attachment;
 import org.thoughtcrime.securesms.attachments.UriAttachment;
@@ -40,6 +38,7 @@ import org.thoughtcrime.securesms.linkpreview.LinkPreviewUtil.OpenGraph;
 import org.thoughtcrime.securesms.mms.PushMediaConstraints;
 import org.thoughtcrime.securesms.net.CallRequestController;
 import org.thoughtcrime.securesms.net.CompositeRequestController;
+import org.thoughtcrime.securesms.net.LinkPreviewRedirectValidationInterceptor;
 import org.thoughtcrime.securesms.net.RequestController;
 import org.thoughtcrime.securesms.net.UserAgentInterceptor;
 import org.thoughtcrime.securesms.profiles.AvatarHelper;
@@ -51,7 +50,7 @@ import org.thoughtcrime.securesms.stickers.StickerRemoteUri;
 import org.thoughtcrime.securesms.stickers.StickerUrl;
 import org.thoughtcrime.securesms.util.AvatarUtil;
 import org.thoughtcrime.securesms.util.BitmapDecodingException;
-import org.thoughtcrime.securesms.util.ByteUnit;
+import org.signal.core.util.ByteUnit;
 import org.thoughtcrime.securesms.util.ImageCompressionUtil;
 import org.thoughtcrime.securesms.util.LinkUtil;
 import org.thoughtcrime.securesms.util.MediaUtil;
@@ -68,6 +67,8 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+
+import kotlin.Pair;
 
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.disposables.Disposable;
@@ -93,6 +94,7 @@ public class LinkPreviewRepository {
     this.client = new OkHttpClient.Builder()
                                   .cache(null)
                                   .addInterceptor(new UserAgentInterceptor("WhatsApp/2"))
+                                  .addNetworkInterceptor(new LinkPreviewRedirectValidationInterceptor())
                                   .build();
   }
 
@@ -287,8 +289,8 @@ public class LinkPreviewRepository {
     SignalExecutors.UNBOUNDED.execute(() -> {
       try {
         Pair<String, String> stickerParams = StickerUrl.parseShareLink(packUrl).orElse(new Pair<>("", ""));
-        String               packIdString  = stickerParams.first();
-        String               packKeyString = stickerParams.second();
+        String               packIdString  = stickerParams.getFirst();
+        String               packKeyString = stickerParams.getSecond();
         byte[]               packIdBytes   = Hex.fromStringCondensed(packIdString);
         byte[]               packKeyBytes  = Hex.fromStringCondensed(packKeyString);
 
@@ -327,20 +329,15 @@ public class LinkPreviewRepository {
                                                         @NonNull String callLinkUrl,
                                                         @NonNull Callback callback) {
 
-    CallLinks.CallLinkParseResult linkParseResult = CallLinks.parseUrl(callLinkUrl);
-    if (linkParseResult == null) {
+    CallLinkRootKey callLinkRootKey = CallLinks.parseUrl(callLinkUrl);
+    if (callLinkRootKey == null) {
       callback.onError(Error.PREVIEW_NOT_AVAILABLE);
       return () -> { };
     }
 
-    CallLinkEpoch epoch = linkParseResult.getEpoch();
-    byte[] epochBytes = epoch != null ? epoch.getBytes() : null;
-
     Disposable disposable = AppDependencies.getSignalCallManager()
                                            .getCallLinkManager()
-                                           .readCallLink(new CallLinkCredentials(linkParseResult.getRootKey().getKeyBytes(),
-                                                                                 epochBytes,
-                                                                                 null))
+                                           .readCallLink(new CallLinkCredentials(callLinkRootKey.getKeyBytes(), null))
                                            .observeOn(Schedulers.io())
                                            .subscribe(
                                                         result -> {

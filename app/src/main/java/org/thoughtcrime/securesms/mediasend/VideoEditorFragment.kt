@@ -1,16 +1,15 @@
 package org.thoughtcrime.securesms.mediasend
 
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import org.signal.core.util.Throttler
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionViewModel
@@ -18,7 +17,6 @@ import org.thoughtcrime.securesms.mediasend.v2.videos.VideoTrimData
 import org.thoughtcrime.securesms.mms.MediaConstraints
 import org.thoughtcrime.securesms.mms.VideoSlide
 import org.thoughtcrime.securesms.scribbles.VideoEditorPlayButtonLayout
-import org.thoughtcrime.securesms.util.Throttler
 import org.thoughtcrime.securesms.util.visible
 import org.thoughtcrime.securesms.video.VideoPlayer
 import org.thoughtcrime.securesms.video.VideoPlayer.PlayerCallback
@@ -103,6 +101,8 @@ class VideoEditorFragment : Fragment(), PositionDragListener, MediaSendPageFragm
       })
       player.hideControls()
       player.loopForever()
+      player.mute()
+      player.disableAudioFocus()
       player.play()
     } else {
       hud.setPlayClickListener {
@@ -161,7 +161,6 @@ class VideoEditorFragment : Fragment(), PositionDragListener, MediaSendPageFragm
     }
   }
 
-  @RequiresApi(23)
   private fun bindVideoTimeline(data: VideoTrimData) {
     val autoplay = isVideoGif
     val slide = VideoSlide(requireContext(), uri, 0, autoplay)
@@ -213,10 +212,8 @@ class VideoEditorFragment : Fragment(), PositionDragListener, MediaSendPageFragm
   }
 
   private fun startPositionUpdates() {
-    if (Build.VERSION.SDK_INT >= 23) {
-      stopPositionUpdates()
-      handler.post(updatePosition)
-    }
+    stopPositionUpdates()
+    handler.post(updatePosition)
   }
 
   private fun stopPositionUpdates() {
@@ -250,7 +247,6 @@ class VideoEditorFragment : Fragment(), PositionDragListener, MediaSendPageFragm
     hud.showPlayButton()
   }
 
-  @RequiresApi(23)
   private fun onEditVideoDuration(data: VideoTrimData, editingComplete: Boolean) {
     if (editingComplete) {
       isInEdit = false

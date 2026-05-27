@@ -11,6 +11,7 @@ import org.thoughtcrime.securesms.keyvalue.InternalValues
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.stories.Stories
+import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.livedata.Store
 
 class InternalSettingsViewModel(private val repository: InternalSettingsRepository) : ViewModel() {
@@ -66,11 +67,6 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
 
   fun setAllowCensorshipSetting(enabled: Boolean) {
     preferenceDataStore.putBoolean(InternalValues.ALLOW_CENSORSHIP_SETTING, enabled)
-    refresh()
-  }
-
-  fun setForceWebsocketMode(enabled: Boolean) {
-    preferenceDataStore.putBoolean(InternalValues.FORCE_WEBSOCKET_MODE, enabled)
     refresh()
   }
 
@@ -144,13 +140,18 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
     refresh()
   }
 
+  fun setUseNewMediaActivity(enabled: Boolean) {
+    SignalStore.internal.useNewMediaActivity = enabled
+    refresh()
+  }
+
   fun setHevcEncoding(enabled: Boolean) {
     SignalStore.internal.hevcEncoding = enabled
     refresh()
   }
 
-  fun addSampleReleaseNote() {
-    repository.addSampleReleaseNote()
+  fun addSampleReleaseNote(callToAction: String = "action") {
+    repository.addSampleReleaseNote(callToAction)
   }
 
   fun addRemoteDonateMegaphone() {
@@ -176,7 +177,6 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
     gv2forceInvites = SignalStore.internal.gv2ForceInvites,
     gv2ignoreP2PChanges = SignalStore.internal.gv2IgnoreP2PChanges,
     allowCensorshipSetting = SignalStore.internal.allowChangingCensorshipSetting,
-    forceWebsocketMode = SignalStore.internal.isWebsocketModeForced,
     callingServer = SignalStore.internal.groupCallingServer,
     callingDataMode = SignalStore.internal.callingDataMode,
     callingDisableTelecom = SignalStore.internal.callingDisableTelecom,
@@ -196,9 +196,10 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
     useConversationItemV2ForMedia = SignalStore.internal.useConversationItemV2Media,
     hasPendingOneTimeDonation = SignalStore.inAppPayments.getPendingOneTimeDonation() != null,
     hevcEncoding = SignalStore.internal.hevcEncoding,
-    newCallingUi = SignalStore.internal.newCallingUi,
-    largeScreenUi = SignalStore.internal.largeScreenUi,
-    forceSplitPaneOnCompactLandscape = SignalStore.internal.forceSplitPaneOnCompactLandscape
+    forceSplitPane = SignalStore.internal.forceSplitPane,
+    forceSinglePane = SignalStore.internal.forceSinglePane,
+    useNewMediaActivity = SignalStore.internal.useNewMediaActivity,
+    disableInternalUser = RemoteConfig.internalUserDisabled
   )
 
   fun onClearOnboardingState() {
@@ -209,18 +210,18 @@ class InternalSettingsViewModel(private val repository: InternalSettingsReposito
     StoryOnboardingDownloadJob.enqueueIfNeeded()
   }
 
-  fun setUseNewCallingUi(newCallingUi: Boolean) {
-    SignalStore.internal.newCallingUi = newCallingUi
+  fun setDisableInternalUser(disabled: Boolean) {
+    RemoteConfig.internalUserDisabled = disabled
     refresh()
   }
 
-  fun setUseLargeScreenUi(largeScreenUi: Boolean) {
-    SignalStore.internal.largeScreenUi = largeScreenUi
+  fun setForceSplitPane(forceSplitPane: Boolean) {
+    SignalStore.internal.forceSplitPane = forceSplitPane
     refresh()
   }
 
-  fun setForceSplitPaneOnCompactLandscape(forceSplitPaneOnCompactLandscape: Boolean) {
-    SignalStore.internal.forceSplitPaneOnCompactLandscape = forceSplitPaneOnCompactLandscape
+  fun setForceSinglePane(forceSinglePane: Boolean) {
+    SignalStore.internal.forceSinglePane = forceSinglePane
     refresh()
   }
 

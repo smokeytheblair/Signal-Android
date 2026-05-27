@@ -14,7 +14,7 @@ import org.thoughtcrime.securesms.database.GroupTable
 import org.thoughtcrime.securesms.database.RecipientTable
 import org.thoughtcrime.securesms.database.model.DistributionListPrivacyMode
 import org.thoughtcrime.securesms.database.model.GroupRecord
-import org.thoughtcrime.securesms.database.model.ThreadRecord
+import org.thoughtcrime.securesms.database.model.ThreadWithRecipient
 import org.thoughtcrime.securesms.keyvalue.StorySend
 import org.thoughtcrime.securesms.phonenumbers.NumberUtil
 import org.thoughtcrime.securesms.recipients.Recipient
@@ -244,14 +244,8 @@ class ContactSearchPagedDataSource(
     return contactSearchPagedDataSourceRepository.querySignalContactLetterHeaders(
       query = query,
       includeSelfMode = section.includeSelfMode,
-      includePush = when (section.transportType) {
-        ContactSearchConfiguration.TransportType.PUSH, ContactSearchConfiguration.TransportType.ALL -> true
-        else -> false
-      },
-      includeSms = when (section.transportType) {
-        ContactSearchConfiguration.TransportType.SMS, ContactSearchConfiguration.TransportType.ALL -> true
-        else -> false
-      }
+      includePush = true,
+      includeSms = false
     )
   }
 
@@ -426,7 +420,7 @@ class ContactSearchPagedDataSource(
   }
 
   private fun canSendToGroup(groupRecord: GroupRecord?): Boolean {
-    if (groupRecord == null) return false
+    if (groupRecord == null || groupRecord.isTerminated) return false
 
     return if (groupRecord.isAnnouncementGroup) {
       groupRecord.isAdmin(Recipient.self())
@@ -457,7 +451,7 @@ class ContactSearchPagedDataSource(
     check(searchRepository != null)
 
     if (searchCache.messageSearchResult == null && query != null) {
-      searchCache = searchCache.copy(messageSearchResult = searchRepository.queryMessagesSync(query))
+      searchCache = searchCache.copy(messageSearchResult = searchRepository.queryMessagesSync(query, contactConfiguration.searchFilter))
     }
 
     return if (query != null) {
@@ -482,7 +476,7 @@ class ContactSearchPagedDataSource(
     }
   }
 
-  private fun getThreadData(query: String?, unreadOnly: Boolean): ContactSearchIterator<ThreadRecord> {
+  private fun getThreadData(query: String?, unreadOnly: Boolean): ContactSearchIterator<ThreadWithRecipient> {
     check(searchRepository != null)
     if (searchCache.threadSearchResult == null && query != null) {
       searchCache = searchCache.copy(threadSearchResult = searchRepository.queryThreadsSync(query, unreadOnly))

@@ -16,8 +16,8 @@ import androidx.navigation.fragment.findNavController
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
+import org.signal.core.ui.logging.LoggingFragment
 import org.signal.core.util.logging.Log
-import org.thoughtcrime.securesms.LoggingFragment
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.ViewBinderDelegate
 import org.thoughtcrime.securesms.components.settings.app.changenumber.ChangeNumberUtil.changeNumberSuccess
@@ -33,6 +33,7 @@ import org.thoughtcrime.securesms.registration.sms.ReceivedSmsEvent
 import org.thoughtcrime.securesms.util.concurrent.AssertedSuccessListener
 import org.thoughtcrime.securesms.util.navigation.safeNavigate
 import org.thoughtcrime.securesms.util.visible
+import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -77,15 +78,6 @@ class ChangeNumberEnterCodeFragment : LoggingFragment(R.layout.fragment_change_n
     RegistrationViewDelegate.setDebugLogSubmitMultiTapView(binding.codeEntryLayout.verifyHeader)
 
     phoneStateListener = SignalStrengthPhoneStateListener(this, PhoneStateCallback())
-
-    requireActivity().onBackPressedDispatcher.addCallback(
-      viewLifecycleOwner,
-      object : OnBackPressedCallback(true) {
-        override fun handleOnBackPressed() {
-          navigateUp()
-        }
-      }
-    )
 
     binding.codeEntryLayout.wrongNumber.setOnClickListener {
       navigateUp()
@@ -177,7 +169,7 @@ class ChangeNumberEnterCodeFragment : LoggingFragment(R.layout.fragment_change_n
       is ChangeNumberResult.RegistrationLocked -> presentRegistrationLocked(result.timeRemaining)
       is ChangeNumberResult.AuthorizationFailed -> presentIncorrectCodeDialog()
       is ChangeNumberResult.AttemptsExhausted -> presentAccountLocked()
-      is ChangeNumberResult.RateLimited -> presentRateLimitedDialog()
+      is ChangeNumberResult.RateLimited -> presentRateLimitedDialog(result.timeRemaining)
 
       else -> presentGenericError(result)
     }
@@ -204,13 +196,25 @@ class ChangeNumberEnterCodeFragment : LoggingFragment(R.layout.fragment_change_n
     )
   }
 
-  private fun presentRateLimitedDialog() {
+  private fun presentRateLimitedDialog(retryAfterSeconds: Long = 0) {
     binding.codeEntryLayout.keyboard.displayFailure().addListener(
       object : AssertedSuccessListener<Boolean?>() {
         override fun onSuccess(result: Boolean?) {
           MaterialAlertDialogBuilder(requireContext()).apply {
             setTitle(R.string.RegistrationActivity_too_many_attempts)
-            setMessage(R.string.RegistrationActivity_you_have_made_too_many_attempts_please_try_again_later)
+            if (retryAfterSeconds > 0) {
+              val minutes = ceil(retryAfterSeconds / 60.0).toInt().coerceAtLeast(1)
+              setMessage(
+                if (minutes >= 60) {
+                  val hours = ceil(minutes / 60.0).toInt()
+                  resources.getQuantityString(R.plurals.ChangeNumberEnterCodeFragment__too_many_attempts_try_again_in_hours, hours, hours)
+                } else {
+                  resources.getQuantityString(R.plurals.ChangeNumberEnterCodeFragment__too_many_attempts_try_again_in_minutes, minutes, minutes)
+                }
+              )
+            } else {
+              setMessage(R.string.RegistrationActivity_you_have_made_too_many_attempts_please_try_again_later)
+            }
             setPositiveButton(android.R.string.ok) { _: DialogInterface?, _: Int ->
               binding.codeEntryLayout.callMeCountDown.visibility = View.VISIBLE
               binding.codeEntryLayout.resendSmsCountDown.visibility = View.VISIBLE

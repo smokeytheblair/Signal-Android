@@ -37,22 +37,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
@@ -61,7 +64,9 @@ import org.signal.core.ui.compose.Buttons
 import org.signal.core.ui.compose.DayNightPreviews
 import org.signal.core.ui.compose.Dialogs
 import org.signal.core.ui.compose.Previews
+import org.signal.core.ui.compose.SignalIcons
 import org.signal.core.ui.compose.theme.SignalTheme
+import org.signal.core.util.ThreadUtil
 import org.signal.core.util.bytes
 import org.thoughtcrime.securesms.BaseActivity
 import org.thoughtcrime.securesms.MainActivity
@@ -81,8 +86,8 @@ import org.thoughtcrime.securesms.registration.ui.shared.RegistrationScreenTitle
 import org.thoughtcrime.securesms.registration.util.RegistrationUtil
 import org.thoughtcrime.securesms.util.DateUtils
 import org.thoughtcrime.securesms.util.PlayStoreUtil
+import org.thoughtcrime.securesms.util.TextSecurePreferences
 import org.thoughtcrime.securesms.util.viewModel
-import java.util.Locale
 import kotlin.time.Duration
 
 /**
@@ -107,6 +112,8 @@ class RemoteRestoreActivity : BaseActivity() {
   private val contactSupportViewModel: ContactSupportViewModel<ContactSupportReason> by viewModels()
 
   private lateinit var wakeLock: RemoteRestoreWakeLock
+
+  private val eventBusSubscriber = EventBusSubscriber()
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -147,6 +154,18 @@ class RemoteRestoreActivity : BaseActivity() {
               }
             }
           }
+      }
+    }
+
+    lifecycleScope.launch {
+      lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+        while (isActive) {
+          if (TextSecurePreferences.isUnauthorizedReceived(this@RemoteRestoreActivity)) {
+            ThreadUtil.runOnMain { showUnregisteredDialog() }
+            break
+          }
+          delay(1000)
+        }
       }
     }
 
@@ -210,19 +229,35 @@ class RemoteRestoreActivity : BaseActivity() {
                 }
               },
               onDismiss = { showSkipRestoreWarning = false },
-              confirmColor = MaterialTheme.colorScheme.error
+              confirmColor = MaterialTheme.colorScheme.error,
+              properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
             )
           }
         }
       }
     }
 
-    EventBus.getDefault().registerForLifecycle(subscriber = this, lifecycleOwner = this)
+    EventBus.getDefault().registerForLifecycle(subscriber = eventBusSubscriber, lifecycleOwner = this)
   }
 
-  @Subscribe(threadMode = ThreadMode.MAIN)
-  fun onEvent(restoreEvent: RestoreV2Event) {
-    viewModel.updateRestoreProgress(restoreEvent)
+  private inner class EventBusSubscriber {
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun onEvent(restoreEvent: RestoreV2Event) {
+      viewModel.updateRestoreProgress(restoreEvent)
+    }
+  }
+
+  private fun showUnregisteredDialog() {
+    MaterialAlertDialogBuilder(this)
+      .setTitle(R.string.RestoreActivity__no_longer_registered_title)
+      .setMessage(R.string.RestoreActivity__no_longer_registered_message)
+      .setCancelable(false)
+      .setPositiveButton(android.R.string.ok) { _, _ ->
+        viewModel.skipRestore()
+        startActivity(MainActivity.clearTop(this))
+        supportFinishAfterTransition()
+      }
+      .show()
   }
 
   enum class ContactSupportReason {
@@ -295,17 +330,18 @@ private fun BackupAvailableContent(
   onUpdateSignal: () -> Unit,
   onContactSupport: () -> Unit
 ) {
+  val locale = LocalLocale.current.platformLocale
   val subtitle = if (state.backupSize.bytes > 0) {
     stringResource(
       id = R.string.RemoteRestoreActivity__backup_created_at_with_size,
-      DateUtils.formatDateWithoutDayOfWeek(Locale.getDefault(), state.backupTime),
+      DateUtils.formatDateWithoutDayOfWeek(locale, state.backupTime),
       DateUtils.getOnlyTimeString(LocalContext.current, state.backupTime),
       state.backupSize.toUnitString()
     )
   } else {
     stringResource(
       id = R.string.RemoteRestoreActivity__backup_created_at,
-      DateUtils.formatDateWithoutDayOfWeek(Locale.getDefault(), state.backupTime),
+      DateUtils.formatDateWithoutDayOfWeek(locale, state.backupTime),
       DateUtils.getOnlyTimeString(LocalContext.current, state.backupTime)
     )
   }
@@ -320,7 +356,7 @@ private fun BackupAvailableContent(
         )
       } else {
         Icon(
-          imageVector = ImageVector.vectorResource(id = R.drawable.symbol_backup_24),
+          imageVector = SignalIcons.Backup.imageVector,
           contentDescription = null,
           tint = MaterialTheme.colorScheme.primary,
           modifier = Modifier
@@ -652,7 +688,8 @@ fun TierRestoreFailedDialog(
       negative = stringResource(android.R.string.cancel),
       onPositive = onRetryRestore,
       onNeutral = onContactSupport,
-      onNegative = onCancel
+      onNegative = onCancel,
+      properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
     )
   } else {
     Dialogs.SimpleAlertDialog(

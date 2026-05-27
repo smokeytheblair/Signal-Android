@@ -6,6 +6,7 @@
 package org.thoughtcrime.securesms.conversation.v2.data
 
 import androidx.annotation.WorkerThread
+import org.signal.core.util.UuidUtil
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.roundedString
 import org.thoughtcrime.securesms.attachments.DatabaseAttachment
@@ -13,6 +14,7 @@ import org.thoughtcrime.securesms.database.CallTable
 import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.model.Mention
 import org.thoughtcrime.securesms.database.model.MessageRecord
+import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.ReactionRecord
 import org.thoughtcrime.securesms.database.model.withAttachments
 import org.thoughtcrime.securesms.database.model.withCall
@@ -20,11 +22,12 @@ import org.thoughtcrime.securesms.database.model.withPayment
 import org.thoughtcrime.securesms.database.model.withPoll
 import org.thoughtcrime.securesms.database.model.withReactions
 import org.thoughtcrime.securesms.dependencies.AppDependencies
+import org.thoughtcrime.securesms.groups.memberlabel.MemberLabel
+import org.thoughtcrime.securesms.groups.memberlabel.MemberLabelRepository
 import org.thoughtcrime.securesms.payments.Payment
 import org.thoughtcrime.securesms.polls.PollRecord
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.whispersystems.signalservice.api.util.UuidUtil
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
@@ -40,8 +43,8 @@ object MessageDataFetcher {
   /**
    * Singular version of [fetch].
    */
-  fun fetch(messageRecord: MessageRecord): ExtraMessageData {
-    return fetch(listOf(messageRecord))
+  fun fetch(messageRecord: MessageRecord, threadRecipient: Recipient? = null): ExtraMessageData {
+    return fetch(listOf(messageRecord), threadRecipient)
   }
 
   /**
@@ -52,7 +55,7 @@ object MessageDataFetcher {
    * so this should be called on a background thread.
    */
   @WorkerThread
-  fun fetch(messageRecords: List<MessageRecord>): ExtraMessageData {
+  fun fetch(messageRecords: List<MessageRecord>, threadRecipient: Recipient? = null): ExtraMessageData {
     val startTimeNanos = System.nanoTime()
     val context = AppDependencies.application
 
@@ -80,7 +83,7 @@ object MessageDataFetcher {
         .filter { it.isMms && it.isPaymentNotification }
         .map { UuidUtil.parseOrNull(it.body) to it.id }
         .filter { it.first != null }
-        .associate { it.first to it.second }
+        .associate { it.first!! to it.second }
 
       SignalDatabase
         .payments
@@ -105,6 +108,25 @@ object MessageDataFetcher {
       SignalDatabase.polls.getPollsForMessages(messageIds)
     }
 
+    val memberLabelsFuture = if (threadRecipient != null && threadRecipient.isPushV2Group) {
+      executor.submitTimed {
+        val fromRecipients = mutableSetOf<Recipient>()
+        val quoteRecipientIds = mutableSetOf<RecipientId>()
+        for (record in messageRecords) {
+          if (!record.isOutgoing) {
+            fromRecipients.add(record.fromRecipient)
+          }
+          if (record is MmsMessageRecord && record.quote != null) {
+            quoteRecipientIds.add(record.quote!!.author)
+          }
+        }
+        val recipients = fromRecipients + Recipient.resolvedList(quoteRecipientIds)
+        MemberLabelRepository.instance.getLabelsSync(threadRecipient.requireGroupId().requireV2(), recipients)
+      }
+    } else {
+      null
+    }
+
     val mentionsResult = mentionsFuture.get()
     val hasBeenQuotedResult = hasBeenQuotedFuture.get()
     val reactionsResult = reactionsFuture.get()
@@ -113,10 +135,11 @@ object MessageDataFetcher {
     val callsResult = callsFuture.get()
     val recipientsResult = recipientsFuture.get()
     val pollsResult = pollsFuture.get()
+    val memberLabelsResult = memberLabelsFuture?.get()
 
     val wallTimeMs = (System.nanoTime() - startTimeNanos).nanoseconds.toDouble(DurationUnit.MILLISECONDS)
 
-    val cpuTimeNanos = arrayOf(mentionsResult, hasBeenQuotedResult, reactionsResult, attachmentsResult, paymentsResult, callsResult, recipientsResult).sumOf { it.durationNanos }
+    val cpuTimeNanos = arrayOf(mentionsResult, hasBeenQuotedResult, reactionsResult, attachmentsResult, paymentsResult, callsResult, recipientsResult).sumOf { it.durationNanos } + (memberLabelsResult?.durationNanos ?: 0)
     val cpuTimeMs = cpuTimeNanos.nanoseconds.toDouble(DurationUnit.MILLISECONDS)
 
     return ExtraMessageData(
@@ -127,7 +150,8 @@ object MessageDataFetcher {
       payments = paymentsResult.result,
       calls = callsResult.result,
       polls = pollsResult.result,
-      timeLog = "mentions: ${mentionsResult.duration}, is-quoted: ${hasBeenQuotedResult.duration}, reactions: ${reactionsResult.duration}, attachments: ${attachmentsResult.duration}, payments: ${paymentsResult.duration}, calls: ${callsResult.duration} >> cpuTime: ${cpuTimeMs.roundedString(2)}, wallTime: ${wallTimeMs.roundedString(2)}"
+      memberLabels = memberLabelsResult?.result,
+      timeLog = "mentions: ${mentionsResult.duration}, is-quoted: ${hasBeenQuotedResult.duration}, reactions: ${reactionsResult.duration}, attachments: ${attachmentsResult.duration}, payments: ${paymentsResult.duration}, calls: ${callsResult.duration}, member-labels: ${memberLabelsResult?.duration ?: "n/a"} >> cpuTime: ${cpuTimeMs.roundedString(2)}, wallTime: ${wallTimeMs.roundedString(2)}"
     )
   }
 
@@ -200,6 +224,7 @@ object MessageDataFetcher {
     val payments: Map<Long, Payment>,
     val calls: Map<Long, CallTable.Call>,
     val polls: Map<Long, PollRecord>,
+    val memberLabels: Map<RecipientId, MemberLabel>?,
     val timeLog: String
   )
 }

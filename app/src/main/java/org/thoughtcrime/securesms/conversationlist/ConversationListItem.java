@@ -47,6 +47,7 @@ import com.bumptech.glide.RequestManager;
 import com.bumptech.glide.load.resource.bitmap.CenterCrop;
 import com.makeramen.roundedimageview.RoundedDrawable;
 
+import org.signal.core.util.ContextUtil;
 import org.signal.core.util.DimensionUnit;
 import org.signal.core.util.StringUtil;
 import org.signal.core.util.logging.Log;
@@ -69,23 +70,22 @@ import org.thoughtcrime.securesms.database.MessageTypes;
 import org.thoughtcrime.securesms.database.ThreadTable;
 import org.thoughtcrime.securesms.database.model.LiveUpdateMessage;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
-import org.thoughtcrime.securesms.database.model.ThreadRecord;
+import org.thoughtcrime.securesms.database.model.ThreadWithRecipient;
 import org.thoughtcrime.securesms.database.model.UpdateDescription;
 import org.thoughtcrime.securesms.fonts.SignalSymbols.Glyph;
 import org.thoughtcrime.securesms.glide.targets.GlideLiveDataTarget;
-import org.thoughtcrime.securesms.mms.DecryptableUri;
+import org.signal.glide.decryptableuri.DecryptableUri;
 import org.thoughtcrime.securesms.recipients.LiveRecipient;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.recipients.RecipientId;
 import org.thoughtcrime.securesms.search.MessageResult;
-import org.thoughtcrime.securesms.util.ContextUtil;
 import org.thoughtcrime.securesms.util.DateUtils;
 import org.thoughtcrime.securesms.util.ExpirationUtil;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.SearchUtil;
 import org.thoughtcrime.securesms.util.SignalE164Util;
 import org.thoughtcrime.securesms.util.SpanUtil;
-import org.thoughtcrime.securesms.util.Util;
+import org.signal.core.util.Util;
 import org.thoughtcrime.securesms.util.livedata.LiveDataUtil;
 
 import java.util.List;
@@ -97,6 +97,7 @@ import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
+import kotlin.Pair;
 
 import static org.thoughtcrime.securesms.database.model.LiveUpdateMessage.recipientToStringAsync;
 
@@ -125,7 +126,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
   private AlertView           alertView;
   private TextView            unreadIndicator;
   private long                lastSeen;
-  private ThreadRecord        thread;
+  private ThreadWithRecipient thread;
   private boolean             batchMode;
   private Locale              locale;
   private String              highlightSubstring;
@@ -173,7 +174,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
     this.unreadMentions          = findViewById(R.id.conversation_list_item_unread_mentions_indicator);
     this.thumbSize               = (int) DimensionUnit.SP.toPixels(16f);
     this.thumbTarget             = new GlideLiveDataTarget(thumbSize, thumbSize);
-    this.searchStyleFactory      = () -> new CharacterStyle[] { new ForegroundColorSpan(ContextCompat.getColor(getContext(), R.color.signal_colorOnSurface)), SpanUtil.getBoldSpan() };
+    this.searchStyleFactory      = () -> new CharacterStyle[] { new ForegroundColorSpan(ContextCompat.getColor(getContext(), org.signal.core.ui.R.color.signal_colorOnSurface)), SpanUtil.getBoldSpan() };
 
     getLayoutTransition().setDuration(150);
   }
@@ -208,7 +209,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
 
   @Override
   public void bind(@NonNull LifecycleOwner lifecycleOwner,
-                   @NonNull ThreadRecord thread,
+                   @NonNull ThreadWithRecipient thread,
                    @NonNull RequestManager glideRequests,
                    @NonNull Locale locale,
                    @NonNull Set<Long> typingThreads,
@@ -219,7 +220,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
   }
 
   public void bindThread(@NonNull LifecycleOwner lifecycleOwner,
-                         @NonNull ThreadRecord thread,
+                         @NonNull ThreadWithRecipient thread,
                          @NonNull RequestManager requestManager,
                          @NonNull Locale locale,
                          @NonNull Set<Long> typingThreads,
@@ -245,7 +246,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
     if (appendSystemContactIcon && recipient.get().isSystemContact() && !recipient.get().getShowVerified()) {
       suffix = new SpannableStringBuilder();
       Drawable drawable = ContextUtil.requireDrawable(getContext(), R.drawable.symbol_person_circle_24);
-      drawable.setTint(ContextCompat.getColor(getContext(), R.color.signal_colorOnSurface));
+      drawable.setTint(ContextCompat.getColor(getContext(), org.signal.core.ui.R.color.signal_colorOnSurface));
       SpanUtil.appendCenteredImageSpan(suffix, drawable, 16, 16);
     }
 
@@ -270,8 +271,9 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
                                             : ContextCompat.getColor(getContext(), R.color.signal_text_primary));
 
       updateDateView = () -> {
-        CharSequence date = DateUtils.getBriefRelativeTimeSpanString(getContext(), locale, thread.getDate());
-        dateView.setText(date);
+        Pair<String, String> date = DateUtils.getBriefRelativeTimeSpanString(getContext(), locale, thread.getDate());
+        dateView.setText(date.getFirst());
+        dateView.setContentDescription(date.getSecond());
       };
 
       updateDateView.run();
@@ -316,9 +318,15 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
     setSubjectViewText(null);
 
     fromView.setText(recipient.get(), recipient.get().getDisplayName(getContext()), null, false);
-    setSubjectViewText(SearchUtil.getHighlightedSpan(locale, searchStyleFactory, messageResult.getBodySnippet(), highlightSubstring, SearchUtil.MATCH_ALL));
+    CharSequence snippet = SearchUtil.getHighlightedSpan(locale, searchStyleFactory, messageResult.getBodySnippet(), highlightSubstring, SearchUtil.MATCH_ALL);
+    snippet = createGroupMessageUpdateString(getContext(), snippet, messageResult.getMessageRecipient());
+    setSubjectViewText(snippet);
 
-    updateDateView = () -> dateView.setText(DateUtils.getBriefRelativeTimeSpanString(getContext(), locale, messageResult.getReceivedTimestampMs()));
+    updateDateView = () -> {
+      Pair<String, String> date = DateUtils.getBriefRelativeTimeSpanString(getContext(), locale, messageResult.getReceivedTimestampMs());
+      dateView.setText(date.getFirst());
+      dateView.setContentDescription(date.getSecond());
+    };
 
     updateDateView.run();
     archivedView.setVisibility(GONE);
@@ -353,7 +361,9 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
 
     updateDateView = () -> {
       if (groupWithMembers.getDate() > 0) {
-        dateView.setText(DateUtils.getBriefRelativeTimeSpanString(getContext(), locale, groupWithMembers.getDate()));
+        Pair<String, String> date = DateUtils.getBriefRelativeTimeSpanString(getContext(), locale, groupWithMembers.getDate());
+        dateView.setText(date.getFirst());
+        dateView.setContentDescription(date.getSecond());
       } else {
         dateView.setText("");
       }
@@ -457,7 +467,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
     return threadId;
   }
 
-  public @NonNull ThreadRecord getThread() {
+  public @NonNull ThreadWithRecipient getThread() {
     return thread;
   }
 
@@ -506,7 +516,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
     }
   }
 
-  private void setStatusIcons(ThreadRecord thread) {
+  private void setStatusIcons(ThreadWithRecipient thread) {
     if (MessageTypes.isBadDecryptType(thread.getType())) {
       deliveryStatusIndicator.setNone();
       alertView.setFailed();
@@ -515,7 +525,8 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
                thread.isOutgoingVideoCall() ||
                thread.isVerificationStatusChange() ||
                thread.isScheduledMessage() ||
-               thread.getRecipient().isBlocked())
+               thread.getRecipient().isBlocked() ||
+               MessageTypes.isPinnedMessageUpdate(thread.getType()))
     {
       deliveryStatusIndicator.setNone();
       alertView.setNone();
@@ -525,7 +536,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
     } else {
       alertView.setNone();
 
-      if (thread.getExtra() != null && thread.getExtra().isRemoteDelete()) {
+      if (thread.getExtra() != null && thread.getExtra().getDeletedBy() != null) {
         if (thread.isPending()) {
           deliveryStatusIndicator.setPending();
         } else {
@@ -545,7 +556,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
     }
   }
 
-  private void setUnreadIndicator(ThreadRecord thread) {
+  private void setUnreadIndicator(ThreadWithRecipient thread) {
     if (thread.isRead()) {
       unreadIndicator.setVisibility(View.GONE);
       unreadMentions.setVisibility(View.GONE);
@@ -585,7 +596,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
   }
 
   private static @NonNull LiveData<SpannableString> getThreadDisplayBody(@NonNull Context context,
-                                                                         @NonNull ThreadRecord thread,
+                                                                         @NonNull ThreadWithRecipient thread,
                                                                          @NonNull RequestManager requestManager,
                                                                          @Px int thumbSize,
                                                                          @NonNull GlideLiveDataTarget thumbTarget)
@@ -653,12 +664,12 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
       String time = ExpirationUtil.getExpirationDisplayValue(context, seconds);
       return emphasisAdded(context, context.getString(R.string.ThreadRecord_disappearing_message_time_updated_to_s, time), Glyph.TIMER, defaultTint);
     } else if (MessageTypes.isIdentityUpdate(thread.getType())) {
-      return emphasisAdded(recipientToStringAsync(thread.getRecipient().getId(), r -> {
-        if (r.isGroup()) {
-          return new SpannableString(context.getString(R.string.ThreadRecord_safety_number_changed));
-        } else {
-          return new SpannableString(context.getString(R.string.ThreadRecord_your_safety_number_with_s_has_changed, r.getDisplayName(context)));
-        }
+      RecipientId individualRecipientId = thread.getIndividualRecipientId();
+      if (individualRecipientId.isUnknown() || !thread.getRecipient().isGroup()) {
+        return emphasisAdded(context, context.getString(R.string.ThreadRecord_safety_number_changed), defaultTint);
+      }
+      return emphasisAdded(recipientToStringAsync(individualRecipientId, r -> {
+        return new SpannableString(context.getString(R.string.ThreadRecord_your_safety_number_with_s_has_changed, r.getDisplayName(context)));
       }));
     } else if (MessageTypes.isIdentityVerified(thread.getType())) {
       return emphasisAdded(context, context.getString(R.string.ThreadRecord_you_marked_verified), defaultTint);
@@ -682,12 +693,22 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
       }
     } else if (MessageTypes.isPollTerminate(thread.getType())) {
       return emphasisAdded(context, thread.getBody(), Glyph.POLL, defaultTint);
+    } else if (MessageTypes.isPinnedMessageUpdate(thread.getType())) {
+      return emphasisAdded(context, thread.getBody(), Glyph.PIN, defaultTint);
     } else {
       ThreadTable.Extra extra = thread.getExtra();
       if (extra != null && extra.isViewOnce()) {
         return emphasisAdded(context, getViewOnceDescription(context, thread.getContentType()), defaultTint);
-      } else if (extra != null && extra.isRemoteDelete()) {
-        return emphasisAdded(context, context.getString(thread.isOutgoing() ? R.string.ThreadRecord_you_deleted_this_message : R.string.ThreadRecord_this_message_was_deleted), defaultTint);
+      } else if (extra != null && extra.getDeletedBy() != null) {
+        RecipientId individualRecipientId = thread.getIndividualRecipientId();
+        RecipientId deletedBy = thread.getDeletedByRecipientId();
+        if (individualRecipientId.equals(deletedBy) && thread.isOutgoing()) {
+          return emphasisAdded(context, context.getString(R.string.ThreadRecord_you_deleted_this_message), defaultTint);
+        } else if (individualRecipientId.equals(deletedBy)) {
+          return emphasisAdded(recipientToStringAsync(deletedBy, r -> new SpannableString(context.getString(R.string.ThreadRecord_s_deleted_this_message, r.getDisplayName(context)))));
+        } else {
+          return emphasisAdded(recipientToStringAsync(deletedBy, r -> new SpannableString(context.getString(R.string.ThreadRecord_admin_deleted_this_message, r.getDisplayName(context)))));
+        }
       } else if (extra != null && extra.isPoll()) {
         return emphasisAdded(context, thread.getBody(), Glyph.POLL, defaultTint);
       } else {
@@ -713,7 +734,7 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
 
   private static LiveData<CharSequence> createFinalBodyWithMediaIcon(@NonNull Context context,
                                                                      @NonNull CharSequence body,
-                                                                     @NonNull ThreadRecord thread,
+                                                                     @NonNull ThreadWithRecipient thread,
                                                                      @NonNull RequestManager requestManager,
                                                                      @Px int thumbSize,
                                                                      @NonNull GlideLiveDataTarget thumbTarget)
@@ -795,14 +816,18 @@ public final class ConversationListItem extends ConstraintLayout implements Bind
   }
 
   private static @NonNull LiveData<SpannableString> emphasisAdded(@NonNull Context context, @NonNull UpdateDescription description, @ColorInt int defaultTint) {
-    return emphasisAdded(LiveUpdateMessage.fromMessageDescription(context, description, defaultTint, false));
+    return emphasisAdded(LiveUpdateMessage.fromMessageDescription(context, description, defaultTint, false), description.getGlyph() != null);
   }
 
   private static @NonNull LiveData<SpannableString> emphasisAdded(@NonNull LiveData<SpannableString> description) {
+    return emphasisAdded(description, false);
+  }
+
+  private static @NonNull LiveData<SpannableString> emphasisAdded(@NonNull LiveData<SpannableString> description, boolean hasGlyph) {
     return Transformations.map(description, sequence -> {
       SpannableString spannable = new SpannableString(sequence);
       spannable.setSpan(new StyleSpan(Typeface.ITALIC),
-                        0,
+                        hasGlyph ? 1 : 0,
                         sequence.length(),
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
       return spannable;

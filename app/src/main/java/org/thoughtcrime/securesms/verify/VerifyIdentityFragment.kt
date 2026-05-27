@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import org.signal.core.ui.permissions.Permissions
+import org.signal.core.util.ServiceUtil
 import org.signal.core.util.ThreadUtil
 import org.signal.core.util.getParcelableCompat
 import org.signal.qr.kitkat.ScanListener
@@ -14,10 +16,8 @@ import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.WrapperDialogFragment
 import org.thoughtcrime.securesms.crypto.IdentityKeyParcelable
 import org.thoughtcrime.securesms.keyvalue.SignalStore
-import org.thoughtcrime.securesms.permissions.Permissions
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
-import org.thoughtcrime.securesms.util.ServiceUtil
 
 /**
  * Fragment to assist user in verifying recipient identity utilizing keys.

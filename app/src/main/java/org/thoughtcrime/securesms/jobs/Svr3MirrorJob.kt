@@ -5,6 +5,7 @@
 package org.thoughtcrime.securesms.jobs
 
 import org.signal.core.util.logging.Log
+import org.signal.network.exceptions.NonSuccessfulResponseCodeException
 import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.jobmanager.Job
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint
@@ -12,12 +13,12 @@ import org.thoughtcrime.securesms.jobs.protos.Svr3MirrorJobData
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.pin.Svr3Migration
 import org.thoughtcrime.securesms.pin.SvrRepository
-import org.whispersystems.signalservice.api.push.exceptions.NonSuccessfulResponseCodeException
 import org.whispersystems.signalservice.api.svr.SecureValueRecovery.BackupResponse
 import org.whispersystems.signalservice.api.svr.SecureValueRecovery.PinChangeSession
 import org.whispersystems.signalservice.api.svr.SecureValueRecoveryV3
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Ensures a user's SVR data is written to SVR3.
@@ -92,6 +93,11 @@ class Svr3MirrorJob private constructor(parameters: Parameters, private var seri
             Log.w(TAG, "Hit an application error. Retrying.", response.exception)
             Result.retry(defaultBackoff())
           }
+        }
+        is BackupResponse.RateLimited -> {
+          val backoff = response.retryAfter ?: defaultBackoff().milliseconds
+          Log.w(TAG, "Hit rate limit. Retrying in $backoff")
+          Result.retry(backoff.inWholeMilliseconds)
         }
         BackupResponse.EnclaveNotFound -> {
           Log.w(TAG, "Could not find the enclave. Giving up.")

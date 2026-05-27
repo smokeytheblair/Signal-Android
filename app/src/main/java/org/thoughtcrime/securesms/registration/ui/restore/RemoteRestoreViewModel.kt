@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import org.signal.core.util.ByteSize
 import org.signal.core.util.bytes
 import org.signal.core.util.logging.Log
+import org.signal.network.NetworkResult
 import org.thoughtcrime.securesms.backup.v2.BackupRepository
 import org.thoughtcrime.securesms.backup.v2.MessageBackupTier
 import org.thoughtcrime.securesms.backup.v2.RemoteRestoreResult
@@ -27,7 +28,6 @@ import org.thoughtcrime.securesms.keyvalue.Completed
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.keyvalue.Skipped
 import org.thoughtcrime.securesms.registration.data.QuickRegistrationRepository
-import org.whispersystems.signalservice.api.NetworkResult
 import org.whispersystems.signalservice.api.provisioning.RestoreMethod
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
@@ -56,7 +56,23 @@ class RemoteRestoreViewModel(isOnlyRestoreOption: Boolean) : ViewModel() {
   fun reload() {
     viewModelScope.launch(Dispatchers.IO) {
       store.update { it.copy(loadState = ScreenState.LoadState.LOADING, loadAttempts = it.loadAttempts + 1) }
-      val result = BackupRepository.restoreBackupFileTimestamp()
+      Log.i(TAG, "Fetching remote backup information")
+      var result: RestoreTimestampResult = BackupRepository.restoreBackupFileTimestamp()
+
+      if (result is RestoreTimestampResult.VerificationFailure && SignalStore.account.restoredAccountEntropyPool) {
+        Log.w(TAG, "Resetting backup id reservation due to zk verification failure with restored AEP")
+        result = when (val triggerResult = BackupRepository.triggerBackupIdReservationForRestore()) {
+          is NetworkResult.Success -> {
+            Log.i(TAG, "Reset successful, trying to restore timestamp")
+            BackupRepository.restoreBackupFileTimestamp()
+          }
+          else -> {
+            Log.w(TAG, "Reset unsuccessful, failing", triggerResult.getCause())
+            result
+          }
+        }
+      }
+
       store.update {
         when (result) {
           is RestoreTimestampResult.Success -> {
@@ -68,6 +84,7 @@ class RemoteRestoreViewModel(isOnlyRestoreOption: Boolean) : ViewModel() {
             )
           }
 
+          is RestoreTimestampResult.BackupsNotEnabled,
           is RestoreTimestampResult.NotFound -> {
             it.copy(loadState = ScreenState.LoadState.NOT_FOUND)
           }
@@ -105,6 +122,7 @@ class RemoteRestoreViewModel(isOnlyRestoreOption: Boolean) : ViewModel() {
             Log.i(TAG, "Restore successful", true)
             SignalStore.registration.restoreDecisionState = RestoreDecisionState.Completed
 
+            SignalStore.backup.backupSecretRestoreRequired = false
             StorageServiceRestore.restore()
 
             store.update { it.copy(importState = ImportState.Restored) }

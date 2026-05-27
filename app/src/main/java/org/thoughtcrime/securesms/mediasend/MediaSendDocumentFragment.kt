@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import org.signal.core.models.media.Media
 import org.signal.core.util.bytes
 import org.signal.core.util.getParcelableCompat
 import org.signal.core.util.logging.Log
@@ -16,6 +17,7 @@ import org.thoughtcrime.securesms.mms.PartAuthority
 import org.thoughtcrime.securesms.util.MediaUtil
 import java.io.IOException
 import java.util.Optional
+import org.signal.core.ui.R as CoreUiR
 
 /**
  * Fragment to show full screen document attachments
@@ -52,16 +54,17 @@ class MediaSendDocumentFragment : Fragment(R.layout.mediasend_document_fragment)
 
     val fileInfo: Pair<String?, Long>? = getFileInfo()
     if (fileInfo != null) {
+      media.fileName = fileInfo.first
       name.text = fileInfo.first ?: getString(R.string.DocumentView_unnamed_file)
       size.text = fileInfo.second.bytes.toUnitString()
 
       val extensionText: String = MediaUtil.getFileType(requireContext(), Optional.ofNullable(fileInfo.first), media.uri).orElse("")
       if (extensionText.length <= 3) {
         extension.text = extensionText
-        extension.setTextAppearance(requireContext(), R.style.Signal_Text_BodySmall)
+        extension.setTextAppearance(requireContext(), CoreUiR.style.Signal_Text_BodySmall)
       } else if (extensionText.length == 4) {
         extension.text = extensionText
-        extension.setTextAppearance(requireContext(), R.style.Signal_Text_Caption)
+        extension.setTextAppearance(requireContext(), CoreUiR.style.Signal_Text_Caption)
       }
     } else {
       Toast.makeText(requireContext(), R.string.ConversationActivity_sorry_there_was_an_error_setting_your_attachment, Toast.LENGTH_SHORT).show()
@@ -125,6 +128,7 @@ class MediaSendDocumentFragment : Fragment(R.layout.mediasend_document_fragment)
       if (cursor != null && cursor.moveToFirst()) {
         val fileName = cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
         val fileSize = cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE))
+        media.fileName = fileName
 
         return Pair(fileName, fileSize)
       }

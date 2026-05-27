@@ -6,6 +6,8 @@
 package org.thoughtcrime.securesms.backup.v2.ui.subscription
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.annotation.UiContext
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -51,16 +53,23 @@ import org.signal.core.ui.compose.DayNightPreviews
 import org.signal.core.ui.compose.Dialogs
 import org.signal.core.ui.compose.Previews
 import org.signal.core.ui.compose.Scaffolds
+import org.signal.core.ui.compose.SignalIcons
 import org.signal.core.ui.compose.Snackbars
 import org.signal.core.ui.compose.horizontalGutters
 import org.signal.core.ui.compose.theme.SignalTheme
+import org.signal.core.util.Util
 import org.thoughtcrime.securesms.R
+import org.thoughtcrime.securesms.components.TemporaryScreenshotSecurity
+import org.thoughtcrime.securesms.components.settings.app.backups.remote.BackupKeyCredentialManagerHandler
 import org.thoughtcrime.securesms.components.settings.app.backups.remote.BackupKeySaveState
 import org.thoughtcrime.securesms.fonts.MonoTypeface
+import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.util.storage.AndroidCredentialRepository
 import org.thoughtcrime.securesms.util.storage.CredentialManagerError
 import org.thoughtcrime.securesms.util.storage.CredentialManagerResult
 import org.signal.core.ui.R as CoreUiR
+
+private const val CLIPBOARD_TIMEOUT_SECONDS = 60
 
 @Stable
 sealed interface MessageBackupsKeyRecordMode {
@@ -68,8 +77,43 @@ sealed interface MessageBackupsKeyRecordMode {
   data class CreateNewKey(
     val onCreateNewKeyClick: () -> Unit,
     val onTurnOffAndDownloadClick: () -> Unit,
-    val isOptimizedStorageEnabled: Boolean
+    val isOptimizedStorageEnabled: Boolean,
+    val canRotateKey: Boolean
   ) : MessageBackupsKeyRecordMode
+}
+
+/**
+ * More self-contained version of [MessageBackupsKeyRecordScreen] to try to improve reusability.
+ * This version is not built to be previewed but covers a lot of the repetitive boilerplate seen
+ * elsewhere.
+ */
+@Composable
+fun MessageBackupsKeyRecordScreen(
+  backupKey: String,
+  keySaveState: BackupKeySaveState?,
+  backupKeyCredentialManagerHandler: BackupKeyCredentialManagerHandler,
+  mode: MessageBackupsKeyRecordMode
+) {
+  val context = LocalContext.current
+  val passwordManagerSettingsIntent = remember {
+    AndroidCredentialRepository.getCredentialManagerSettingsIntent(context)
+  }
+
+  val onBackPressedDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+
+  MessageBackupsKeyRecordScreen(
+    backupKey = backupKey,
+    keySaveState = keySaveState,
+    canOpenPasswordManagerSettings = passwordManagerSettingsIntent != null,
+    onNavigationClick = { onBackPressedDispatcher?.onBackPressed() },
+    onCopyToClipboardClick = { Util.copyToClipboard(context, it, CLIPBOARD_TIMEOUT_SECONDS) },
+    onRequestSaveToPasswordManager = backupKeyCredentialManagerHandler::onBackupKeySaveRequested,
+    onConfirmSaveToPasswordManager = backupKeyCredentialManagerHandler::onBackupKeySaveConfirmed,
+    onSaveToPasswordManagerComplete = backupKeyCredentialManagerHandler::onBackupKeySaveCompleted,
+    mode = mode,
+    onGoToPasswordManagerSettingsClick = { context.startActivity(passwordManagerSettingsIntent) },
+    notifyKeyIsSameAsOnDeviceBackupKey = SignalStore.backup.newLocalBackupsEnabled
+  )
 }
 
 /**
@@ -87,16 +131,23 @@ fun MessageBackupsKeyRecordScreen(
   onConfirmSaveToPasswordManager: () -> Unit = {},
   onSaveToPasswordManagerComplete: (CredentialManagerResult) -> Unit = {},
   onGoToPasswordManagerSettingsClick: () -> Unit = {},
-  mode: MessageBackupsKeyRecordMode = MessageBackupsKeyRecordMode.Next(onNextClick = {})
+  mode: MessageBackupsKeyRecordMode = MessageBackupsKeyRecordMode.Next(onNextClick = {}),
+  notifyKeyIsSameAsOnDeviceBackupKey: Boolean = false
 ) {
+  TemporaryScreenshotSecurity.bind()
+
   val snackbarHostState = remember { SnackbarHostState() }
   val backupKeyString = remember(backupKey) {
     backupKey.chunked(4).joinToString("  ")
   }
 
+  if (mode is MessageBackupsKeyRecordMode.Next) {
+    RecordScreenBackHandler()
+  }
+
   Scaffolds.Settings(
     title = "",
-    navigationIcon = ImageVector.vectorResource(R.drawable.symbol_arrow_start_24),
+    navigationIcon = SignalIcons.ArrowStart.imageVector,
     onNavigationClick = onNavigationClick,
     snackbarHost = { Snackbars.Host(snackbarHostState = snackbarHostState) }
   ) { paddingValues ->
@@ -134,8 +185,14 @@ fun MessageBackupsKeyRecordScreen(
           }
 
           item {
+            val text = if (notifyKeyIsSameAsOnDeviceBackupKey) {
+              stringResource(R.string.MessageBackupsKeyRecordScreen__this_key_is_the_same_as_your_on_device_recovery_key)
+            } else {
+              stringResource(R.string.MessageBackupsKeyRecordScreen__this_key_is_required_to_recover)
+            }
+
             Text(
-              text = stringResource(R.string.MessageBackupsKeyRecordScreen__this_key_is_required_to_recover),
+              text = text,
               textAlign = TextAlign.Center,
               style = MaterialTheme.typography.bodyLarge,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -191,23 +248,14 @@ fun MessageBackupsKeyRecordScreen(
           }
         }
 
-        if (mode is MessageBackupsKeyRecordMode.Next) {
-          Box(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(bottom = 24.dp)
-          ) {
-            Buttons.LargeTonal(
-              onClick = mode.onNextClick,
-              modifier = Modifier.align(Alignment.BottomEnd)
-            ) {
-              Text(
-                text = stringResource(R.string.MessageBackupsKeyRecordScreen__next)
-              )
-            }
+        when (mode) {
+          is MessageBackupsKeyRecordMode.Next -> {
+            NextButton(onNextClick = mode.onNextClick)
           }
-        } else if (mode is MessageBackupsKeyRecordMode.CreateNewKey) {
-          CreateNewKeyButton(mode)
+
+          is MessageBackupsKeyRecordMode.CreateNewKey -> {
+            CreateNewKeyButton(mode)
+          }
         }
       }
 
@@ -251,16 +299,41 @@ fun MessageBackupsKeyRecordScreen(
   }
 }
 
+@Composable
+private fun NextButton(onNextClick: () -> Unit) {
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(bottom = 24.dp)
+  ) {
+    Buttons.LargeTonal(
+      onClick = onNextClick,
+      modifier = Modifier.align(Alignment.BottomEnd)
+    ) {
+      Text(
+        text = stringResource(R.string.MessageBackupsKeyRecordScreen__next)
+      )
+    }
+  }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreateNewKeyButton(
   mode: MessageBackupsKeyRecordMode.CreateNewKey
 ) {
   var displayBottomSheet by remember { mutableStateOf(false) }
-  var displayDialog by remember { mutableStateOf(false) }
+  var displayDownloadMediaDialog by remember { mutableStateOf(false) }
+  var displayKeyLimitDialog by remember { mutableStateOf(false) }
 
   TextButton(
-    onClick = { displayBottomSheet = true },
+    onClick = {
+      if (!mode.canRotateKey) {
+        displayKeyLimitDialog = true
+      } else {
+        displayBottomSheet = true
+      }
+    },
     modifier = Modifier
       .padding(bottom = 24.dp)
       .horizontalGutters()
@@ -270,10 +343,16 @@ private fun CreateNewKeyButton(
     Text(text = stringResource(R.string.MessageBackupsKeyRecordScreen__create_new_key))
   }
 
-  if (displayDialog) {
+  if (displayKeyLimitDialog) {
+    KeyLimitExceededDialog(
+      onClick = { displayKeyLimitDialog = false }
+    )
+  }
+
+  if (displayDownloadMediaDialog) {
     DownloadMediaDialog(
       onTurnOffAndDownloadClick = mode.onTurnOffAndDownloadClick,
-      onCancelClick = { displayDialog = false }
+      onCancelClick = { displayDownloadMediaDialog = false }
     )
   }
 
@@ -285,7 +364,7 @@ private fun CreateNewKeyButton(
       CreateNewBackupKeySheetContent(
         onContinueClick = {
           if (mode.isOptimizedStorageEnabled) {
-            displayDialog = true
+            displayDownloadMediaDialog = true
           } else {
             mode.onCreateNewKeyClick()
           }
@@ -334,6 +413,38 @@ private fun BackupKeySaveErrorDialog(
       message = message,
       dismiss = stringResource(android.R.string.ok),
       onDismiss = onDismiss
+    )
+  }
+}
+
+@Composable
+private fun RecordScreenBackHandler() {
+  var displayWarningDialog by remember { mutableStateOf(false) }
+  var didConfirmDialog by remember { mutableStateOf(false) }
+  val backPressedDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+
+  BackHandler(enabled = !didConfirmDialog) {
+    displayWarningDialog = true
+  }
+
+  LaunchedEffect(didConfirmDialog, backPressedDispatcher) {
+    if (didConfirmDialog) {
+      backPressedDispatcher?.onBackPressed()
+    }
+  }
+
+  if (displayWarningDialog) {
+    Dialogs.SimpleAlertDialog(
+      title = stringResource(R.string.MessageBackupsKeyRecordScreen__exit_backup_setup),
+      body = stringResource(R.string.MessageBackupsKeyRecordScreen__you_have_not_finished_setting_up_backups),
+      confirm = stringResource(R.string.MessageBackupsKeyRecordScreen__exit_backup_setup_confirm),
+      dismiss = stringResource(android.R.string.cancel),
+      onConfirm = {
+        didConfirmDialog = true
+      },
+      onDismiss = {
+        displayWarningDialog = false
+      }
     )
   }
 }
@@ -410,6 +521,19 @@ private fun DownloadMediaDialog(
   )
 }
 
+@Composable
+private fun KeyLimitExceededDialog(
+  onClick: () -> Unit = {}
+) {
+  Dialogs.SimpleAlertDialog(
+    title = stringResource(R.string.MessageBackupsKeyRecordScreen__limit_exceeded_title),
+    body = stringResource(R.string.MessageBackupsKeyRecordScreen__limit_exceeded_body),
+    confirm = stringResource(R.string.MessageBackupsKeyRecordScreen__ok),
+    onConfirm = {},
+    onDismiss = onClick
+  )
+}
+
 private suspend fun saveKeyToCredentialManager(
   @UiContext activityContext: Context,
   backupKey: String
@@ -432,8 +556,23 @@ private fun MessageBackupsKeyRecordScreenPreview() {
       mode = MessageBackupsKeyRecordMode.CreateNewKey(
         onCreateNewKeyClick = {},
         onTurnOffAndDownloadClick = {},
-        isOptimizedStorageEnabled = true
+        isOptimizedStorageEnabled = true,
+        canRotateKey = true
       )
+    )
+  }
+}
+
+@DayNightPreviews
+@Composable
+private fun MessageBackupsKeyRecordScreenSameAsOnDeviceKeyPreview() {
+  Previews.Preview {
+    MessageBackupsKeyRecordScreen(
+      backupKey = (0 until 63).map { (('A'..'Z') + ('0'..'9')).random() }.joinToString("") + "0",
+      keySaveState = null,
+      canOpenPasswordManagerSettings = true,
+      mode = MessageBackupsKeyRecordMode.Next(onNextClick = {}),
+      notifyKeyIsSameAsOnDeviceBackupKey = true
     )
   }
 }
@@ -455,7 +594,7 @@ private fun SaveKeyConfirmationDialogPreview() {
 @DayNightPreviews
 @Composable
 private fun CreateNewBackupKeySheetContentPreview() {
-  Previews.BottomSheetPreview {
+  Previews.BottomSheetContentPreview {
     Column {
       CreateNewBackupKeySheetContent()
     }
@@ -467,5 +606,13 @@ private fun CreateNewBackupKeySheetContentPreview() {
 private fun DownloadMediaDialogPreview() {
   Previews.Preview {
     DownloadMediaDialog()
+  }
+}
+
+@DayNightPreviews
+@Composable
+private fun KeyLimitExceededDialogPreview() {
+  Previews.Preview {
+    KeyLimitExceededDialog()
   }
 }

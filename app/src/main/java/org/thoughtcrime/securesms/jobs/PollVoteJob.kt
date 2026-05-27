@@ -1,12 +1,13 @@
 package org.thoughtcrime.securesms.jobs
 
 import org.signal.core.util.logging.Log
-import org.thoughtcrime.securesms.database.PollTables
 import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.model.MessageId
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.jobmanager.Job
 import org.thoughtcrime.securesms.jobmanager.impl.NetworkConstraint
+import org.thoughtcrime.securesms.jobmanager.impl.SealedSenderConstraint
 import org.thoughtcrime.securesms.jobs.protos.PollVoteJobData
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.messages.GroupSendUtil
@@ -29,6 +30,7 @@ class PollVoteJob(
   private val initialRecipientCount: Int,
   private val voteCount: Int,
   private val isRemoval: Boolean,
+  private val optionId: Long,
   parameters: Parameters
 ) : Job(parameters) {
 
@@ -36,7 +38,7 @@ class PollVoteJob(
     const val KEY: String = "PollVoteJob"
     private val TAG = Log.tag(PollVoteJob::class.java)
 
-    fun create(messageId: Long, voteCount: Int, isRemoval: Boolean): PollVoteJob? {
+    fun create(messageId: Long, voteCount: Int, isRemoval: Boolean, optionId: Long): PollVoteJob? {
       val message = SignalDatabase.messages.getMessageRecordOrNull(messageId)
       if (message == null) {
         Log.w(TAG, "Unable to find corresponding message")
@@ -49,7 +51,11 @@ class PollVoteJob(
         return null
       }
 
-      val recipients = conversationRecipient.participantIds.filter { it != Recipient.self().id }.map { it.toLong() }
+      val recipients = if (conversationRecipient.isGroup) {
+        conversationRecipient.participantIds.filter { it != Recipient.self().id }.map { it.toLong() }
+      } else {
+        listOf(conversationRecipient.id.toLong())
+      }
 
       return PollVoteJob(
         messageId = messageId,
@@ -57,9 +63,11 @@ class PollVoteJob(
         initialRecipientCount = recipients.size,
         voteCount = voteCount,
         isRemoval = isRemoval,
+        optionId = optionId,
         parameters = Parameters.Builder()
           .setQueue(conversationRecipient.id.toQueueKey())
           .addConstraint(NetworkConstraint.KEY)
+          .addConstraint(SealedSenderConstraint.KEY)
           .setMaxAttempts(Parameters.UNLIMITED)
           .setLifespan(1.days.inWholeMilliseconds)
           .build()
@@ -68,7 +76,7 @@ class PollVoteJob(
   }
 
   override fun serialize(): ByteArray {
-    return PollVoteJobData(messageId, recipientIds, initialRecipientCount, voteCount, isRemoval).encode()
+    return PollVoteJobData(messageId, recipientIds, initialRecipientCount, voteCount, isRemoval, optionId).encode()
   }
 
   override fun getFactoryKey(): String {
@@ -93,6 +101,11 @@ class PollVoteJob(
       return Result.failure()
     }
 
+    if (conversationRecipient.isPushV2Group && !SignalDatabase.groups.isActive(conversationRecipient.requireGroupId())) {
+      Log.w(TAG, "Cannot send poll vote to terminated or inactive group.")
+      return Result.failure()
+    }
+
     val poll = SignalDatabase.polls.getPoll(messageId)
     if (poll == null) {
       Log.w(TAG, "Unable to find corresponding poll")
@@ -107,7 +120,7 @@ class PollVoteJob(
 
     val targetSentTimestamp = message.dateSent
 
-    val recipients = Recipient.resolvedList(recipientIds.filter { it != Recipient.self().id.toLong() }.map { RecipientId.from(it) })
+    val recipients = Recipient.resolvedList(recipientIds.map { RecipientId.from(it) })
     val registered = RecipientUtil.getEligibleForSending(recipients)
     val unregistered = recipients - registered.toSet()
     val completions: List<Recipient> = deliver(conversationRecipient, registered, targetAuthor, targetSentTimestamp, poll)
@@ -126,7 +139,7 @@ class PollVoteJob(
   }
 
   private fun deliver(conversationRecipient: Recipient, destinations: List<Recipient>, targetAuthor: Recipient, targetSentTimestamp: Long, poll: PollRecord): List<Recipient> {
-    val votes = SignalDatabase.polls.getVotes(poll.id, poll.allowMultipleVotes)
+    val votes = SignalDatabase.polls.getVotes(poll.id, poll.allowMultipleVotes, voteCount)
 
     val dataMessageBuilder = newBuilder()
       .withTimestamp(System.currentTimeMillis())
@@ -139,23 +152,31 @@ class PollVoteJob(
         )
       )
 
-    GroupUtil.setDataMessageGroupContext(context, dataMessageBuilder, conversationRecipient.requireGroupId().requirePush())
+    if (conversationRecipient.isPushV2Group) {
+      GroupUtil.setDataMessageGroupContext(context, dataMessageBuilder, conversationRecipient.requireGroupId().requirePush())
+    }
 
     val dataMessage = dataMessageBuilder.build()
+    val nonSelfDestinations = destinations.filter { !it.isSelf }
 
     val results = GroupSendUtil.sendResendableDataMessage(
       context,
       conversationRecipient.groupId.map { obj: GroupId -> obj.requireV2() }.orElse(null),
       null,
-      destinations,
+      nonSelfDestinations,
       false,
       ContentHint.RESENDABLE,
       MessageId(messageId),
       dataMessage,
       true,
       false,
+      null,
       null
     )
+
+    if (conversationRecipient.isSelf) {
+      results.add(AppDependencies.signalServiceMessageSender.sendSyncMessage(dataMessage))
+    }
 
     val groupResult = GroupSendJobHelper.getCompletedSends(destinations, results)
 
@@ -163,20 +184,22 @@ class PollVoteJob(
       SignalDatabase.recipients.markUnregistered(unregistered)
     }
 
-    if (groupResult.completed.isNotEmpty()) {
+    if (groupResult.completed.isNotEmpty() || destinations.isEmpty()) {
       if (isRemoval) {
         SignalDatabase.polls.markPendingAsRemoved(
           pollId = poll.id,
           voterId = Recipient.self().id.toLong(),
           voteCount = voteCount,
-          messageId = poll.messageId
+          messageId = poll.messageId,
+          optionId = optionId
         )
       } else {
         SignalDatabase.polls.markPendingAsAdded(
           pollId = poll.id,
           voterId = Recipient.self().id.toLong(),
           voteCount = voteCount,
-          messageId = poll.messageId
+          messageId = poll.messageId,
+          optionId = optionId
         )
       }
     }
@@ -198,17 +221,7 @@ class PollVoteJob(
       return
     }
 
-    val voteState = SignalDatabase.polls.getPollVoteStateForGivenVote(pollId, voteCount)
-
-    if (isRemoval && voteState == PollTables.VoteState.PENDING_REMOVE) {
-      Log.w(TAG, "Vote removal failed so we are adding it back")
-      SignalDatabase.polls.setPollVoteStateForGivenVote(pollId, Recipient.self().id.toLong(), voteCount, messageId, isRemoval)
-    } else if (!isRemoval && voteState == PollTables.VoteState.PENDING_ADD) {
-      Log.w(TAG, "Voting failed so we are removing it")
-      SignalDatabase.polls.setPollVoteStateForGivenVote(pollId, Recipient.self().id.toLong(), voteCount, messageId, isRemoval)
-    } else {
-      Log.w(TAG, "Voting state does not match what we'd expect, so ignoring.")
-    }
+    SignalDatabase.polls.removePendingVote(pollId, optionId, voteCount, messageId)
   }
 
   private fun buildPollVote(
@@ -235,6 +248,7 @@ class PollVoteJob(
         initialRecipientCount = data.initialRecipientCount,
         voteCount = data.voteCount,
         isRemoval = data.isRemoval,
+        optionId = data.optionId,
         parameters = parameters
       )
     }

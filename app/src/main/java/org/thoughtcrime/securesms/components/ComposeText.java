@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.os.Build;
-import android.os.Bundle;
 import android.text.Annotation;
 import android.text.Editable;
 import android.text.Selection;
@@ -15,6 +14,7 @@ import android.text.TextUtils;
 import android.text.TextUtils.TruncateAt;
 import android.util.AttributeSet;
 import android.view.ActionMode;
+import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.inputmethod.EditorInfo;
@@ -23,10 +23,8 @@ import android.view.inputmethod.InputConnection;
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 import androidx.core.content.ContextCompat;
-import androidx.core.view.inputmethod.EditorInfoCompat;
-import androidx.core.view.inputmethod.InputConnectionCompat;
-import androidx.core.view.inputmethod.InputContentInfoCompat;
 
 import org.signal.core.util.StringUtil;
 import org.signal.core.util.logging.Log;
@@ -56,6 +54,7 @@ import static org.thoughtcrime.securesms.database.MentionUtil.MENTION_STARTER;
 
 public class ComposeText extends EmojiEditText {
 
+  private static final String  TAG              = Log.tag(ComposeText.class);
   private static final char    EMOJI_STARTER    = ':';
   private static final int     MAX_QUERY_LENGTH = 64;
   private static final Pattern TIME_PATTERN     = Pattern.compile("^[0-9]{1,2}:[0-9]{1,2}$");
@@ -64,8 +63,8 @@ public class ComposeText extends EmojiEditText {
   private MentionRendererDelegate mentionRendererDelegate;
   private SpoilerRendererDelegate spoilerRendererDelegate;
   private MentionValidatorWatcher mentionValidatorWatcher;
+  private MessageSendType         lastMessageSendType;
 
-  @Nullable private InputPanel.MediaListener      mediaListener;
   @Nullable private CursorPositionChangedListener cursorPositionChangedListener;
   @Nullable private InlineQueryChangedListener    inlineQueryChangedListener;
   @Nullable private StylingChangedListener        stylingChangedListener;
@@ -98,11 +97,21 @@ public class ComposeText extends EmojiEditText {
 
   @Override
   protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+    try {
+      super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+    } catch (IndexOutOfBoundsException e) {
+      Log.w(TAG, "IndexOutOfBoundsException during onMeasure, retrying", e);
+      super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+    }
 
     if (getLayout() != null && !TextUtils.isEmpty(hint)) {
       setHintWithChecks(ellipsizeToWidth(hint));
-      super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+      try {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+      } catch (IndexOutOfBoundsException e) {
+        Log.w(TAG, "IndexOutOfBoundsException during hint onMeasure, retrying", e);
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+      }
     }
   }
 
@@ -209,6 +218,11 @@ public class ComposeText extends EmojiEditText {
   }
 
   public void setMessageSendType(MessageSendType messageSendType) {
+    if (messageSendType.equals(lastMessageSendType)) {
+      return;
+    }
+    lastMessageSendType = messageSendType;
+
     int imeOptions = (getImeOptions() & ~EditorInfo.IME_MASK_ACTION) | EditorInfo.IME_ACTION_SEND;
     int inputType  = getInputType();
 
@@ -228,20 +242,7 @@ public class ComposeText extends EmojiEditText {
       editorInfo.imeOptions &= ~EditorInfo.IME_FLAG_NO_ENTER_ACTION;
     }
 
-    if (mediaListener == null) {
-      return inputConnection;
-    }
-
-    if (inputConnection == null) {
-      return null;
-    }
-
-    EditorInfoCompat.setContentMimeTypes(editorInfo, new String[] { "image/jpeg", "image/png", "image/gif" });
-    return InputConnectionCompat.createWrapper(inputConnection, editorInfo, new CommitContentListener(mediaListener));
-  }
-
-  public void setMediaListener(@Nullable InputPanel.MediaListener mediaListener) {
-    this.mediaListener = mediaListener;
+    return inputConnection;
   }
 
   public boolean hasMentions() {
@@ -266,6 +267,10 @@ public class ComposeText extends EmojiEditText {
   }
 
   private void initialize() {
+    if (Build.VERSION.SDK_INT >= 26) {
+      setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+    }
+
     if (TextSecurePreferences.isIncognitoKeyboardEnabled(getContext())) {
       setImeOptions(getImeOptions() | 16777216);
     }
@@ -477,16 +482,20 @@ public class ComposeText extends EmojiEditText {
   /**
    * Return true if we think the user may be inputting a time.
    */
-  private static boolean couldBeTimeEntry(@NonNull CharSequence text, int startIndex) {
+  @VisibleForTesting
+  static boolean couldBeTimeEntry(@NonNull CharSequence text, int startIndex) {
     if (startIndex <= 0 || startIndex + 1 >= text.length()) {
       return false;
     }
 
     int startOfToken = startIndex;
-    while (startOfToken > 0 && !Character.isWhitespace(text.charAt(startOfToken))) {
-      startOfToken--;
+    while (startOfToken > 0) {
+      int prevIndex = startOfToken - 1;
+      if (Character.isWhitespace(text.charAt(prevIndex))) {
+        break;
+      }
+      startOfToken = prevIndex;
     }
-    startOfToken++;
 
     int endOfToken = startIndex;
     while (endOfToken < text.length() && !Character.isWhitespace(text.charAt(endOfToken))) {
@@ -548,38 +557,6 @@ public class ComposeText extends EmojiEditText {
     }
 
     return true;
-  }
-
-  private static class CommitContentListener implements InputConnectionCompat.OnCommitContentListener {
-
-    private static final String TAG = Log.tag(CommitContentListener.class);
-
-    private final InputPanel.MediaListener mediaListener;
-
-    private CommitContentListener(@NonNull InputPanel.MediaListener mediaListener) {
-      this.mediaListener = mediaListener;
-    }
-
-    @Override
-    public boolean onCommitContent(InputContentInfoCompat inputContentInfo, int flags, Bundle opts) {
-      if (Build.VERSION.SDK_INT >= 25 && (flags & InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0) {
-        try {
-          inputContentInfo.requestPermission();
-        } catch (Exception e) {
-          Log.w(TAG, e);
-          return false;
-        }
-      }
-
-      if (inputContentInfo.getDescription().getMimeTypeCount() > 0) {
-        mediaListener.onMediaSelected(inputContentInfo.getContentUri(),
-                                      inputContentInfo.getDescription().getMimeType(0));
-
-        return true;
-      }
-
-      return false;
-    }
   }
 
   private static class QueryStart {

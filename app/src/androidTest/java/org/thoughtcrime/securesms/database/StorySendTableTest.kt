@@ -16,13 +16,13 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.signal.core.models.ServiceId.ACI
 import org.thoughtcrime.securesms.database.model.DistributionListId
 import org.thoughtcrime.securesms.database.model.StoryType
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.testing.SignalActivityRule
 import org.whispersystems.signalservice.api.push.DistributionId
-import org.whispersystems.signalservice.api.push.ServiceId.ACI
 import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
@@ -190,7 +190,7 @@ class StorySendTableTest {
   @Test
   fun getRemoteDeleteRecipients_overlapWithPreviousDeletes() {
     storySends.insert(messageId1, recipients1to10, 200, false, distributionId1)
-    SignalDatabase.messages.markAsRemoteDelete(messageId1)
+    SignalDatabase.messages.markAsDeleteBySelf(messageId1)
 
     storySends.insert(messageId2, recipients6to15, 200, true, distributionId2)
 
@@ -287,7 +287,7 @@ class StorySendTableTest {
   fun givenTwoStoriesAndOneIsRemoteDeleted_whenIGetFullSentStorySyncManifestForStory2_thenIExpectNonNullResult() {
     storySends.insert(messageId1, recipients1to10, 200, false, distributionId1)
     storySends.insert(messageId2, recipients1to10, 200, true, distributionId2)
-    SignalDatabase.messages.markAsRemoteDelete(messageId1)
+    SignalDatabase.messages.markAsDeleteBySelf(messageId1)
 
     val manifest = storySends.getFullSentStorySyncManifest(messageId2, 200)!!
 

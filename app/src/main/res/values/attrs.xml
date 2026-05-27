@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <attr name="theme_type" format="string"/>
-
     <attr name="search_view_style" format="reference" />
 
     <attr name="circularProgressMaterialButtonStyle" format="reference" />
@@ -382,6 +380,5 @@
 
     <declare-styleable name="InsetAwareConstraintLayout">
         <attr name="animateKeyboardChanges" format="boolean" />
-        <attr name="applyRootInsets" format="boolean" />
     </declare-styleable>
 </resources>

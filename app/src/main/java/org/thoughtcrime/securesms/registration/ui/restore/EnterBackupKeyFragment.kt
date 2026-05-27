@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -25,13 +26,12 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import org.signal.core.ui.compose.ComposeFragment
 import org.signal.core.ui.compose.Dialogs
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.components.contactsupport.ContactSupportDialog
 import org.thoughtcrime.securesms.components.contactsupport.ContactSupportViewModel
 import org.thoughtcrime.securesms.components.contactsupport.SendSupportEmailEffect
-import org.thoughtcrime.securesms.compose.ComposeFragment
-import org.thoughtcrime.securesms.registration.data.network.RegisterAccountResult
 import org.thoughtcrime.securesms.registration.ui.RegistrationCheckpoint
 import org.thoughtcrime.securesms.registration.ui.RegistrationViewModel
 import org.thoughtcrime.securesms.registration.ui.phonenumber.EnterPhoneNumberMode
@@ -96,7 +96,7 @@ class EnterBackupKeyFragment : ComposeFragment() {
 
     EnterBackupKeyScreen(
       isDisplayedDuringManualRestore = true,
-      backupKey = viewModel.backupKey,
+      enteredText = viewModel.enteredText,
       inProgress = sharedState.inProgress,
       isBackupKeyValid = state.backupKeyValid,
       chunkLength = state.chunkLength,
@@ -129,7 +129,8 @@ class EnterBackupKeyFragment : ComposeFragment() {
               findNavController().safeNavigate(EnterBackupKeyFragmentDirections.goToEnterPhoneNumber(EnterPhoneNumberMode.RESTART_AFTER_COLLECTION))
             },
             onDismiss = { showSkipRestoreWarning = false },
-            confirmColor = MaterialTheme.colorScheme.error
+            confirmColor = MaterialTheme.colorScheme.error,
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
           )
         }
         if (contactSupportState.show) {
@@ -146,6 +147,7 @@ class EnterBackupKeyFragment : ComposeFragment() {
             },
             onAbandonRemoteRestoreAfterRegistration = {
               viewLifecycleOwner.lifecycleScope.launch {
+                sharedViewModel.resetRestoreDecision()
                 sharedViewModel.resumeNormalRegistration()
               }
             },
@@ -200,7 +202,8 @@ private fun ErrorContent(
         onConfirm = onBackupTierRetry,
         onDeny = onAbandonRemoteRestoreAfterRegistration,
         onDismiss = onBackupTierNotRestoredDismiss,
-        onDismissRequest = {}
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
       )
     }
   } else if (state.showBackupTierNotRestoreError == EnterBackupKeyViewModel.TierRestoreError.NOT_FOUND) {
@@ -211,30 +214,15 @@ private fun ErrorContent(
       dismiss = stringResource(R.string.EnterBackupKey_skip_restore),
       onConfirm = onBackupTierRetry,
       onDeny = onAbandonRemoteRestoreAfterRegistration,
-      onDismiss = onBackupTierNotRestoredDismiss
+      onDismiss = onBackupTierNotRestoredDismiss,
+      properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
     )
-  } else if (state.showRegistrationError) {
-    if (state.registerAccountResult is RegisterAccountResult.IncorrectRecoveryPassword) {
-      Dialogs.SimpleAlertDialog(
-        title = stringResource(R.string.EnterBackupKey_incorrect_backup_key_title),
-        body = stringResource(R.string.EnterBackupKey_incorrect_backup_key_message),
-        confirm = stringResource(R.string.EnterBackupKey_try_again),
-        dismiss = stringResource(R.string.EnterBackupKey_backup_key_help),
-        onConfirm = {},
-        onDeny = onBackupKeyHelp,
-        onDismiss = onRegistrationErrorDismiss
-      )
-    } else {
-      val message = when (state.registerAccountResult) {
-        is RegisterAccountResult.RateLimited -> stringResource(R.string.RegistrationActivity_you_have_made_too_many_attempts_please_try_again_later)
-        else -> stringResource(R.string.RegistrationActivity_error_connecting_to_service)
-      }
-
-      Dialogs.SimpleMessageDialog(
-        message = message,
-        onDismiss = onRegistrationErrorDismiss,
-        dismiss = stringResource(android.R.string.ok)
-      )
-    }
+  } else {
+    RegistrationErrorDialogs(
+      showRegistrationError = state.showRegistrationError,
+      registerAccountResult = state.registerAccountResult,
+      onRegistrationErrorDismiss = onRegistrationErrorDismiss,
+      onBackupKeyHelp = onBackupKeyHelp
+    )
   }
 }

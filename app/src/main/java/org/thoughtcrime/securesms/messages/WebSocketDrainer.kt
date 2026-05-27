@@ -3,6 +3,7 @@ package org.thoughtcrime.securesms.messages
 import android.os.PowerManager
 import androidx.annotation.AnyThread
 import androidx.annotation.WorkerThread
+import org.signal.core.util.ServiceUtil
 import org.signal.core.util.Stopwatch
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.dependencies.AppDependencies
@@ -13,7 +14,6 @@ import org.thoughtcrime.securesms.jobs.MarkerJob
 import org.thoughtcrime.securesms.jobs.PushProcessMessageJob
 import org.thoughtcrime.securesms.util.NetworkUtil
 import org.thoughtcrime.securesms.util.PowerManagerCompat
-import org.thoughtcrime.securesms.util.ServiceUtil
 import org.thoughtcrime.securesms.util.WakeLockUtil
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -27,7 +27,7 @@ object WebSocketDrainer {
   private val TAG = Log.tag(WebSocketDrainer::class.java)
 
   private const val KEEP_ALIVE_TOKEN = "WebsocketStrategy"
-  private const val WAKELOCK_PREFIX = "websocket-strategy-"
+  private const val WAKELOCK_TAG = "websocket-strategy"
 
   private val QUEUE_TIMEOUT = 30.seconds.inWholeMilliseconds
 
@@ -65,13 +65,12 @@ object WebSocketDrainer {
       websocketDrainTimeout = NO_NETWORK_WEBSOCKET_TIMEOUT
     }
 
-    val wakeLockTag = WAKELOCK_PREFIX + System.currentTimeMillis()
-    val wakeLock = WakeLockUtil.acquire(AppDependencies.application, PowerManager.PARTIAL_WAKE_LOCK, websocketDrainTimeout + QUEUE_TIMEOUT, wakeLockTag)
+    val wakeLock = WakeLockUtil.acquire(AppDependencies.application, PowerManager.PARTIAL_WAKE_LOCK, websocketDrainTimeout + QUEUE_TIMEOUT, WAKELOCK_TAG)
 
     return try {
       drainAndProcess(websocketDrainTimeout, keepAliveToken)
     } finally {
-      WakeLockUtil.release(wakeLock, wakeLockTag)
+      WakeLockUtil.release(wakeLock, WAKELOCK_TAG)
     }
   }
 

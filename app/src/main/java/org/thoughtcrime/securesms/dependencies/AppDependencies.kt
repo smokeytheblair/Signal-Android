@@ -4,14 +4,35 @@ import android.annotation.SuppressLint
 import android.app.Application
 import io.reactivex.rxjava3.subjects.BehaviorSubject
 import okhttp3.OkHttpClient
+import org.signal.core.ui.CoreUiDependencies
+import org.signal.core.util.CoreUtilDependencies
 import org.signal.core.util.billing.BillingApi
 import org.signal.core.util.concurrent.DeadlockDetector
 import org.signal.core.util.concurrent.LatestValueObservable
 import org.signal.core.util.orNull
 import org.signal.core.util.resettableLazy
+import org.signal.glide.SignalGlideDependencies
 import org.signal.libsignal.net.Network
 import org.signal.libsignal.zkgroup.profiles.ClientZkProfileOperations
 import org.signal.libsignal.zkgroup.receipts.ClientZkReceiptOperations
+import org.signal.mediasend.MediaSendDependencies
+import org.signal.network.api.ArchiveApi
+import org.signal.network.api.AttachmentApi
+import org.signal.network.api.CallingApi
+import org.signal.network.api.CdsApi
+import org.signal.network.api.CertificateApi
+import org.signal.network.api.KeysApiV2
+import org.signal.network.api.LinkDeviceApi
+import org.signal.network.api.MessageApiV2
+import org.signal.network.api.PaymentsApi
+import org.signal.network.api.ProvisioningApi
+import org.signal.network.api.RateLimitChallengeApi
+import org.signal.network.api.RemoteConfigApi
+import org.signal.network.api.SvrBApi
+import org.signal.network.api.UsernameApi
+import org.signal.network.rest.SignalRestClient
+import org.signal.network.service.MessageService
+import org.thoughtcrime.securesms.BuildConfig
 import org.thoughtcrime.securesms.components.TypingStatusRepository
 import org.thoughtcrime.securesms.components.TypingStatusSender
 import org.thoughtcrime.securesms.crypto.storage.SignalServiceDataStoreImpl
@@ -28,9 +49,11 @@ import org.thoughtcrime.securesms.push.SignalServiceNetworkAccess
 import org.thoughtcrime.securesms.recipients.LiveRecipientCache
 import org.thoughtcrime.securesms.revealable.ViewOnceMessageManager
 import org.thoughtcrime.securesms.service.DeletedCallEventManager
+import org.thoughtcrime.securesms.service.ExpiringArchivedStoriesManager
 import org.thoughtcrime.securesms.service.ExpiringMessageManager
 import org.thoughtcrime.securesms.service.ExpiringStoriesManager
 import org.thoughtcrime.securesms.service.PendingRetryReceiptManager
+import org.thoughtcrime.securesms.service.PinnedMessageManager
 import org.thoughtcrime.securesms.service.ScheduledMessageManager
 import org.thoughtcrime.securesms.service.TrimThreadsByDateManager
 import org.thoughtcrime.securesms.service.webrtc.SignalCallManager
@@ -45,29 +68,18 @@ import org.whispersystems.signalservice.api.SignalServiceDataStore
 import org.whispersystems.signalservice.api.SignalServiceMessageReceiver
 import org.whispersystems.signalservice.api.SignalServiceMessageSender
 import org.whispersystems.signalservice.api.account.AccountApi
-import org.whispersystems.signalservice.api.archive.ArchiveApi
-import org.whispersystems.signalservice.api.attachment.AttachmentApi
-import org.whispersystems.signalservice.api.calling.CallingApi
-import org.whispersystems.signalservice.api.cds.CdsApi
-import org.whispersystems.signalservice.api.certificate.CertificateApi
 import org.whispersystems.signalservice.api.donations.DonationsApi
 import org.whispersystems.signalservice.api.groupsv2.GroupsV2Operations
 import org.whispersystems.signalservice.api.keys.KeysApi
-import org.whispersystems.signalservice.api.link.LinkDeviceApi
 import org.whispersystems.signalservice.api.message.MessageApi
-import org.whispersystems.signalservice.api.payments.PaymentsApi
 import org.whispersystems.signalservice.api.profiles.ProfileApi
-import org.whispersystems.signalservice.api.provisioning.ProvisioningApi
-import org.whispersystems.signalservice.api.ratelimit.RateLimitChallengeApi
 import org.whispersystems.signalservice.api.registration.RegistrationApi
-import org.whispersystems.signalservice.api.remoteconfig.RemoteConfigApi
 import org.whispersystems.signalservice.api.services.DonationsService
 import org.whispersystems.signalservice.api.services.ProfileService
 import org.whispersystems.signalservice.api.storage.StorageServiceApi
-import org.whispersystems.signalservice.api.svr.SvrBApi
-import org.whispersystems.signalservice.api.username.UsernameApi
 import org.whispersystems.signalservice.api.websocket.SignalWebSocket
 import org.whispersystems.signalservice.api.websocket.WebSocketConnectionState
+import org.whispersystems.signalservice.internal.configuration.HttpProxy
 import org.whispersystems.signalservice.internal.configuration.SignalServiceConfiguration
 import org.whispersystems.signalservice.internal.push.PushServiceSocket
 import java.util.function.Supplier
@@ -94,6 +106,18 @@ object AppDependencies {
 
     _application = application
     AppDependencies.provider = provider
+
+    CoreUtilDependencies.init(
+      application,
+      CoreUtilDependenciesProvider,
+      CoreUtilDependencies.BuildInfo(
+        canonicalVersionCode = BuildConfig.CANONICAL_VERSION_CODE,
+        buildTimestamp = BuildConfig.BUILD_TIMESTAMP
+      )
+    )
+    CoreUiDependencies.init(application, CoreUiDependenciesProvider)
+    SignalGlideDependencies.init(application, SignalGlideDependenciesProvider)
+    MediaSendDependencies.init(application, MediaSendDependenciesProvider)
   }
 
   @JvmStatic
@@ -111,7 +135,7 @@ object AppDependencies {
 
   @JvmStatic
   val jobManager: JobManager by lazy {
-    provider.provideJobManager()
+    provider.provideJobManager(provider.provideJobManagerConfigurationBuilder())
   }
 
   @JvmStatic
@@ -210,8 +234,18 @@ object AppDependencies {
   }
 
   @JvmStatic
+  val expireArchivedStoriesManager: ExpiringArchivedStoriesManager by lazy {
+    provider.provideExpiringArchivedStoriesManager()
+  }
+
+  @JvmStatic
   val scheduledMessageManager: ScheduledMessageManager by lazy {
     provider.provideScheduledMessageManager()
+  }
+
+  @JvmStatic
+  val pinnedMessageManager: PinnedMessageManager by lazy {
+    provider.providePinnedMessageManager()
   }
 
   @JvmStatic
@@ -249,6 +283,10 @@ object AppDependencies {
   @JvmStatic
   val signalServiceMessageSender: SignalServiceMessageSender
     get() = networkModule.signalServiceMessageSender
+
+  @JvmStatic
+  val messageService: MessageService
+    get() = networkModule.messageService
 
   @JvmStatic
   val signalServiceAccountManager: SignalServiceAccountManager
@@ -315,6 +353,14 @@ object AppDependencies {
     get() = networkModule.linkDeviceApi
 
   @JvmStatic
+  val pushServiceSocket: PushServiceSocket
+    get() = networkModule.pushServiceSocket
+
+  @JvmStatic
+  val signalRestClient: SignalRestClient
+    get() = networkModule.signalRestClient
+
+  @JvmStatic
   val registrationApi: RegistrationApi
     get() = networkModule.registrationApi
 
@@ -360,6 +406,9 @@ object AppDependencies {
   val donationsApi: DonationsApi
     get() = networkModule.donationsApi
 
+  val keyTransparencyApi: KeyTransparencyApi
+    get() = networkModule.keyTransparencyApi
+
   @JvmStatic
   val okHttpClient: OkHttpClient
     get() = networkModule.okHttpClient
@@ -384,9 +433,9 @@ object AppDependencies {
     networkModule.openConnections()
   }
 
-  fun onSystemHttpProxyChange(host: String?, port: Int?): Boolean {
+  fun onSystemHttpProxyChange(systemHttpProxy: HttpProxy?): Boolean {
     val currentSystemProxy = signalServiceNetworkAccess.getConfiguration().systemHttpProxy.orNull()
-    return if (currentSystemProxy?.host != host || currentSystemProxy?.port != port) {
+    return if (currentSystemProxy?.host != systemHttpProxy?.host || currentSystemProxy?.port != systemHttpProxy?.port) {
       resetNetwork()
       true
     } else {
@@ -396,13 +445,16 @@ object AppDependencies {
 
   interface Provider {
     fun providePushServiceSocket(signalServiceConfiguration: SignalServiceConfiguration, groupsV2Operations: GroupsV2Operations): PushServiceSocket
+    fun provideSignalRestClient(signalServiceConfiguration: SignalServiceConfiguration): SignalRestClient
     fun provideGroupsV2Operations(signalServiceConfiguration: SignalServiceConfiguration): GroupsV2Operations
     fun provideSignalServiceAccountManager(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, accountApi: AccountApi, pushServiceSocket: PushServiceSocket, groupsV2Operations: GroupsV2Operations): SignalServiceAccountManager
-    fun provideSignalServiceMessageSender(protocolStore: SignalServiceDataStore, pushServiceSocket: PushServiceSocket, attachmentApi: AttachmentApi, messageApi: MessageApi, keysApi: KeysApi): SignalServiceMessageSender
+    fun provideSignalServiceMessageSender(protocolStore: SignalServiceDataStore, pushServiceSocket: PushServiceSocket, messageApi: MessageApi, keysApi: KeysApi): SignalServiceMessageSender
+    fun provideMessageService(protocolStore: SignalServiceDataStore, messageApiV2: MessageApiV2, keysApiV2: KeysApiV2): MessageService
     fun provideSignalServiceMessageReceiver(pushServiceSocket: PushServiceSocket): SignalServiceMessageReceiver
     fun provideSignalServiceNetworkAccess(): SignalServiceNetworkAccess
     fun provideRecipientCache(): LiveRecipientCache
-    fun provideJobManager(): JobManager
+    fun provideJobManager(configurationBuilder: JobManager.Configuration.Builder): JobManager
+    fun provideJobManagerConfigurationBuilder(): JobManager.Configuration.Builder
     fun provideFrameRateTracker(): FrameRateTracker
     fun provideMegaphoneRepository(): MegaphoneRepository
     fun provideEarlyMessageCache(): EarlyMessageCache
@@ -411,6 +463,7 @@ object AppDependencies {
     fun provideTrimThreadsByDateManager(): TrimThreadsByDateManager
     fun provideViewOnceMessageManager(): ViewOnceMessageManager
     fun provideExpiringStoriesManager(): ExpiringStoriesManager
+    fun provideExpiringArchivedStoriesManager(): ExpiringArchivedStoriesManager
     fun provideExpiringMessageManager(): ExpiringMessageManager
     fun provideDeletedCallEventManager(): DeletedCallEventManager
     fun provideTypingStatusRepository(): TypingStatusRepository
@@ -430,9 +483,10 @@ object AppDependencies {
     fun provideDeadlockDetector(): DeadlockDetector
     fun provideClientZkReceiptOperations(signalServiceConfiguration: SignalServiceConfiguration): ClientZkReceiptOperations
     fun provideScheduledMessageManager(): ScheduledMessageManager
+    fun providePinnedMessageManager(): PinnedMessageManager
     fun provideLibsignalNetwork(config: SignalServiceConfiguration): Network
     fun provideBillingApi(): BillingApi
-    fun provideArchiveApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, unauthWebSocket: SignalWebSocket.UnauthenticatedWebSocket, pushServiceSocket: PushServiceSocket): ArchiveApi
+    fun provideArchiveApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, unauthWebSocket: SignalWebSocket.UnauthenticatedWebSocket, pushServiceSocket: PushServiceSocket, signalServiceConfiguration: SignalServiceConfiguration): ArchiveApi
     fun provideKeysApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, unauthWebSocket: SignalWebSocket.UnauthenticatedWebSocket): KeysApi
     fun provideAttachmentApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, pushServiceSocket: PushServiceSocket): AttachmentApi
     fun provideLinkDeviceApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket): LinkDeviceApi
@@ -442,7 +496,7 @@ object AppDependencies {
     fun provideUnauthWebSocket(signalServiceConfigurationSupplier: Supplier<SignalServiceConfiguration>, libSignalNetworkSupplier: Supplier<Network>): SignalWebSocket.UnauthenticatedWebSocket
     fun provideAccountApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket): AccountApi
     fun provideUsernameApi(unauthWebSocket: SignalWebSocket.UnauthenticatedWebSocket): UsernameApi
-    fun provideCallingApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, pushServiceSocket: PushServiceSocket): CallingApi
+    fun provideCallingApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, unauthWebSocket: SignalWebSocket.UnauthenticatedWebSocket, pushServiceSocket: PushServiceSocket): CallingApi
     fun providePaymentsApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket): PaymentsApi
     fun provideCdsApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket): CdsApi
     fun provideRateLimitChallengeApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket): RateLimitChallengeApi
@@ -453,5 +507,6 @@ object AppDependencies {
     fun provideRemoteConfigApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, pushServiceSocket: PushServiceSocket): RemoteConfigApi
     fun provideDonationsApi(authWebSocket: SignalWebSocket.AuthenticatedWebSocket, unauthWebSocket: SignalWebSocket.UnauthenticatedWebSocket): DonationsApi
     fun provideSvrBApi(libSignalNetwork: Network): SvrBApi
+    fun provideKeyTransparencyApi(unauthWebSocket: SignalWebSocket.UnauthenticatedWebSocket): KeyTransparencyApi
   }
 }

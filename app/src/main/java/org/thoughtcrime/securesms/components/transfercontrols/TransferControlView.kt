@@ -18,6 +18,7 @@ import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
 import org.signal.core.util.ByteSize
+import org.signal.core.util.ThrottledDebouncer
 import org.signal.core.util.bytes
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
@@ -29,7 +30,6 @@ import org.thoughtcrime.securesms.databinding.TransferControlsViewBinding
 import org.thoughtcrime.securesms.events.PartProgressEvent
 import org.thoughtcrime.securesms.mms.Slide
 import org.thoughtcrime.securesms.util.MediaUtil
-import org.thoughtcrime.securesms.util.ThrottledDebouncer
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.visible
 import java.util.UUID
@@ -66,7 +66,9 @@ class TransferControlView @JvmOverloads constructor(context: Context, attrs: Att
 
   private fun updateState(stateFactory: (TransferControlViewState) -> TransferControlViewState) {
     val newState = stateFactory.invoke(state)
-    if (newState != state && !(deriveMode(state) == Mode.GONE && deriveMode(newState) == Mode.GONE)) {
+    val oldMode = deriveMode(state)
+    val newMode = deriveMode(newState)
+    if ((newState != state || oldMode != newMode) && !(oldMode == Mode.GONE && newMode == Mode.GONE)) {
       progressUpdateDebouncer.publish {
         applyState(newState)
       }

@@ -19,7 +19,7 @@ import org.thoughtcrime.securesms.mms.GifSlide;
 import org.thoughtcrime.securesms.mms.Slide;
 import org.thoughtcrime.securesms.mms.StickerSlide;
 import org.thoughtcrime.securesms.util.MessageRecordUtil;
-import org.thoughtcrime.securesms.util.Util;
+import org.signal.core.util.Util;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -74,8 +74,11 @@ public final class ThreadBodyUtil {
     } else if (MessageRecordUtil.hasPoll(record)) {
       return new ThreadBody(context.getString(R.string.Poll__poll_question, record.getPoll().getQuestion()));
     } else if (MessageRecordUtil.hasPollTerminate(record)) {
-      String creator = record.isOutgoing() ? context.getResources().getString(R.string.MessageRecord_you) : record.getFromRecipient().getDisplayName(context);
-      return new ThreadBody(context.getString(R.string.Poll__poll_end, creator, record.getMessageExtras().pollTerminate.question));
+      return record.getFromRecipient().isSelf() ? new ThreadBody(context.getString(R.string.Poll__you_poll_end, record.getMessageExtras().pollTerminate.question))
+                                                : new ThreadBody(context.getString(R.string.Poll__poll_end, record.getFromRecipient().getDisplayName(context), record.getMessageExtras().pollTerminate.question));
+    } else if (MessageRecordUtil.hasPinnedMessageUpdate(record)) {
+      return record.getFromRecipient().isSelf() ? new ThreadBody(context.getString(R.string.PinnedMessage__you_pinned_a_message))
+                                                : new ThreadBody(context.getString(R.string.PinnedMessage__s_pinned_a_message, record.getFromRecipient().getDisplayName(context)));
     }
 
     boolean hasImage = false;
@@ -148,10 +151,11 @@ public final class ThreadBodyUtil {
     if (call != null) {
       boolean accepted = call.getEvent() == CallTable.Event.ACCEPTED;
       if (call.getDirection() == CallTable.Direction.OUTGOING) {
-        if (call.getType() == CallTable.Type.AUDIO_CALL) {
-          return context.getString(R.string.MessageRecord_outgoing_voice_call);
+        boolean isVideoCall = call.getType() == CallTable.Type.VIDEO_CALL;
+        if (call.getEvent() == CallTable.Event.NOT_ACCEPTED) {
+          return context.getString(isVideoCall ? R.string.MessageRecord_unanswered_video_call : R.string.MessageRecord_unanswered_voice_call);
         } else {
-          return context.getString(R.string.MessageRecord_outgoing_video_call);
+          return context.getString(isVideoCall ? R.string.MessageRecord_outgoing_video_call : R.string.MessageRecord_outgoing_voice_call);
         }
       } else {
         boolean isVideoCall = call.getType() == CallTable.Type.VIDEO_CALL;

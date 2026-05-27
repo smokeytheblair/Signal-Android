@@ -11,12 +11,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldRole
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,8 +24,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -35,6 +35,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.createGraph
 import org.thoughtcrime.securesms.R
 
+/**
+ * Displayed when the user has not selected content for a given tab.
+ */
 @Composable
 fun EmptyDetailScreen() {
   Box(
@@ -45,8 +48,10 @@ fun EmptyDetailScreen() {
     Icon(
       painter = painterResource(R.drawable.ic_signal_logo_large),
       contentDescription = null,
-      tint = Color(0x58607152),
-      modifier = Modifier.align(Alignment.Center)
+      tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.32f),
+      modifier = Modifier
+        .size(80.dp)
+        .align(Alignment.Center)
     )
   }
 }
@@ -59,11 +64,14 @@ fun EmptyDetailScreen() {
  * utilizing collectAsStateWithLifecycle. Then the latest value is remembered as a saveable using the default [MainNavigationDetailLocation.Saver]
  */
 @Composable
-fun rememberMainNavigationDetailLocation(
-  mainNavigationViewModel: MainNavigationViewModel
-): State<MainNavigationDetailLocation> {
+fun MainNavigationDetailLocationEffect(
+  mainNavigationViewModel: MainNavigationViewModel,
+  onWillFocusPrimary: suspend () -> Unit = {}
+) {
   val state = rememberSaveable(
-    stateSaver = MainNavigationDetailLocation.Saver()
+    stateSaver = MainNavigationDetailLocation.Saver(
+      mainNavigationViewModel.earlyNavigationDetailLocationRequested
+    )
   ) {
     mutableStateOf(mainNavigationViewModel.earlyNavigationDetailLocationRequested ?: MainNavigationDetailLocation.Empty)
   }
@@ -75,6 +83,9 @@ fun rememberMainNavigationDetailLocation(
           if (it == MainNavigationDetailLocation.Empty) {
             ThreePaneScaffoldRole.Secondary
           } else {
+            if (it.isContentRoot) {
+              onWillFocusPrimary()
+            }
             ThreePaneScaffoldRole.Primary
           }
         )
@@ -83,8 +94,6 @@ fun rememberMainNavigationDetailLocation(
       state.value = it
     }
   }
-
-  return state
 }
 
 @Composable
@@ -137,6 +146,7 @@ fun rememberDetailNavHostController(
 
 fun NavHostController.navigateToDetailLocation(location: MainNavigationDetailLocation) {
   navigate(location) {
+    launchSingleTop = true
     if (location.isContentRoot) {
       popUpTo(graph.id) { inclusive = true }
     }

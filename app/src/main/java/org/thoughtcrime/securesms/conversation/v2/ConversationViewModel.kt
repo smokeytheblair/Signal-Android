@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -42,9 +43,12 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx3.asFlow
+import org.signal.core.models.ServiceId
+import org.signal.core.util.concurrent.SignalDispatchers
 import org.signal.core.util.logging.Log
 import org.signal.core.util.orNull
 import org.signal.paging.ProxyPagingController
+import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.banner.Banner
 import org.thoughtcrime.securesms.banner.banners.BubbleOptOutBanner
 import org.thoughtcrime.securesms.banner.banners.GroupsV1MigrationSuggestionsBanner
@@ -55,8 +59,8 @@ import org.thoughtcrime.securesms.banner.banners.UnauthorizedBanner
 import org.thoughtcrime.securesms.contactshare.Contact
 import org.thoughtcrime.securesms.conversation.ConversationMessage
 import org.thoughtcrime.securesms.conversation.ScheduledMessagesRepository
-import org.thoughtcrime.securesms.conversation.colors.ChatColors
 import org.thoughtcrime.securesms.conversation.mutiselect.MultiselectPart
+import org.thoughtcrime.securesms.conversation.plaintext.PlaintextExportRepository
 import org.thoughtcrime.securesms.conversation.v2.data.ConversationElementKey
 import org.thoughtcrime.securesms.conversation.v2.items.ChatColorsDrawable
 import org.thoughtcrime.securesms.database.DatabaseObserver
@@ -92,12 +96,14 @@ import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.sms.MessageSender
 import org.thoughtcrime.securesms.util.BubbleUtil
 import org.thoughtcrime.securesms.util.ConversationUtil
+import org.thoughtcrime.securesms.util.NetworkUtil
 import org.thoughtcrime.securesms.util.TextSecurePreferences
 import org.thoughtcrime.securesms.util.hasGiftBadge
 import org.thoughtcrime.securesms.util.rx.RxStore
 import org.thoughtcrime.securesms.wallpaper.ChatWallpaper
-import org.whispersystems.signalservice.api.push.ServiceId
+import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
 
 /**
@@ -106,7 +112,6 @@ import kotlin.time.Duration
 class ConversationViewModel(
   val threadId: Long,
   requestedStartingPosition: Int,
-  initialChatColors: ChatColors,
   private val repository: ConversationRepository,
   recipientRepository: ConversationRecipientRepository,
   messageRequestRepository: MessageRequestRepository,
@@ -154,7 +159,7 @@ class ConversationViewModel(
     .observeOn(AndroidSchedulers.mainThread())
 
   private val chatBounds: BehaviorSubject<Rect> = BehaviorSubject.create()
-  private val chatColors: RxStore<ChatColorsDrawable.ChatColorsData> = RxStore(ChatColorsDrawable.ChatColorsData(initialChatColors, null))
+  private val chatColors: RxStore<ChatColorsDrawable.ChatColorsData> = RxStore(ChatColorsDrawable.ChatColorsData(null, null))
   val chatColorsSnapshot: ChatColorsDrawable.ChatColorsData get() = chatColors.state
 
   @Volatile
@@ -168,6 +173,8 @@ class ConversationViewModel(
   val isPushAvailable: Boolean
     get() = recipientSnapshot?.isRegistered == true && Recipient.self().isRegistered
 
+  val wallpaper: Flow<ChatWallpaper?> = recipient.asFlow().map { it.wallpaper }.distinctUntilChanged()
+
   val wallpaperSnapshot: ChatWallpaper?
     get() = recipientSnapshot?.wallpaper
 
@@ -180,7 +187,7 @@ class ConversationViewModel(
   val messageRequestState: MessageRequestState
     get() = hasMessageRequestStateSubject.value ?: MessageRequestState()
 
-  private val groupRecordFlow: Flow<GroupRecord>
+  val groupRecordFlow: Flow<GroupRecord>
 
   private val refreshIdentityRecords: Subject<Unit> = PublishSubject.create()
   private val identityRecordsStore: RxStore<IdentityRecordsState> = RxStore(IdentityRecordsState())
@@ -199,12 +206,20 @@ class ConversationViewModel(
 
   private val startExpiration = BehaviorSubject.create<MessageTable.ExpirationInfo>()
 
-  private val _jumpToDateValidator: JumpToDateValidator by lazy { JumpToDateValidator(threadId) }
+  private val _jumpToDateValidator: JumpToDateValidator by lazy { JumpToDateValidator.create(threadId) }
   val jumpToDateValidator: JumpToDateValidator
     get() = _jumpToDateValidator
 
   private val internalBackPressedState = MutableStateFlow(BackPressedState())
   val backPressedState: StateFlow<BackPressedState> = internalBackPressedState
+
+  private val internalPinnedMessages = MutableStateFlow<List<ConversationMessage>>(emptyList())
+  val pinnedMessages: StateFlow<List<ConversationMessage>> = internalPinnedMessages
+
+  private val _plaintextExportState = MutableStateFlow<PlaintextExportState>(PlaintextExportState.None)
+  val plaintextExportState: StateFlow<PlaintextExportState> = _plaintextExportState
+
+  private val plaintextExportCancelled = AtomicBoolean(false)
 
   init {
     disposables += recipient
@@ -236,6 +251,8 @@ class ConversationViewModel(
         _conversationThreadState.onNext(it)
       })
 
+    getPinnedMessages()
+
     disposables += conversationThreadState.flatMapObservable { threadState ->
       Observable.create<Unit> { emitter ->
         val controller = threadState.items.controller
@@ -247,6 +264,7 @@ class ConversationViewModel(
         }
         val conversationObserver = DatabaseObserver.Observer {
           controller.onDataInvalidated()
+          getPinnedMessages()
         }
 
         AppDependencies.databaseObserver.registerMessageUpdateObserver(messageUpdateObserver)
@@ -311,7 +329,8 @@ class ConversationViewModel(
       recipientRepository.groupRecord
     ) { _, r, g -> Pair(r, g) }
       .subscribeOn(Schedulers.io())
-      .flatMapSingle { (r, g) -> repository.getIdentityRecords(r, g.orNull()) }
+      .throttleLatest(250, TimeUnit.MILLISECONDS, true)
+      .switchMapSingle { (r, g) -> repository.getIdentityRecords(r, g.orNull()) }
       .subscribeBy { newState ->
         identityRecordsStore.update { newState }
       }
@@ -338,6 +357,45 @@ class ConversationViewModel(
     }
   }
 
+  private fun getPinnedMessages() {
+    viewModelScope.launch(Dispatchers.IO) {
+      val threadRecipient = SignalDatabase.threads.getRecipientForThreadId(threadId)
+      internalPinnedMessages.value = repository.getPinnedMessages(threadId).map {
+        ConversationMessage.ConversationMessageFactory.createWithUnresolvedData(AppDependencies.application, it, threadRecipient!!)
+      }
+    }
+  }
+
+  fun pinMessage(messageRecord: MessageRecord, duration: Duration, threadRecipient: Recipient): Completable {
+    return if (!NetworkUtil.isConnected(AppDependencies.application)) {
+      Completable.error(Exception("Connection required to pin message"))
+    } else {
+      repository
+        .pinMessage(messageRecord, duration, threadRecipient)
+        .observeOn(AndroidSchedulers.mainThread())
+    }
+  }
+
+  fun unpinMessage(messageId: Long): Completable {
+    return if (!NetworkUtil.isConnected(AppDependencies.application)) {
+      Completable.error(Exception("Connection required to unpin message"))
+    } else {
+      repository
+        .unpinMessage(messageId)
+        .observeOn(AndroidSchedulers.mainThread())
+    }
+  }
+
+  fun setMessageStarred(messageId: Long, starred: Boolean): Completable {
+    return setMessagesStarred(setOf(messageId), starred)
+  }
+
+  fun setMessagesStarred(messageIds: Set<Long>, starred: Boolean): Completable {
+    return repository
+      .setMessagesStarred(messageIds, starred)
+      .observeOn(AndroidSchedulers.mainThread())
+  }
+
   fun updateThreadHeader() {
     pagingController.onDataItemChanged(ConversationElementKey.threadHeader)
   }
@@ -352,7 +410,7 @@ class ConversationViewModel(
     val pendingGroupJoinFlow: Flow<PendingGroupJoinRequestsBanner> = groupRecordFlow
       .map {
         PendingGroupJoinRequestsBanner(
-          suggestionsSize = it.actionableRequestingMembersCount,
+          suggestionsSize = if (it.isTerminated) 0 else it.actionableRequestingMembersCount,
           onViewClicked = groupJoinClickListener
         )
       }
@@ -378,6 +436,20 @@ class ConversationViewModel(
       transform = { it.toList() }
     )
       .flowOn(Dispatchers.IO)
+  }
+
+  fun onCollapseEvents(messageId: Long) {
+    viewModelScope.launch(Dispatchers.IO) {
+      repository.collapseEvents(messageId)
+      pagingController.onDataInvalidated()
+    }
+  }
+
+  fun onExpandEvents(messageId: Long) {
+    viewModelScope.launch(Dispatchers.IO) {
+      repository.expandEvents(messageId)
+      pagingController.onDataInvalidated()
+    }
   }
 
   fun onChatBoundsChanged(bounds: Rect) {
@@ -516,9 +588,13 @@ class ConversationViewModel(
   }
 
   fun endPoll(pollId: Long): Completable {
-    return repository
-      .endPoll(pollId)
-      .observeOn(AndroidSchedulers.mainThread())
+    return if (!NetworkUtil.isConnected(AppDependencies.application)) {
+      Completable.error(Exception("Connection required to end poll"))
+    } else {
+      repository
+        .endPoll(pollId)
+        .observeOn(AndroidSchedulers.mainThread())
+    }
   }
 
   fun sendMessage(
@@ -649,6 +725,22 @@ class ConversationViewModel(
     }
   }
 
+  fun setIsInActionMode(isInActionMode: Boolean) {
+    internalBackPressedState.update {
+      it.copy(isInActionMode = isInActionMode)
+    }
+  }
+
+  fun setIsMediaKeyboardShowing(isMediaKeyboardShowing: Boolean) {
+    internalBackPressedState.update {
+      it.copy(isMediaKeyboardShowing = isMediaKeyboardShowing)
+    }
+  }
+
+  fun resetBackPressedState() {
+    internalBackPressedState.value = BackPressedState()
+  }
+
   fun toggleVote(poll: PollRecord, pollOption: PollOption, isChecked: Boolean) {
     viewModelScope.launch(Dispatchers.IO) {
       val voteCount = if (isChecked) {
@@ -659,7 +751,8 @@ class ConversationViewModel(
       val pollVoteJob = PollVoteJob.create(
         messageId = poll.messageId,
         voteCount = voteCount,
-        isRemoval = !isChecked
+        isRemoval = !isChecked,
+        optionId = pollOption.id
       )
 
       if (pollVoteJob != null) {
@@ -670,10 +763,87 @@ class ConversationViewModel(
     }
   }
 
+  fun startPlaintextExport(context: Context, includeMedia: Boolean) {
+    val recipient = recipientSnapshot ?: return
+    val chatName = if (recipient.isSelf) context.getString(R.string.note_to_self) else recipient.getDisplayName(context)
+
+    val exportDir = File(context.externalCacheDir, "chat_exports")
+    exportDir.mkdirs()
+    exportDir.listFiles()?.forEach { it.delete() }
+
+    val sanitizedName = PlaintextExportRepository.sanitizeFileName(chatName)
+    val outputFile = File(exportDir, "$sanitizedName.zip")
+
+    plaintextExportCancelled.set(false)
+    _plaintextExportState.value = PlaintextExportState.Preparing
+
+    viewModelScope.launch(Dispatchers.IO) {
+      val success = PlaintextExportRepository.export(
+        context = context,
+        threadId = threadId,
+        outputFile = outputFile,
+        chatName = chatName,
+        includeMedia = includeMedia,
+        progressListener = { messagesProcessed, messageCount, attachmentsProcessed, attachmentCount ->
+          val percent = if (includeMedia) {
+            val messagePercent = if (messageCount > 0) (messagesProcessed * 25) / messageCount else 25
+            val attachmentPercent = if (attachmentCount > 0) (attachmentsProcessed * 75) / attachmentCount else 75
+            messagePercent + attachmentPercent
+          } else {
+            if (messageCount > 0) (messagesProcessed * 100) / messageCount else 100
+          }
+
+          val status = if (includeMedia && (attachmentsProcessed > 0 || messagesProcessed >= messageCount)) {
+            "Exporting media ($attachmentsProcessed/$attachmentCount)..."
+          } else {
+            "Exporting messages ($messagesProcessed/$messageCount)..."
+          }
+
+          _plaintextExportState.value = PlaintextExportState.InProgress(percent = percent, status = status)
+        },
+        cancellationSignal = { plaintextExportCancelled.get() }
+      )
+
+      _plaintextExportState.value = when {
+        plaintextExportCancelled.get() -> {
+          outputFile.delete()
+          PlaintextExportState.Cancelled
+        }
+        success -> PlaintextExportState.Complete(outputFile)
+        else -> PlaintextExportState.Failed
+      }
+    }
+  }
+
+  fun cancelExport() {
+    plaintextExportCancelled.set(true)
+  }
+
+  fun clearPlaintextExportState() {
+    _plaintextExportState.value = PlaintextExportState.None
+  }
+
+  fun collapseAllEvents() {
+    viewModelScope.launch(SignalDispatchers.IO) {
+      repository.collapseAllEvents()
+    }
+  }
+
+  sealed interface PlaintextExportState {
+    data object None : PlaintextExportState
+    data object Preparing : PlaintextExportState
+    data class InProgress(val percent: Int, val status: String) : PlaintextExportState
+    data class Complete(val zipFile: File) : PlaintextExportState
+    data object Failed : PlaintextExportState
+    data object Cancelled : PlaintextExportState
+  }
+
   data class BackPressedState(
     val isReactionDelegateShowing: Boolean = false,
-    val isSearchRequested: Boolean = false
+    val isSearchRequested: Boolean = false,
+    val isInActionMode: Boolean = false,
+    val isMediaKeyboardShowing: Boolean = false
   ) {
-    fun shouldHandleBackPressed() = isSearchRequested || isReactionDelegateShowing
+    fun shouldHandleBackPressed() = isSearchRequested || isReactionDelegateShowing || isInActionMode || isMediaKeyboardShowing
   }
 }

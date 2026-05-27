@@ -15,15 +15,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
+import org.signal.core.ui.compose.ComposeFragment
 import org.signal.core.ui.compose.Dialogs
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.R
-import org.thoughtcrime.securesms.compose.ComposeFragment
 import org.thoughtcrime.securesms.registration.ui.RegistrationViewModel
 import org.thoughtcrime.securesms.registration.ui.phonenumber.EnterPhoneNumberMode
 import org.thoughtcrime.securesms.restore.RestoreActivity
+import org.thoughtcrime.securesms.util.Environment
 import org.thoughtcrime.securesms.util.navigation.safeNavigate
 
 /**
@@ -54,8 +56,16 @@ class SelectManualRestoreMethodFragment : ComposeFragment() {
   override fun FragmentContent() {
     var showSkipRestoreWarning by remember { mutableStateOf(false) }
 
+    val restoreMethods = remember {
+      if (Environment.Backups.isNewFormatSupportedForLocalBackup()) {
+        listOf(RestoreMethod.FROM_SIGNAL_BACKUPS, RestoreMethod.FROM_LOCAL_BACKUP_V2)
+      } else {
+        listOf(RestoreMethod.FROM_SIGNAL_BACKUPS, RestoreMethod.FROM_LOCAL_BACKUP_V1)
+      }
+    }
+
     SelectRestoreMethodScreen(
-      restoreMethods = listOf(RestoreMethod.FROM_SIGNAL_BACKUPS, RestoreMethod.FROM_LOCAL_BACKUP_V1),
+      restoreMethods = restoreMethods,
       onRestoreMethodClicked = this::startRestoreMethod,
       onSkip = {
         showSkipRestoreWarning = true
@@ -72,7 +82,8 @@ class SelectManualRestoreMethodFragment : ComposeFragment() {
             findNavController().safeNavigate(SelectManualRestoreMethodFragmentDirections.goToEnterPhoneNumber(EnterPhoneNumberMode.NORMAL))
           },
           onDismiss = { showSkipRestoreWarning = false },
-          confirmColor = MaterialTheme.colorScheme.error
+          confirmColor = MaterialTheme.colorScheme.error,
+          properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
         )
       }
     }
@@ -81,6 +92,7 @@ class SelectManualRestoreMethodFragment : ComposeFragment() {
   private fun startRestoreMethod(method: RestoreMethod) {
     when (method) {
       RestoreMethod.FROM_SIGNAL_BACKUPS -> {
+        sharedViewModel.clearPreviousRegistrationState()
         sharedViewModel.intendToRestore(hasOldDevice = false, fromRemote = true)
         findNavController().safeNavigate(SelectManualRestoreMethodFragmentDirections.goToEnterPhoneNumber(EnterPhoneNumberMode.COLLECT_FOR_MANUAL_SIGNAL_BACKUPS_RESTORE))
       }
@@ -89,7 +101,11 @@ class SelectManualRestoreMethodFragment : ComposeFragment() {
         localBackupRestore.launch(RestoreActivity.getLocalRestoreIntent(requireContext()))
       }
       RestoreMethod.FROM_OLD_DEVICE -> error("Device transfer not supported in manual restore flow")
-      RestoreMethod.FROM_LOCAL_BACKUP_V2 -> error("Not currently supported")
+      RestoreMethod.FROM_LOCAL_BACKUP_V2 -> {
+        sharedViewModel.clearPreviousRegistrationState()
+        sharedViewModel.intendToRestore(hasOldDevice = false, fromRemote = false, fromLocalV2 = true)
+        findNavController().safeNavigate(SelectManualRestoreMethodFragmentDirections.goToEnterPhoneNumber(EnterPhoneNumberMode.COLLECT_FOR_LOCAL_V2_SIGNAL_BACKUPS_RESTORE))
+      }
     }
   }
 }
