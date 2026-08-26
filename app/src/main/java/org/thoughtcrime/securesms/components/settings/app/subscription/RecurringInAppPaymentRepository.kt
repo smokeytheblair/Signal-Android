@@ -39,6 +39,7 @@ import org.whispersystems.signalservice.internal.ServiceResponse
 import org.whispersystems.signalservice.internal.push.SubscriptionsConfiguration
 import java.math.BigDecimal
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -93,7 +94,8 @@ object RecurringInAppPaymentRepository {
     } ?: return NetworkResult.Success(ActiveSubscription.EMPTY)
 
     response.result.ifPresent { result ->
-      if (result.isActive && result.activeSubscription.endOfCurrentPeriod > SignalStore.inAppPayments.getLastEndOfPeriod()) {
+      val lastEndOfPeriod = SignalDatabase.inAppPayments.getByLatestEndOfPeriod(type.inAppPaymentType)?.endOfPeriodSeconds ?: 0L
+      if (result.isActive && result.activeSubscription.endOfCurrentPeriod > lastEndOfPeriod) {
         InAppPaymentKeepAliveJob.enqueueAndTrackTime(System.currentTimeMillis().milliseconds)
       }
     }
@@ -109,6 +111,7 @@ object RecurringInAppPaymentRepository {
     return Single
       .fromCallable { donationsService.getDonationsConfiguration(Locale.getDefault()) }
       .subscribeOn(Schedulers.io())
+      .timeout(InAppPaymentsRepository.DONATIONS_CONFIGURATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
       .flatMap { it.flattenResult() }
       .map { config ->
         config.getSubscriptionLevels().map { (level, levelConfig) ->
@@ -172,7 +175,7 @@ object RecurringInAppPaymentRepository {
       InAppPaymentsRepository.getSubscriber(subscriberType)?.subscriberId ?: SubscriberId.generate()
     }
 
-    donationsService.putSubscription(subscriberId).resultOrThrow
+    donationsService.createSubscriber(subscriberId).resultOrThrow
 
     Log.d(TAG, "Successfully set SubscriberId exists on Signal service.", true)
 

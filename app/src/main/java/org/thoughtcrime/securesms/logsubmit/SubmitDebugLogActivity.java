@@ -21,6 +21,9 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.ShareCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -34,7 +37,6 @@ import org.thoughtcrime.securesms.components.ConversationSearchBottomBar;
 import org.thoughtcrime.securesms.components.ProgressCard;
 import org.thoughtcrime.securesms.components.SearchView;
 import org.thoughtcrime.securesms.util.DynamicTheme;
-import org.thoughtcrime.securesms.util.Linkification;
 import org.thoughtcrime.securesms.util.LongClickCopySpan;
 import org.thoughtcrime.securesms.util.LongClickMovementMethod;
 import org.signal.core.ui.util.ThemeUtil;
@@ -99,6 +101,13 @@ public class SubmitDebugLogActivity extends BaseActivity {
     setContentView(R.layout.submit_debug_log_activity);
     getSupportActionBar().setDisplayHomeAsUpEnabled(true);
     getSupportActionBar().setTitle(R.string.HelpSettingsFragment__debug_log);
+
+    // Insets are re-dispatched by appcompat's ActionBarOverlayLayout with the action bar height folded into the top inset.
+    ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content), (v, insets) -> {
+      Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+      v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+      return WindowInsetsCompat.CONSUMED;
+    });
 
     this.viewModel = new ViewModelProvider(this, new SubmitDebugLogViewModel.Factory()).get(SubmitDebugLogViewModel.class);
 
@@ -305,13 +314,6 @@ public class SubmitDebugLogActivity extends BaseActivity {
   }
 
   @Override
-  public void onBackPressed() {
-    if (!viewModel.onBackPressed()) {
-      super.onBackPressed();
-    }
-  }
-
-  @Override
   protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
 
@@ -458,7 +460,7 @@ public class SubmitDebugLogActivity extends BaseActivity {
     TextView          dialogView          = new TextView(builder.getContext());
     LongClickCopySpan longClickUrl        = new LongClickCopySpan(url);
 
-    for (Linkifier.DetectedLink link : Linkification.findWebLinks(dialogText)) {
+    for (Linkifier.DetectedLink link : Linkifier.findLinks(dialogText)) {
       spannableDialogText.setSpan(longClickUrl, link.getStart(), link.getEnd(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 

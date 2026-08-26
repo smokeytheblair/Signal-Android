@@ -12,6 +12,7 @@ import androidx.annotation.WorkerThread;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.signal.core.util.Stopwatch;
 import org.signal.core.util.StreamUtil;
 import org.signal.core.util.concurrent.SignalExecutors;
 import org.signal.core.util.logging.Log;
@@ -21,10 +22,8 @@ import org.signal.debuglogsviewer.DebugLogsViewer;
 import org.thoughtcrime.securesms.database.LogDatabase;
 import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.net.StandardUserAgentInterceptor;
-import org.thoughtcrime.securesms.providers.BlobProvider;
 import org.thoughtcrime.securesms.push.SignalServiceNetworkAccess;
 import org.thoughtcrime.securesms.util.RemoteConfig;
-import org.signal.core.util.Stopwatch;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -39,8 +38,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -85,6 +84,7 @@ public class SubmitDebugLogRepository {
     if (Build.VERSION.SDK_INT >= 28) {
       add(new LogSectionPower());
     }
+    add(new LogSectionBattery());
     add(new LogSectionNotifications());
     add(new LogSectionNotificationProfiles());
     add(new LogSectionExoPlayerPool());
@@ -103,6 +103,7 @@ public class SubmitDebugLogRepository {
     }
     add(new LogSectionDatabaseSchema());
     add(new LogSectionRemappedRecords());
+    add(new LogSectionDatabaseIssues());
     add(new LogSectionAnr());
     add(new LogSectionLogcat());
     add(new LogSectionLoggerHeader());
@@ -188,10 +189,10 @@ public class SubmitDebugLogRepository {
     try {
 
       ParcelFileDescriptor[] fds        = ParcelFileDescriptor.createPipe();
-      Future<Uri>            futureUri  = BlobProvider.getInstance()
-                                                      .forData(new ParcelFileDescriptor.AutoCloseInputStream(fds[0]), 0)
-                                                      .withMimeType("application/gzip")
-                                                      .createForSingleSessionOnDiskAsync(context);
+      Future<Uri>            futureUri  = AppDependencies.getBlobs()
+                                                         .forData(new ParcelFileDescriptor.AutoCloseInputStream(fds[0]), 0)
+                                                         .withMimeType("application/gzip")
+                                                         .createForSingleSessionOnDiskAsync(context);
 
       OutputStream gzipOutput = new GZIPOutputStream(new ParcelFileDescriptor.AutoCloseOutputStream(fds[1]));
 
@@ -222,12 +223,12 @@ public class SubmitDebugLogRepository {
         }
 
         @Override public long contentLength() {
-          return BlobProvider.getInstance().calculateFileSize(context, gzipUri);
+          return AppDependencies.getBlobs().calculateFileSize(context, gzipUri);
         }
 
         @Override
         public void writeTo(@NonNull BufferedSink sink) throws IOException {
-          Source source = Okio.source(BlobProvider.getInstance().getStream(context, gzipUri));
+          Source source = Okio.source(AppDependencies.getBlobs().getStream(context, gzipUri));
           sink.writeAll(source);
         }
       });
@@ -235,7 +236,7 @@ public class SubmitDebugLogRepository {
       stopwatch.split("upload");
       stopwatch.stop(TAG);
 
-      BlobProvider.getInstance().delete(context, gzipUri);
+      AppDependencies.getBlobs().delete(context, gzipUri);
 
       return Optional.of(logUrl);
     } catch (IOException | RuntimeException | ExecutionException | InterruptedException e) {
@@ -262,10 +263,10 @@ public class SubmitDebugLogRepository {
       Stopwatch stopwatch = new Stopwatch("log-upload");
 
       ParcelFileDescriptor[] fds        = ParcelFileDescriptor.createPipe();
-      Future<Uri>            futureUri  = BlobProvider.getInstance()
-                                                      .forData(new ParcelFileDescriptor.AutoCloseInputStream(fds[0]), 0)
-                                                      .withMimeType("application/gzip")
-                                                      .createForSingleSessionOnDiskAsync(context);
+      Future<Uri>            futureUri  = AppDependencies.getBlobs()
+                                                         .forData(new ParcelFileDescriptor.AutoCloseInputStream(fds[0]), 0)
+                                                         .withMimeType("application/gzip")
+                                                         .createForSingleSessionOnDiskAsync(context);
 
       OutputStream gzipOutput = new GZIPOutputStream(new ParcelFileDescriptor.AutoCloseOutputStream(fds[1]));
 
@@ -295,12 +296,12 @@ public class SubmitDebugLogRepository {
         }
 
         @Override public long contentLength() {
-          return BlobProvider.getInstance().calculateFileSize(context, gzipUri);
+          return AppDependencies.getBlobs().calculateFileSize(context, gzipUri);
         }
 
         @Override
         public void writeTo(@NonNull BufferedSink sink) throws IOException {
-          Source source = Okio.source(BlobProvider.getInstance().getStream(context, gzipUri));
+          Source source = Okio.source(AppDependencies.getBlobs().getStream(context, gzipUri));
           sink.writeAll(source);
         }
       });
@@ -308,7 +309,7 @@ public class SubmitDebugLogRepository {
       stopwatch.split("upload");
       stopwatch.stop(TAG);
 
-      BlobProvider.getInstance().delete(context, gzipUri);
+      AppDependencies.getBlobs().delete(context, gzipUri);
 
       return Optional.of(logUrl);
     } catch (IOException | RuntimeException | ExecutionException | InterruptedException e) {

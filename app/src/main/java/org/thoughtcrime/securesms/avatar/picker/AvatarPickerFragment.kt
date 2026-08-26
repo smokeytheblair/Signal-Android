@@ -1,13 +1,11 @@
 package org.thoughtcrime.securesms.avatar.picker
 
-import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.PopupMenu
-import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
@@ -15,10 +13,14 @@ import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.setFragmentResultListener
 import androidx.fragment.app.viewModels
 import androidx.navigation.Navigation
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import org.signal.core.models.media.Media
+import org.signal.core.ui.WindowBreakpoint
+import org.signal.core.ui.getWindowBreakpoint
 import org.signal.core.ui.permissions.Permissions
 import org.signal.core.util.ThreadUtil
+import org.signal.core.util.dp
 import org.signal.core.util.getParcelableExtraCompat
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.avatar.Avatar
@@ -30,12 +32,12 @@ import org.thoughtcrime.securesms.avatar.vector.VectorAvatarCreationFragment
 import org.thoughtcrime.securesms.components.ButtonStripItemView
 import org.thoughtcrime.securesms.components.recyclerview.GridDividerDecoration
 import org.thoughtcrime.securesms.mediasend.AvatarSelectionActivity
-import org.thoughtcrime.securesms.mediasend.camerax.CameraXRemoteConfig
+import org.thoughtcrime.securesms.util.SystemWindowInsetsSetter
 import org.thoughtcrime.securesms.util.ViewUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
 import org.thoughtcrime.securesms.util.navigation.safeNavigate
+import org.thoughtcrime.securesms.util.padding
 import org.thoughtcrime.securesms.util.visible
-import org.signal.core.ui.R as CoreUiR
 
 /**
  * Primary Avatar picker fragment, displays current user avatar and a list of recently used avatars and defaults.
@@ -62,6 +64,8 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
   }
 
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    SystemWindowInsetsSetter.attach(view, viewLifecycleOwner)
+
     val toolbar: Toolbar = view.findViewById(R.id.avatar_picker_toolbar)
     val cameraButton: ButtonStripItemView = view.findViewById(R.id.avatar_picker_camera)
     val photoButton: ButtonStripItemView = view.findViewById(R.id.avatar_picker_photo)
@@ -69,8 +73,25 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
     val saveButton: View = view.findViewById(R.id.avatar_picker_save)
     val clearButton: View = view.findViewById(R.id.avatar_picker_clear)
 
+    val spanCount = when (resources.getWindowBreakpoint()) {
+      is WindowBreakpoint.Small -> 4
+      else -> 6
+    }
+
+    val recyclerPadding = when (resources.getWindowBreakpoint()) {
+      is WindowBreakpoint.Small -> 0
+      else -> 112.dp
+    }
+
     recycler = view.findViewById(R.id.avatar_picker_recycler)
-    recycler.addItemDecoration(GridDividerDecoration(4, ViewUtil.dpToPx(16)))
+    recycler.addItemDecoration(GridDividerDecoration(spanCount, ViewUtil.dpToPx(16)))
+    recycler.padding(
+      left = recyclerPadding,
+      right = recyclerPadding
+    )
+
+    val gridLayoutManager: GridLayoutManager = recycler.layoutManager as GridLayoutManager
+    gridLayoutManager.spanCount = spanCount
 
     val adapter = MappingAdapter()
     AvatarPickerItem.register(adapter, this::onAvatarClick, this::onAvatarLongClick)
@@ -223,22 +244,8 @@ class AvatarPickerFragment : Fragment(R.layout.avatar_picker_fragment) {
 
   @Suppress("DEPRECATION")
   private fun openCameraCapture() {
-    if (CameraXRemoteConfig.isSupported()) {
-      val intent = AvatarSelectionActivity.getIntentForCameraCapture(requireContext())
-      startActivityForResult(intent, REQUEST_CODE_SELECT_IMAGE)
-    } else {
-      Permissions.with(this)
-        .request(Manifest.permission.CAMERA)
-        .ifNecessary()
-        .onAllGranted {
-          val intent = AvatarSelectionActivity.getIntentForCameraCapture(requireContext())
-          startActivityForResult(intent, REQUEST_CODE_SELECT_IMAGE)
-        }
-        .withRationaleDialog(getString(R.string.CameraXFragment_allow_access_camera), getString(R.string.CameraXFragment_to_capture_photos_allow_camera), CoreUiR.drawable.symbol_camera_24)
-        .withPermanentDenialDialog(getString(R.string.AvatarSelectionBottomSheetDialogFragment__taking_a_photo_requires_the_camera_permission), null, R.string.CameraXFragment_allow_access_camera, R.string.CameraXFragment_to_capture_photos, getParentFragmentManager())
-        .onAnyDenied { Toast.makeText(requireContext(), R.string.AvatarSelectionBottomSheetDialogFragment__taking_a_photo_requires_the_camera_permission, Toast.LENGTH_SHORT).show() }
-        .execute()
-    }
+    val intent = AvatarSelectionActivity.getIntentForCameraCapture(requireContext())
+    startActivityForResult(intent, REQUEST_CODE_SELECT_IMAGE)
   }
 
   @Suppress("DEPRECATION")

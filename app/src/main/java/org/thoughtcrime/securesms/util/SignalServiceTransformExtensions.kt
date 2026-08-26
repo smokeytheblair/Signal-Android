@@ -171,7 +171,7 @@ private fun Attachment.toQuoteAttachmentProto(): Either<DataMessageError, DataMe
   DataMessage.Quote.QuotedAttachment(
     contentType = quoteTargetContentType ?: MediaUtil.IMAGE_JPEG,
     fileName = fileName,
-    thumbnail = toAttachmentPointerProto().bind()
+    thumbnail = toAttachmentPointerProto().getOrNull()
   )
 }
 
@@ -215,7 +215,7 @@ private fun Attachment.toAttachmentPointerProto(): Either<DataMessageError, Atta
     raise(DataMessageError.MissingAttachmentRemoteFields)
   }
 
-  val remoteIdResolved: SignalServiceAttachmentRemoteId = SignalServiceAttachmentRemoteId.from(remoteLocation)
+  val remoteIdResolved: SignalServiceAttachmentRemoteId = SignalServiceAttachmentRemoteId.from(remoteLocation, cdn.cdnNumber)
 
   val keyBytes: ByteArray = try {
     Base64.decode(remoteKey)

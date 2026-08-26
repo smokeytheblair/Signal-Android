@@ -32,8 +32,9 @@ import org.thoughtcrime.securesms.keyvalue.SignalStore;
 import org.thoughtcrime.securesms.messages.IncomingMessageObserver;
 import org.thoughtcrime.securesms.net.SignalNetwork;
 import org.thoughtcrime.securesms.transport.RetryLaterException;
-import org.thoughtcrime.securesms.util.PlayServicesUtil;
-import org.whispersystems.signalservice.api.NetworkResultUtil;
+import org.signal.core.util.PlayServicesUtil;
+import org.thoughtcrime.securesms.util.TextSecurePreferences;
+import org.whispersystems.signalservice.api.RequestResultUtil;
 import org.signal.network.exceptions.NonSuccessfulResponseCodeException;
 
 import java.io.IOException;
@@ -72,6 +73,11 @@ public class FcmRefreshJob extends BaseJob {
 
   @Override
   public void onRun() throws Exception {
+    if (TextSecurePreferences.isUnauthorizedReceived(context)) {
+      Log.i(TAG, "No longer authorized. Ignoring.");
+      return;
+    }
+
     Log.i(TAG, "Reregistering FCM...");
 
     boolean playServicesMissing = PlayServicesUtil.getPlayServicesStatus(context) == PlayServicesUtil.PlayServicesStatus.MISSING ;
@@ -95,7 +101,7 @@ public class FcmRefreshJob extends BaseJob {
         Log.i(TAG, "Token didn't change.");
       }
 
-      NetworkResultUtil.toBasicLegacy(SignalNetwork.account().setFcmToken(token.get()));
+      RequestResultUtil.successOrThrowNoError(SignalNetwork.account().setFcmToken(token.get()));
       SignalStore.account().setFcmToken(token.get());
 
       if (!SignalStore.account().isFcmEnabled()) {

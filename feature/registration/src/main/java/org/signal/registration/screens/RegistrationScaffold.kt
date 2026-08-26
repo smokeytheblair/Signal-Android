@@ -7,21 +7,33 @@ package org.signal.registration.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -29,12 +41,14 @@ import androidx.compose.ui.unit.sp
 import org.signal.core.ui.WindowBreakpoint
 import org.signal.core.ui.compose.AllDevicePreviews
 import org.signal.core.ui.compose.Previews
+import org.signal.core.ui.getWindowSizeClass
+import org.signal.core.ui.isHeightCompact
 import org.signal.core.ui.rememberWindowBreakpoint
 
 object RegistrationScaffold {
   private val smallLayoutParams = Params.OnePane(
     headerSlotHeight = 24.dp,
-    bottomInset = 24.dp,
+    edgeInset = 24.dp,
     paneVerticalInset = 24.dp,
     paneHorizontalInset = 24.dp,
     maxButtonWidth = 320.dp
@@ -42,7 +56,7 @@ object RegistrationScaffold {
 
   private val mediumLayoutParams = Params.TwoPane(
     headerSlotHeight = 64.dp,
-    bottomInset = 24.dp,
+    edgeInset = 24.dp,
     paneTopInset = 16.dp,
     paneBottomInset = 24.dp,
     paneOuterInset = 24.dp,
@@ -52,7 +66,7 @@ object RegistrationScaffold {
 
   private val largeWidthLayoutParams = Params.TwoPane(
     headerSlotHeight = 64.dp,
-    bottomInset = 32.dp,
+    edgeInset = 32.dp,
     paneTopInset = 64.dp,
     paneBottomInset = 64.dp,
     paneOuterInset = 128.dp,
@@ -62,7 +76,7 @@ object RegistrationScaffold {
 
   private val largeHeightLayoutParams = Params.OnePane(
     headerSlotHeight = 64.dp,
-    bottomInset = 32.dp,
+    edgeInset = 32.dp,
     paneVerticalInset = 64.dp,
     paneHorizontalInset = 128.dp,
     maxButtonWidth = 320.dp
@@ -70,22 +84,22 @@ object RegistrationScaffold {
 
   sealed interface Params {
     val headerSlotHeight: Dp
-    val bottomInset: Dp
+    val edgeInset: Dp
     val maxButtonWidth: Dp
 
     val footerPadding
       get() = PaddingValues(
         top = 16.dp,
-        bottom = bottomInset,
+        bottom = edgeInset,
         start = 16.dp,
-        end = bottomInset
+        end = edgeInset
       )
 
     data class OnePane(
       override val headerSlotHeight: Dp,
       private val paneVerticalInset: Dp,
       private val paneHorizontalInset: Dp,
-      override val bottomInset: Dp,
+      override val edgeInset: Dp,
       override val maxButtonWidth: Dp
     ) : Params {
       fun panePadding(hasHeader: Boolean) = PaddingValues(
@@ -102,7 +116,7 @@ object RegistrationScaffold {
       private val paneBottomInset: Dp,
       private val paneOuterInset: Dp,
       private val paneInnerInset: Dp,
-      override val bottomInset: Dp,
+      override val edgeInset: Dp,
       override val maxButtonWidth: Dp
     ) : Params {
 
@@ -124,11 +138,41 @@ object RegistrationScaffold {
 
   @Composable
   fun rememberLayoutParams(): Params {
-    return when (rememberWindowBreakpoint()) {
-      WindowBreakpoint.SMALL -> smallLayoutParams
-      WindowBreakpoint.MEDIUM -> mediumLayoutParams
-      WindowBreakpoint.LARGE_WIDTH -> largeWidthLayoutParams
-      WindowBreakpoint.LARGE_HEIGHT -> largeHeightLayoutParams
+    return when (val breakpoint = rememberWindowBreakpoint()) {
+      is WindowBreakpoint.Small -> smallLayoutParams
+      is WindowBreakpoint.Medium -> mediumLayoutParams
+      is WindowBreakpoint.Large -> if (breakpoint.isWidthExpanded) largeWidthLayoutParams else largeHeightLayoutParams
+    }
+  }
+
+  @OptIn(ExperimentalMaterial3Api::class)
+  @Composable
+  fun rememberTopBarScrollBehavior(): TopAppBarScrollBehavior {
+    val isHeightCompact = LocalResources.current.getWindowSizeClass().isHeightCompact
+    val topAppBarState = rememberTopAppBarState()
+
+    return if (isHeightCompact) {
+      TopAppBarDefaults.enterAlwaysScrollBehavior(state = topAppBarState)
+    } else {
+      TopAppBarDefaults.pinnedScrollBehavior(state = topAppBarState)
+    }
+  }
+
+  @Composable
+  fun FooterSurface(
+    isElevated: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+  ) {
+    Surface(
+      modifier = modifier.fillMaxWidth(),
+      shadowElevation = if (isElevated) 8.dp else 0.dp
+    ) {
+      Box(
+        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+      ) {
+        content()
+      }
     }
   }
 }
@@ -143,7 +187,12 @@ fun RegistrationScaffold(
   topBar: (@Composable () -> Unit)? = null,
   footer: (@Composable () -> Unit)? = null
 ) {
-  SubcomposeLayout(modifier = modifier.imePadding()) { constraints ->
+  SubcomposeLayout(
+    modifier = modifier
+      .then(if (topBar == null) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)) else Modifier)
+      .then(if (footer == null) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier)
+      .imePadding()
+  ) { constraints ->
     val footerPlaceables = footer?.let {
       subcompose("footer", it).map { m -> m.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
     } ?: emptyList()
@@ -182,7 +231,15 @@ fun OnePaneRegistrationScaffold(
     modifier = modifier.fillMaxSize(),
     topBar = topBar,
     footer = footer,
-    content = { content(params.panePadding(hasHeader = topBar != null)) }
+    content = {
+      Box(
+        modifier = Modifier
+          .fillMaxSize()
+          .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+      ) {
+        content(params.panePadding(hasHeader = topBar != null))
+      }
+    }
   )
 }
 
@@ -205,7 +262,9 @@ fun TwoPaneRegistrationScaffold(
     content = {
       Row(
         horizontalArrangement = Arrangement.SpaceAround,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+          .fillMaxSize()
+          .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
       ) {
         firstPane(params.firstPanePadding(hasHeader = topBar != null))
         secondPane(params.secondPanePadding(hasHeader = topBar != null))

@@ -5,8 +5,6 @@
 
 package org.signal.registration.screens.restoreselection
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,14 +21,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import org.signal.core.ui.compose.AllDevicePreviews
@@ -95,16 +92,6 @@ private fun OnePaneLayout(
 
         RestoreOptions(state, onEvent)
       }
-    },
-    footer = {
-      if (state.showSkipButton) {
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.Center
-        ) {
-          SkipRestoreButton(onEvent)
-        }
-      }
     }
   )
 }
@@ -116,7 +103,9 @@ private fun TwoPaneLayout(
   onEvent: (ArchiveRestoreSelectionScreenEvents) -> Unit,
   modifier: Modifier
 ) {
-  val scrollState = rememberScrollState()
+  val firstPaneScrollState = rememberScrollState()
+  val secondPaneScrollState = rememberScrollState()
+
   TwoPaneRegistrationScaffold(
     modifier = modifier
       .fillMaxSize()
@@ -126,50 +115,40 @@ private fun TwoPaneLayout(
       Column(
         modifier = Modifier
           .weight(1f)
-          .verticalScroll(scrollState)
+          .verticalScroll(firstPaneScrollState)
           .padding(paddingValues)
       ) {
-        Description()
+        Description(twoPane = true)
       }
     },
     secondPane = { paddingValues ->
       Column(
         modifier = Modifier
           .weight(1f)
-          .verticalScroll(scrollState)
+          .verticalScroll(secondPaneScrollState)
           .padding(paddingValues)
       ) {
         RestoreOptions(state, onEvent)
-      }
-    },
-    footer = {
-      if (state.showSkipButton) {
-        Row(
-          modifier = Modifier.fillMaxWidth().padding(end = 32.dp),
-          horizontalArrangement = Arrangement.End
-        ) {
-          SkipRestoreButton(onEvent)
-        }
       }
     }
   )
 }
 
 @Composable
-private fun Description() {
+private fun Description(twoPane: Boolean = false) {
   Text(
     text = stringResource(R.string.ArchiveRestoreSelectionScreen__restore_or_transfer_account),
-    style = MaterialTheme.typography.headlineMedium,
-    modifier = Modifier.fillMaxWidth().attachDebugLogHelper()
+    style = if (twoPane) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium,
+    modifier = Modifier
+      .fillMaxWidth()
+      .attachDebugLogHelper()
   )
-
-  Spacer(modifier = Modifier.height(8.dp))
 
   Text(
     text = stringResource(R.string.ArchiveRestoreSelectionScreen__subheading),
-    style = MaterialTheme.typography.bodyMedium,
+    style = if (twoPane) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal) else MaterialTheme.typography.bodyLarge,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
-    modifier = Modifier.fillMaxWidth()
+    modifier = Modifier.padding(top = 16.dp)
   )
 }
 
@@ -187,21 +166,6 @@ private fun RestoreOptions(state: ArchiveRestoreSelectionState, onEvent: (Archiv
 }
 
 @Composable
-private fun SkipRestoreButton(onEvent: (ArchiveRestoreSelectionScreenEvents) -> Unit) {
-  TextButton(
-    onClick = { onEvent(ArchiveRestoreSelectionScreenEvents.Skip) },
-    modifier = Modifier
-      .padding(bottom = 32.dp)
-      .testTag(TestTags.ARCHIVE_RESTORE_SELECTION_SKIP)
-  ) {
-    Text(
-      text = stringResource(R.string.ArchiveRestoreSelectionScreen__skip),
-      color = MaterialTheme.colorScheme.primary
-    )
-  }
-}
-
-@Composable
 private fun RestoreOptionCard(
   option: ArchiveRestoreOption,
   onClick: () -> Unit,
@@ -210,25 +174,27 @@ private fun RestoreOptionCard(
   when (option) {
     ArchiveRestoreOption.SignalSecureBackup -> {
       SelectionCard(
-        imageVector = SignalIcons.Backup.imageVector,
+        imageVector = SignalIcons.SignalBackupsDisplay.imageVector,
         title = stringResource(R.string.ArchiveRestoreSelectionScreen__from_signal_backups),
         subtitle = stringResource(R.string.ArchiveRestoreSelectionScreen__your_free_or_paid_signal_backup_plan),
         onClick = onClick,
         modifier = modifier.testTag(TestTags.ARCHIVE_RESTORE_SELECTION_FROM_SIGNAL_BACKUPS)
       )
     }
+
     ArchiveRestoreOption.DeviceTransfer -> {
       SelectionCard(
-        imageVector = ImageVector.vectorResource(R.drawable.symbol_transfer_24),
+        imageVector = SignalIcons.TransferDisplay.imageVector,
         title = stringResource(R.string.ArchiveRestoreSelectionScreen__from_your_old_phone),
         subtitle = stringResource(R.string.ArchiveRestoreSelectionScreen__transfer_directly_from_old),
         onClick = onClick,
         modifier = modifier.testTag(TestTags.ARCHIVE_RESTORE_SELECTION_DEVICE_TRANSFER)
       )
     }
+
     ArchiveRestoreOption.LocalBackup -> {
       SelectionCard(
-        imageVector = ImageVector.vectorResource(R.drawable.symbol_folder_24),
+        imageVector = SignalIcons.FolderDisplay.imageVector,
         title = stringResource(R.string.ArchiveRestoreSelectionScreen__local_backup_card_title),
         subtitle = stringResource(R.string.ArchiveRestoreSelectionScreen__local_backup_card_description),
         onClick = onClick,
@@ -238,11 +204,11 @@ private fun RestoreOptionCard(
 
     ArchiveRestoreOption.None -> {
       SelectionCard(
-        imageVector = ImageVector.vectorResource(R.drawable.symbol_folder_24),
+        imageVector = SignalIcons.MobileNextDisplay.imageVector,
         title = stringResource(R.string.ArchiveRestoreSelectionScreen__skip_restore_title),
         subtitle = stringResource(R.string.ArchiveRestoreSelectionScreen__skip_restore_description),
         onClick = onClick,
-        modifier = modifier.testTag(TestTags.ARCHIVE_RESTORE_SELECTION_FROM_BACKUP_FOLDER)
+        modifier = modifier.testTag(TestTags.ARCHIVE_RESTORE_SELECTION_NONE)
       )
     }
   }
@@ -257,18 +223,17 @@ private fun SelectionCard(
   modifier: Modifier = Modifier
 ) {
   Card(
+    onClick = onClick,
     colors = CardDefaults.cardColors(
       containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ),
-    modifier = modifier
-      .fillMaxWidth()
-      .clickable(onClick = onClick)
+    modifier = modifier.fillMaxWidth()
   ) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
       modifier = Modifier.padding(16.dp)
     ) {
-      Icon(imageVector = imageVector, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+      Icon(imageVector = imageVector, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
 
       Spacer(modifier = Modifier.width(16.dp))
 

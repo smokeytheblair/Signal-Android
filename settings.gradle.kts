@@ -1,3 +1,34 @@
+val localProps = java.util.Properties().also { props ->
+  val localPropsFile = file("local.properties")
+  if (localPropsFile.exists()) {
+    localPropsFile.inputStream().use { props.load(it) }
+  }
+}
+
+fun optionalBuildCacheValue(envKey: String, localKey: String): String? {
+  return System.getenv(envKey)?.takeIf { it.isNotBlank() }
+    ?: localProps.getProperty(localKey)?.takeIf { it.isNotBlank() }
+}
+
+val remoteBuildCacheUrl: String? = optionalBuildCacheValue("SIGNAL_BUILD_CACHE_URL", "signal.build.cache.url")
+val remoteBuildCacheUser: String? = optionalBuildCacheValue("SIGNAL_BUILD_CACHE_USER", "signal.build.cache.user")
+val remoteBuildCachePassword: String? = optionalBuildCacheValue("SIGNAL_BUILD_CACHE_PASSWORD", "signal.build.cache.password")
+
+buildCache {
+  if (remoteBuildCacheUrl != null) {
+    remote<HttpBuildCache> {
+      url = uri(remoteBuildCacheUrl)
+      isPush = System.getenv("SIGNAL_BUILD_CACHE_PUSH") == "true"
+      if (remoteBuildCacheUser != null && remoteBuildCachePassword != null) {
+        credentials {
+          username = remoteBuildCacheUser
+          password = remoteBuildCachePassword
+        }
+      }
+    }
+  }
+}
+
 pluginManagement {
   repositories {
     google()
@@ -91,9 +122,12 @@ include(":lib:image-editor")
 include(":lib:debuglogs-viewer")
 include(":lib:blurhash")
 include(":lib:apng")
+include(":lib:emoji")
 include(":lib:archive")
+include(":lib:ui-components")
 
 // Feature modules
+include(":feature:app-settings")
 include(":feature:registration")
 include(":feature:camera")
 include(":feature:media-send")
@@ -114,6 +148,7 @@ include(":demo:apng")
 
 // Testing/Lint modules
 include(":lintchecks")
+include(":fast-lint")
 include(":benchmark")
 include(":baseline-profile")
 include(":microbenchmark")

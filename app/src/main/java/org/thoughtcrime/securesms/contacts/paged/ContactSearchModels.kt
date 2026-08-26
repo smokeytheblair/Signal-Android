@@ -7,6 +7,7 @@ package org.thoughtcrime.securesms.contacts.paged
 
 import android.content.Context
 import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
@@ -14,20 +15,28 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -39,20 +48,22 @@ import io.reactivex.rxjava3.disposables.Disposable
 import org.signal.core.ui.compose.FastScrollCharacterProvider
 import org.signal.core.util.BreakIteratorCompat
 import org.signal.core.util.requireDrawable
+import org.signal.emoji.EmojiUtil
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.avatar.fallback.FallbackAvatar
 import org.thoughtcrime.securesms.avatar.view.AvatarView
 import org.thoughtcrime.securesms.badges.BadgeImageView
 import org.thoughtcrime.securesms.components.AvatarImageView
 import org.thoughtcrime.securesms.components.FromTextView
-import org.thoughtcrime.securesms.components.emoji.EmojiUtil
 import org.thoughtcrime.securesms.components.menu.ActionItem
 import org.thoughtcrime.securesms.components.menu.SignalContextMenu
+import org.thoughtcrime.securesms.components.settings.models.DSLComposePreference
 import org.thoughtcrime.securesms.contacts.LetterHeaderDecoration
 import org.thoughtcrime.securesms.database.model.DistributionListPrivacyMode
 import org.thoughtcrime.securesms.database.model.StoryViewState
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.recipients.Recipient
+import org.thoughtcrime.securesms.util.SearchUtil
 import org.thoughtcrime.securesms.util.SpanUtil
 import org.thoughtcrime.securesms.util.adapter.mapping.LayoutFactory
 import org.thoughtcrime.securesms.util.adapter.mapping.MappingAdapter
@@ -62,6 +73,7 @@ import org.thoughtcrime.securesms.util.adapter.mapping.MappingViewHolder
 import org.thoughtcrime.securesms.util.adapter.mapping.compose.MappingEntryProvider
 import org.thoughtcrime.securesms.util.adapter.mapping.compose.MappingEntryProviderBuilder
 import org.thoughtcrime.securesms.util.visible
+import java.util.Locale
 import org.signal.core.ui.R as CoreUiR
 
 /**
@@ -116,6 +128,10 @@ object ContactSearchModels {
       HeaderModel::class.java,
       LayoutFactory({ HeaderViewHolder(it) }, R.layout.contact_search_section_header)
     )
+  }
+
+  fun registerSectionLoading(mappingAdapter: MappingAdapter) {
+    DSLComposePreference.register<SectionLoadingModel>(mappingAdapter) { SectionLoadingViewHolder(it) }
   }
 
   fun registerExpands(mappingAdapter: MappingAdapter, expandListener: (ContactSearchData.Expand) -> Unit) {
@@ -209,6 +225,11 @@ object ContactSearchModels {
           R.layout.contact_search_section_header
         ).createViewHolder(FrameLayout(ctx))
       }
+      entry<SectionLoadingModel>(
+        key = { model -> "SECTION_LOADING${model.sectionLoading.sectionKey}" }
+      ) {
+        SectionLoadingRow()
+      }
       viewHolder<ExpandModel>(
         key = { model -> "EXPAND${model.expand.sectionKey}" }
       ) { ctx ->
@@ -225,6 +246,18 @@ object ContactSearchModels {
           R.layout.contact_search_chat_type_item
         ).createViewHolder(FrameLayout(ctx))
       }
+      entry<EmptyModel>(
+        key = { "EmptyModel" }
+      ) { model ->
+        Text(
+          text = if (model.empty.query.isNullOrEmpty()) stringResource(R.string.SearchFragment_no_results_empty) else stringResource(R.string.SearchFragment_no_results, model.empty.query),
+          color = MaterialTheme.colorScheme.onSurface,
+          textAlign = TextAlign.Center,
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp)
+        )
+      }
     }.build()
   }
 
@@ -235,6 +268,7 @@ object ContactSearchModels {
           is ContactSearchData.Story -> StoryModel(it, selection.contains(it.contactSearchKey), SignalStore.story.userHasBeenNotifiedAboutStories)
           is ContactSearchData.KnownRecipient -> RecipientModel(it, selection.contains(it.contactSearchKey), it.shortSummary)
           is ContactSearchData.Expand -> ExpandModel(it)
+          is ContactSearchData.SectionLoading -> SectionLoadingModel(it)
           is ContactSearchData.Header -> HeaderModel(it)
           is ContactSearchData.TestRow -> error("This row exists for testing only.")
           is ContactSearchData.Arbitrary -> arbitraryRepository?.getMappingModel(it) ?: error("This row must be handled manually")
@@ -454,7 +488,9 @@ object ContactSearchModels {
   ) : MappingModel<RecipientModel>, FastScrollCharacterProvider {
 
     override fun getFastScrollCharacter(context: Context): CharSequence {
-      val name = if (knownRecipient.recipient.isSelf) {
+      val name = if (knownRecipient.recipient.isSelf && knownRecipient.showSelfAsYou) {
+        context.getString(R.string.Recipient_you)
+      } else if (knownRecipient.recipient.isSelf) {
         context.getString(R.string.note_to_self)
       } else {
         knownRecipient.recipient.getDisplayName(context)
@@ -564,11 +600,23 @@ object ContactSearchModels {
     override fun isSelected(model: RecipientModel): Boolean = model.isSelected
     override fun getData(model: RecipientModel): ContactSearchData.KnownRecipient = model.knownRecipient
     override fun getRecipient(model: RecipientModel): Recipient = model.knownRecipient.recipient
+    override fun showSelfAsYou(model: RecipientModel): Boolean = model.knownRecipient.showSelfAsYou
+
+    override fun bindAvatar(model: RecipientModel) {
+      if (model.knownRecipient.showSelfAsYou) {
+        avatar.setAvatarUsingProfile(getRecipient(model))
+      } else {
+        super.bindAvatar(model)
+      }
+    }
+
     override fun bindNumberField(model: RecipientModel) {
       val recipient = getRecipient(model)
-      if (model.knownRecipient.sectionKey == ContactSearchConfiguration.SectionKey.GROUP_MEMBERS) {
+      if (model.knownRecipient.sectionKey == ContactSearchConfiguration.SectionKey.GROUP_MEMBERS && displayOptions.displaySecondaryInformation != ContactSearchAdapter.DisplaySecondaryInformation.NEVER) {
         number.text = model.knownRecipient.groupsInCommon.toDisplayText(context, displayGroupsLimit = 2)
         number.visible = true
+      } else if (model.knownRecipient.sectionKey == ContactSearchConfiguration.SectionKey.GROUP_MEMBERS) {
+        number.visible = false
       } else if (model.shortSummary && recipient.isGroup) {
         val count = recipient.participantIds.size
         number.text = context.resources.getQuantityString(R.plurals.ContactSearchItems__group_d_members, count, count)
@@ -594,6 +642,10 @@ object ContactSearchModels {
       checkbox.isEnabled = !fixedContacts.contains(model.knownRecipient.contactSearchKey)
     }
 
+    override fun bindLabelField(model: RecipientModel) {
+      adminLabel.visible = model.knownRecipient.showAdminLabel
+    }
+
     override fun isEnabled(model: RecipientModel): Boolean {
       return !fixedContacts.contains(model.knownRecipient.contactSearchKey)
     }
@@ -604,6 +656,10 @@ object ContactSearchModels {
 
     override fun bindLongPress(model: RecipientModel) {
       itemView.setOnLongClickListener { onLongClick.onLongClicked(itemView, model.knownRecipient) }
+    }
+
+    override fun getHighlightQuery(model: RecipientModel): String? {
+      return model.knownRecipient.query
     }
   }
 
@@ -623,8 +679,10 @@ object ContactSearchModels {
     protected val name: FromTextView = itemView.findViewById(R.id.name)
     protected val number: TextView = itemView.findViewById(R.id.number)
     protected val label: TextView = itemView.findViewById(R.id.label)
+    protected val adminLabel: TextView = itemView.findViewById(R.id.admin_label)
     private val startAudio: View = itemView.findViewById(R.id.start_audio)
     private val startVideo: View = itemView.findViewById(R.id.start_video)
+    private val searchStyleFactory = SearchUtil.StyleFactory { arrayOf(ForegroundColorSpan(ContextCompat.getColor(context, CoreUiR.color.signal_colorOnSurface)), SpanUtil.getBoldSpan()) }
 
     override fun bind(model: T) {
       if (isEnabled(model)) {
@@ -643,7 +701,7 @@ object ContactSearchModels {
       val recipient = getRecipient(model)
       val suffix: CharSequence? = if (recipient.isSystemContact && !recipient.showVerified) {
         SpannableStringBuilder().apply {
-          val drawable = context.requireDrawable(R.drawable.symbol_person_circle_24).apply {
+          val drawable = context.requireDrawable(CoreUiR.drawable.symbol_person_circle_24).apply {
             setTint(ContextCompat.getColor(context, CoreUiR.color.signal_colorOnSurface))
           }
           SpanUtil.appendCenteredImageSpan(this, drawable, 16, 16)
@@ -651,7 +709,14 @@ object ContactSearchModels {
       } else {
         null
       }
-      name.setText(recipient, suffix)
+      val query = getHighlightQuery(model)
+      val displayName: CharSequence = if (!query.isNullOrBlank()) {
+        SearchUtil.getHighlightedSpan(Locale.getDefault(), searchStyleFactory, recipient.getDisplayName(context), query, SearchUtil.MATCH_ALL)
+      } else {
+        recipient.getDisplayName(context)
+      }
+
+      name.setText(recipient, displayName, suffix, true, showSelfAsYou(model))
 
       badge.setBadgeFromRecipient(getRecipient(model))
 
@@ -667,6 +732,8 @@ object ContactSearchModels {
     }
 
     protected open fun isEnabled(model: T): Boolean = true
+    protected open fun showSelfAsYou(model: T): Boolean = false
+    protected open fun getHighlightQuery(model: T): String? = null
 
     protected open fun bindAvatar(model: T) {
       avatar.setAvatar(getRecipient(model))
@@ -739,6 +806,19 @@ object ContactSearchModels {
   }
 
   /**
+   * Mapping Model for the placeholder shown in place of a section whose query is still running.
+   */
+  class SectionLoadingModel(val sectionLoading: ContactSearchData.SectionLoading) : MappingModel<SectionLoadingModel> {
+    override fun areItemsTheSame(newItem: SectionLoadingModel): Boolean {
+      return sectionLoading.sectionKey == newItem.sectionLoading.sectionKey
+    }
+
+    override fun areContentsTheSame(newItem: SectionLoadingModel): Boolean {
+      return areItemsTheSame(newItem)
+    }
+  }
+
+  /**
    * Mapping Model for messages
    */
   class MessageModel(val message: ContactSearchData.Message) : MappingModel<MessageModel> {
@@ -771,6 +851,31 @@ object ContactSearchModels {
     override fun areContentsTheSame(newItem: GroupWithMembersModel): Boolean = newItem.groupWithMembers == groupWithMembers
 
     override fun areItemsTheSame(newItem: GroupWithMembersModel): Boolean = newItem.groupWithMembers.contactSearchKey == groupWithMembers.contactSearchKey
+  }
+
+  @Composable
+  private fun SectionLoadingRow() {
+    Box(
+      contentAlignment = Alignment.Center,
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 16.dp)
+    ) {
+      CircularProgressIndicator(
+        strokeWidth = 3.dp,
+        modifier = Modifier.size(24.dp)
+      )
+    }
+  }
+
+  /**
+   * View Holder for the placeholder shown in place of a section whose query is still running.
+   */
+  private class SectionLoadingViewHolder(composeView: ComposeView) : DSLComposePreference.ViewHolder<SectionLoadingModel>(composeView) {
+    @Composable
+    override fun Content(model: SectionLoadingModel) {
+      SectionLoadingRow()
+    }
   }
 
   /**

@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -41,6 +42,7 @@ import org.signal.registration.screens.OnePaneRegistrationScaffold
 import org.signal.registration.screens.RegistrationScaffold
 import org.signal.registration.screens.TwoPaneRegistrationScaffold
 import org.signal.registration.screens.attachDebugLogHelper
+import org.signal.registration.test.TestTags
 
 /**
  * Screen shown when the user's account is locked due to too many failed PIN attempts
@@ -67,7 +69,9 @@ private fun OnePaneLayout(
 ) {
   val scrollState = rememberScrollState()
   OnePaneRegistrationScaffold(
-    modifier = modifier.fillMaxSize(),
+    modifier = modifier
+      .fillMaxSize()
+      .testTag(TestTags.ACCOUNT_LOCKED_SCREEN),
     params = params,
     content = { paddingValues ->
       Column(
@@ -78,22 +82,33 @@ private fun OnePaneLayout(
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
         Title()
-        Spacer(modifier = Modifier.height(12.dp))
-        Description(state)
+        Description(
+          state = state,
+          modifier = Modifier.padding(top = 16.dp)
+        )
       }
     },
     footer = {
-      Column(
-        modifier = modifier
-          .fillMaxWidth()
-          .padding(vertical = 16.dp)
-          .horizontalGutters(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+      RegistrationScaffold.FooterSurface(
+        isElevated = scrollState.canScrollForward
       ) {
-        NextButton(onEvent, modifier = Modifier.widthIn(max = params.maxButtonWidth).fillMaxWidth())
-        Spacer(modifier = Modifier.height(16.dp))
-        LearnMore(onEvent)
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp)
+            .horizontalGutters(),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.Center
+        ) {
+          NextButton(
+            onEvent,
+            modifier = Modifier
+              .widthIn(max = params.maxButtonWidth)
+              .fillMaxWidth()
+          )
+          Spacer(modifier = Modifier.height(16.dp))
+          LearnMore(onEvent)
+        }
       }
     }
   )
@@ -110,7 +125,9 @@ private fun TwoPaneLayout(
   val secondPaneScrollState = rememberScrollState()
 
   TwoPaneRegistrationScaffold(
-    modifier = modifier.fillMaxSize(),
+    modifier = modifier
+      .fillMaxSize()
+      .testTag(TestTags.ACCOUNT_LOCKED_SCREEN),
     params = params,
     firstPane = { paddingValues ->
       Column(
@@ -121,7 +138,7 @@ private fun TwoPaneLayout(
           .padding(paddingValues),
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
-        Title()
+        Title(twoPane = true)
       }
     },
     secondPane = { paddingValues ->
@@ -136,38 +153,47 @@ private fun TwoPaneLayout(
       }
     },
     footer = {
-      Row(
-        modifier = modifier
-          .padding(vertical = 16.dp)
-          .fillMaxWidth()
-          .horizontalGutters(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically
+      RegistrationScaffold.FooterSurface(
+        isElevated = firstPaneScrollState.canScrollForward || secondPaneScrollState.canScrollForward
       ) {
-        LearnMore(onEvent)
-        Spacer(modifier = Modifier.size(16.dp))
-        NextButton(onEvent, modifier = Modifier.widthIn(max = params.maxButtonWidth))
+        Row(
+          modifier = Modifier
+            .padding(vertical = 16.dp)
+            .fillMaxWidth()
+            .horizontalGutters(),
+          horizontalArrangement = Arrangement.End,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          LearnMore(onEvent)
+          Spacer(modifier = Modifier.size(16.dp))
+          NextButton(onEvent, modifier = Modifier.widthIn(max = params.maxButtonWidth))
+        }
       }
     }
   )
 }
 
 @Composable
-private fun Title() {
+private fun Title(twoPane: Boolean = false) {
   Text(
     text = stringResource(R.string.AccountLockedScreen__account_locked),
-    style = MaterialTheme.typography.headlineMedium,
-    modifier = Modifier.fillMaxWidth().attachDebugLogHelper()
+    style = if (twoPane) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium,
+    modifier = Modifier
+      .fillMaxWidth()
+      .attachDebugLogHelper()
   )
 }
 
 @Composable
-private fun Description(state: AccountLockedState) {
+private fun Description(
+  state: AccountLockedState,
+  modifier: Modifier = Modifier
+) {
   Text(
     text = stringResource(R.string.AccountLockedScreen__your_account, state.daysRemaining),
     style = MaterialTheme.typography.bodyLarge,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
-    modifier = Modifier.fillMaxWidth()
+    modifier = modifier
   )
 }
 
@@ -175,7 +201,7 @@ private fun Description(state: AccountLockedState) {
 private fun NextButton(onEvent: (AccountLockedScreenEvents) -> Unit, modifier: Modifier = Modifier) {
   Button(
     onClick = { onEvent(AccountLockedScreenEvents.Next) },
-    modifier = modifier
+    modifier = modifier.testTag(TestTags.ACCOUNT_LOCKED_NEXT_BUTTON)
   ) {
     Text(stringResource(R.string.RegistrationActivity_next))
   }
@@ -202,7 +228,8 @@ private fun LearnMore(onEvent: (AccountLockedScreenEvents) -> Unit) {
         }
       }
     },
-    textAlign = TextAlign.Center
+    textAlign = TextAlign.Center,
+    modifier = Modifier.testTag(TestTags.ACCOUNT_LOCKED_LEARN_MORE_BUTTON)
   )
 }
 

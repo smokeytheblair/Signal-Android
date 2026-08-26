@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.signal.registration.screens.OnePaneRegistrationScaffold
 import org.signal.registration.screens.RegistrationScaffold
@@ -36,7 +37,7 @@ import org.signal.registration.test.TestTags
 @Composable
 internal fun LocalBackupRestoreLayout(
   modifier: Modifier = Modifier,
-  description: (@Composable ColumnScope.() -> Unit)? = null,
+  description: (@Composable ColumnScope.(twoPane: Boolean) -> Unit)? = null,
   primaryButton: (@Composable (Modifier) -> Unit)? = null,
   secondaryButton: (@Composable (Modifier) -> Unit)? = null,
   content: @Composable ColumnScope.() -> Unit
@@ -44,6 +45,7 @@ internal fun LocalBackupRestoreLayout(
   when (val params = RegistrationScaffold.rememberLayoutParams()) {
     is RegistrationScaffold.Params.OnePane -> {
       val scrollState = rememberScrollState()
+
       OnePaneRegistrationScaffold(
         modifier = modifier.fillMaxSize(),
         params = params,
@@ -56,24 +58,28 @@ internal fun LocalBackupRestoreLayout(
               .testTag(TestTags.LOCAL_BACKUP_RESTORE_SCREEN),
             horizontalAlignment = Alignment.CenterHorizontally
           ) {
-            description?.invoke(this)
+            description?.invoke(this, false)
             Spacer(modifier = Modifier.height(24.dp))
             content()
           }
         },
         footer = {
-          if (primaryButton != null || secondaryButton != null) {
-            Column(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-              horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-              primaryButton?.invoke(Modifier.fillMaxWidth())
-              if (secondaryButton != null) {
-                Spacer(modifier = Modifier.height(8.dp))
+          RegistrationScaffold.FooterSurface(
+            isElevated = scrollState.canScrollForward
+          ) {
+            if (primaryButton != null || secondaryButton != null) {
+              Column(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(params.footerPadding),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                primaryButton?.invoke(Modifier.fillMaxWidth())
+                if (secondaryButton != null) {
+                  Spacer(modifier = Modifier.height(8.dp))
+                }
+                secondaryButton?.invoke(Modifier.fillMaxWidth())
               }
-              secondaryButton?.invoke(Modifier.fillMaxWidth())
             }
           }
         }
@@ -83,6 +89,7 @@ internal fun LocalBackupRestoreLayout(
     is RegistrationScaffold.Params.TwoPane -> {
       val firstPaneScrollState = rememberScrollState()
       val secondPaneScrollState = rememberScrollState()
+
       TwoPaneRegistrationScaffold(
         modifier = modifier
           .fillMaxSize()
@@ -96,7 +103,7 @@ internal fun LocalBackupRestoreLayout(
               .verticalScroll(firstPaneScrollState)
               .padding(paddingValues)
           ) {
-            description?.invoke(this)
+            description?.invoke(this, true)
           }
         },
         secondPane = { paddingValues ->
@@ -112,19 +119,23 @@ internal fun LocalBackupRestoreLayout(
           }
         },
         footer = {
-          if (primaryButton != null || secondaryButton != null) {
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-              horizontalArrangement = Arrangement.End,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              secondaryButton?.invoke(Modifier)
-              if (secondaryButton != null) {
-                Spacer(modifier = Modifier.width(16.dp))
+          RegistrationScaffold.FooterSurface(
+            isElevated = firstPaneScrollState.canScrollForward || secondPaneScrollState.canScrollForward
+          ) {
+            if (primaryButton != null || secondaryButton != null) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(params.footerPadding),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                secondaryButton?.invoke(Modifier)
+                if (secondaryButton != null) {
+                  Spacer(modifier = Modifier.width(16.dp))
+                }
+                primaryButton?.invoke(Modifier)
               }
-              primaryButton?.invoke(Modifier)
             }
           }
         }
@@ -134,20 +145,20 @@ internal fun LocalBackupRestoreLayout(
 }
 
 @Composable
-internal fun Description(headline: String, body: String) {
+internal fun Description(headline: String, body: String, twoPane: Boolean = false) {
   Text(
     text = headline,
-    style = MaterialTheme.typography.headlineMedium,
-    modifier = Modifier.fillMaxWidth().attachDebugLogHelper()
+    style = if (twoPane) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium,
+    modifier = Modifier
+      .fillMaxWidth()
+      .attachDebugLogHelper()
   )
-
-  Spacer(modifier = Modifier.height(8.dp))
 
   Text(
     text = body,
-    style = MaterialTheme.typography.bodyMedium,
+    style = if (twoPane) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal) else MaterialTheme.typography.bodyLarge,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
-    modifier = Modifier.fillMaxWidth()
+    modifier = Modifier.padding(top = 16.dp)
   )
 }
 

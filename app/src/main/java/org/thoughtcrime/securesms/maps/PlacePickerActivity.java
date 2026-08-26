@@ -16,28 +16,30 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.animation.OvershootInterpolator;
 
+import androidx.activity.EdgeToEdge;
 import androidx.annotation.ColorInt;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MapStyleOptions;
 
+import org.signal.core.util.bitmaps.BitmapUtil;
 import org.signal.core.util.concurrent.ListenableFuture;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.components.location.SignalMapView;
-import org.thoughtcrime.securesms.providers.BlobProvider;
-import org.thoughtcrime.securesms.util.BitmapUtil;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme;
 import org.thoughtcrime.securesms.util.DynamicTheme;
 import org.thoughtcrime.securesms.util.MediaUtil;
@@ -72,9 +74,9 @@ public final class PlacePickerActivity extends AppCompatActivity {
   private Address                  currentAddress;
   private LatLng                   initialLocation;
   private LatLng                   currentLocation = new LatLng(0, 0);
-  private LatLng                   userLocation;
   private AddressLookup            addressLookup;
   private GoogleMap                googleMap;
+  private Insets                   systemBarInsets;
 
   public static void startActivityForResultAtCurrentLocation(@NonNull Fragment fragment, int requestCode, @ColorInt int chatColor) {
     fragment.startActivityForResult(new Intent(fragment.requireActivity(), PlacePickerActivity.class).putExtra(KEY_CHAT_COLOR, chatColor), requestCode);
@@ -87,14 +89,22 @@ public final class PlacePickerActivity extends AppCompatActivity {
   @SuppressLint("MissingInflatedId")
   @Override
   public void onCreate(@Nullable Bundle savedInstanceState) {
+    EdgeToEdge.enable(this);
     super.onCreate(savedInstanceState);
     dynamicTheme.onCreate(this);
-    
+
     setContentView(R.layout.activity_place_picker);
 
     bottomSheet      = findViewById(R.id.bottom_sheet);
     View markerImage = findViewById(R.id.marker_image_view);
     View fab         = findViewById(R.id.place_chosen_button);
+
+    ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content), (view, insets) -> {
+      systemBarInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+      bottomSheet.setPadding(systemBarInsets.left, 0, systemBarInsets.right, systemBarInsets.bottom);
+      applyMapPadding();
+      return insets;
+    });
 
     ViewCompat.setBackgroundTintList(fab, ColorStateList.valueOf(getIntent().getIntExtra(KEY_CHAT_COLOR, Color.RED)));
     fab.setOnClickListener(v -> finishWithAddress());
@@ -103,10 +113,7 @@ public final class PlacePickerActivity extends AppCompatActivity {
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)
     {
       new LocationRetriever(this, this, location -> {
-        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-        userLocation = latLng;
-        setInitialLocation(latLng);
-        drawUserLocationIfPossible();
+        setInitialLocation(new LatLng(location.getLatitude(), location.getLongitude()));
       }, () -> {
         Log.w(TAG, "Failed to get location.");
         setInitialLocation(PRIME_MERIDIAN);
@@ -132,6 +139,8 @@ public final class PlacePickerActivity extends AppCompatActivity {
           Log.e(TAG, "Can't find style. Error: ", e);
         }
       }
+
+      enableMyLocationButtonIfHaveThePermission(googleMap);
 
       googleMap.setOnCameraMoveStartedListener(i -> {
         markerImage.animate()
@@ -170,18 +179,13 @@ public final class PlacePickerActivity extends AppCompatActivity {
   private void setMap(GoogleMap googleMap) {
     this.googleMap = googleMap;
 
+    applyMapPadding();
     moveMapToInitialIfPossible();
-    drawUserLocationIfPossible();
   }
 
-  private void drawUserLocationIfPossible() {
-    if (userLocation != null && googleMap != null) {
-      googleMap.addCircle(new CircleOptions()
-                              .center(userLocation)
-                              .radius(12)
-                              .strokeWidth(4f)
-                              .strokeColor(Color.WHITE)
-                              .fillColor(Color.parseColor("#4285F4")));
+  private void applyMapPadding() {
+    if (googleMap != null && systemBarInsets != null) {
+      googleMap.setPadding(systemBarInsets.left, systemBarInsets.top, systemBarInsets.right, systemBarInsets.bottom);
     }
   }
 
@@ -211,7 +215,7 @@ public final class PlacePickerActivity extends AppCompatActivity {
       public void onSuccess(Bitmap result) {
         dismissibleDialog.dismiss();
         byte[] blob = BitmapUtil.toByteArray(result);
-        Uri uri = BlobProvider.getInstance()
+        Uri uri = AppDependencies.getBlobs()
                               .forData(blob)
                               .withMimeType(MediaUtil.IMAGE_JPEG)
                               .createForSingleSessionInMemory();
@@ -229,6 +233,12 @@ public final class PlacePickerActivity extends AppCompatActivity {
     });
   }
 
+  private void enableMyLocationButtonIfHaveThePermission(GoogleMap googleMap) {
+    if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+      googleMap.setMyLocationEnabled(true);
+    }
+  }
+
   private void lookupAddress(@Nullable LatLng target) {
     if (addressLookup != null) {
       addressLookup.cancel(true);
@@ -237,9 +247,13 @@ public final class PlacePickerActivity extends AppCompatActivity {
     addressLookup.execute(target);
   }
 
+  @SuppressLint("MissingPermission")
   @Override
   protected void onPause() {
     super.onPause();
+    if (googleMap != null && (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
+      googleMap.setMyLocationEnabled(false);
+    }
     if (addressLookup != null) {
       addressLookup.cancel(true);
     }

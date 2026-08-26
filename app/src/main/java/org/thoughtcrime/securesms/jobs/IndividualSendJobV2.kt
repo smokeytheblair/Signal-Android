@@ -11,9 +11,15 @@ import arrow.core.Either
 import arrow.core.getOrElse
 import arrow.core.raise.Raise
 import arrow.core.raise.either
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import okio.utf8Size
+import org.signal.core.models.ServiceId
 import org.signal.core.util.logging.Log
 import org.signal.core.util.orNull
+import org.signal.libsignal.net.ChallengeOption
+import org.signal.libsignal.protocol.InvalidSessionException
+import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.network.service.MessageService
 import org.thoughtcrime.securesms.BuildConfig
 import org.thoughtcrime.securesms.attachments.Attachment
@@ -35,7 +41,6 @@ import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.ratelimit.ProofRequiredExceptionHandler
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientUtil
-import org.thoughtcrime.securesms.util.MessageUtil
 import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.SignalLocalMetrics
 import org.thoughtcrime.securesms.util.isUrgent
@@ -43,6 +48,7 @@ import org.thoughtcrime.securesms.util.toDataMessage
 import org.whispersystems.signalservice.api.crypto.ContentHint
 import org.whispersystems.signalservice.api.crypto.EnvelopeContent
 import org.whispersystems.signalservice.api.messages.SendMessageResult
+import org.whispersystems.signalservice.api.messages.SignalServiceMessageLimits
 import org.whispersystems.signalservice.api.push.SignalServiceAddress
 import org.whispersystems.signalservice.api.push.exceptions.ProofRequiredException
 import org.whispersystems.signalservice.internal.push.Content
@@ -173,8 +179,8 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
       null
     }
 
-    if (message.body.utf8Size() > MessageUtil.MAX_INLINE_BODY_SIZE_BYTES) {
-      Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Body size exceeds limit of ${MessageUtil.MAX_INLINE_BODY_SIZE_BYTES} bytes; failing.")
+    if (message.body.utf8Size() > SignalServiceMessageLimits.MAX_INLINE_BODY_SIZE_BYTES) {
+      Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Body size exceeds limit of ${SignalServiceMessageLimits.MAX_INLINE_BODY_SIZE_BYTES} bytes; failing.")
       return Result.failure()
     }
 
@@ -190,14 +196,14 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
     Log.i(TAG, "${logPrefix(message.sentTimeMillis)} Sending message. Recipient: ${message.threadRecipient.id}, Thread: $threadId, Attachments: ${buildAttachmentString(message.attachments)}, Editing: ${originalEditedMessage?.dateSent ?: "N/A"}")
     SignalLocalMetrics.IndividualMessageSend.onDeliveryStarted(messageId, message.sentTimeMillis)
 
-    return sendMessage(recipient, dataMessage, originalEditedMessage?.timestamp).fold(
+    return sendMessage(recipient, dataMessage, originalEditedMessage?.dateSent).fold(
       ifRight = { success ->
         val content = success.envelopeContent.content.get()
 
         val syntheticResult = SendMessageResult.success(
           SignalServiceAddress(recipient.requireServiceId(), recipient.e164.orNull()),
           success.devices,
-          success.sentUnidentified,
+          success.sentSealedSender,
           false,
           0L,
           Optional.of(content)
@@ -216,7 +222,7 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
           SignalDatabase.pendingPniSignatureMessages.insertIfNecessary(recipient.id, message.sentTimeMillis, syntheticResult)
         }
 
-        SignalDatabase.messages.markAsSent(messageId, success.sentUnidentified)
+        SignalDatabase.messages.markAsSent(messageId, success.sentSealedSender)
         PushSendJob.markAttachmentsUploaded(messageId, message)
 
         SignalDatabase.threads.updateSilently(threadId, false)
@@ -228,11 +234,11 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
         }
 
         val accessMode = recipient.sealedSenderAccessMode
-        if (success.sentUnidentified && accessMode == SealedSenderAccessMode.UNKNOWN && recipient.profileKey == null) {
+        if (success.sentSealedSender && accessMode == SealedSenderAccessMode.UNKNOWN && recipient.profileKey == null) {
           SignalDatabase.recipients.setSealedSenderAccessMode(recipient.id, SealedSenderAccessMode.UNRESTRICTED)
-        } else if (success.sentUnidentified && accessMode == SealedSenderAccessMode.UNKNOWN) {
+        } else if (success.sentSealedSender && accessMode == SealedSenderAccessMode.UNKNOWN) {
           SignalDatabase.recipients.setSealedSenderAccessMode(recipient.id, SealedSenderAccessMode.ENABLED)
-        } else if (!success.sentUnidentified && accessMode != SealedSenderAccessMode.DISABLED) {
+        } else if (!success.sentSealedSender && accessMode != SealedSenderAccessMode.DISABLED) {
           SignalDatabase.recipients.setSealedSenderAccessMode(recipient.id, SealedSenderAccessMode.DISABLED)
         }
 
@@ -255,36 +261,41 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
       ifLeft = { error ->
         when (error) {
           is MessageService.SendError.IdentityMismatch -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Identity mismatch for ${error.recipient.identifier}", error.cause)
-            val externalRecipient = Recipient.external(error.recipient.identifier)
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Identity mismatch for ${error.serviceId}", error.exception)
+            val externalRecipient = Recipient.external(error.serviceId.toString())
             if (externalRecipient == null) {
               Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Failed to create a Recipient for the identifier!")
             } else {
-              SignalDatabase.messages.addMismatchedIdentity(messageId, externalRecipient.id, error.cause.untrustedIdentity)
+              SignalDatabase.messages.addMismatchedIdentity(messageId, externalRecipient.id, error.exception.untrustedIdentity)
               SignalDatabase.messages.markAsSentFailed(messageId)
               RetrieveProfileJob.enqueue(externalRecipient.id, true)
             }
             Result.success()
           }
 
-          MessageService.SendError.NotRegistered -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Recipient not registered")
+          is MessageService.SendError.NotRegistered -> {
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Recipient not registered", error)
             SignalDatabase.messages.markAsSentFailed(messageId)
             PushSendJob.notifyMediaMessageDeliveryFailed(context, messageId)
             AppDependencies.jobManager.add(DirectoryRefreshJob(false))
             Result.success()
           }
 
-          MessageService.SendError.Unauthorized -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Unauthorized send")
+          is MessageService.SendError.Unauthorized -> {
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Unauthorized send", error)
             Result.failure()
           }
 
           is MessageService.SendError.ChallengeRequired -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Challenge required (options=${error.options})")
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Challenge required (options=${error.options})", error)
             val proofResponse = ProofRequiredResponse().apply {
               token = error.token
-              options = error.options
+              options = error.options.map {
+                when (it) {
+                  ChallengeOption.PUSH_CHALLENGE -> "pushChallenge"
+                  ChallengeOption.CAPTCHA -> "captcha"
+                }
+              }
             }
             val proofException = ProofRequiredException(proofResponse, error.retryAfter?.inWholeSeconds ?: 0L)
             val threadRecipient = SignalDatabase.threads.getRecipientForThreadId(threadId)
@@ -295,23 +306,23 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
             }
           }
 
-          MessageService.SendError.ServerRejected -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Server rejected the send")
+          is MessageService.SendError.ServerRejected -> {
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Server rejected the send", error)
             Result.failure()
           }
 
           is MessageService.SendError.ContentTooLarge -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Content too large (${error.size} > ${error.maxAllowed} bytes); failing.")
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Content too large (${error.size} > ${error.maxAllowed} bytes). Failing.", error)
             Result.failure()
           }
 
-          MessageService.SendError.SessionAttemptsExhausted -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Exhausted device-resolution attempts; retrying")
+          is MessageService.SendError.SessionAttemptsExhausted -> {
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Exhausted device-resolution attempts. Retrying", error)
             Result.retry(nextRunAttemptBackoff(runAttempt + 1))
           }
 
           is MessageService.SendError.PreKeyUnavailable -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Prekey unavailable: ${error.reason}")
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Prekey unavailable: ${error.reason}", error)
             Result.retry(nextRunAttemptBackoff(runAttempt + 1))
           }
 
@@ -319,16 +330,22 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
             val defaultBackoff = nextRunAttemptBackoff(runAttempt + 1)
             val serverBackoff = error.retryAfter?.inWholeMilliseconds ?: 0L
             val backoff = maxOf(defaultBackoff, serverBackoff)
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Rate limited, retryAfter=${error.retryAfter}, using backoff=${backoff}ms")
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Rate limited, retryAfter=${error.retryAfter}, using backoff=${backoff}ms", error)
             Result.retry(backoff)
           }
 
           is MessageService.SendError.NetworkError -> {
-            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Network error", error.cause)
+            Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Network error", error.exception)
             Result.retry(nextRunAttemptBackoff(runAttempt + 1))
           }
 
-          is MessageService.SendError.ApplicationError -> when (val cause = error.cause) {
+          is MessageService.SendError.ApplicationError -> when (val cause = error.exception) {
+            // InvalidSessionException is a RuntimeException, must check before fatal runtime check
+            is InvalidSessionException -> {
+              Log.w(TAG, "${logPrefix(message.sentTimeMillis)} Session was invalidated mid-send. Retrying.", cause)
+              Result.retry(nextRunAttemptBackoff(runAttempt + 1))
+            }
+
             is RuntimeException -> {
               Log.e(TAG, "${logPrefix(message.sentTimeMillis)} Encountered a fatal application error. Crash imminent.", cause)
               Result.fatalFailure(cause)
@@ -372,8 +389,9 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
       )
     } else {
       val pniSignature = if (recipient.needsPniSignature) {
-        Log.i(TAG, "${logPrefix(dataMessage.timestamp)} Including PNI signature.")
-        AppDependencies.signalServiceMessageSender.createPniSignatureMessage()
+        AppDependencies.signalServiceMessageSender.createPniSignatureMessage()?.also {
+          Log.i(TAG, "${logPrefix(dataMessage.timestamp)} Including PNI signature.")
+        }
       } else {
         null
       }
@@ -393,7 +411,7 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
     }
 
     return AppDependencies.messageService.sendMessage(
-      recipient = SignalServiceAddress(recipient.requireServiceId(), recipient.e164.orNull()),
+      serviceId = recipient.requireServiceId(),
       envelopeContent = envelopeContent,
       timestamp = dataMessage.timestamp!!,
       sealedSenderAccess = SealedSenderAccessUtil.getSealedSenderAccessFor(recipient),
@@ -409,25 +427,40 @@ class IndividualSendJobV2 private constructor(parameters: Parameters, private va
     val editMessage = primaryResult.envelopeContent.content.get().editMessage
     val timestamp = dataMessage?.timestamp ?: editMessage?.dataMessage?.timestamp ?: raise(MessageService.SendError.ApplicationError(IllegalStateException("No timestamp on primary message send!")))
 
+    val recipientServiceId = targetRecipient.requireServiceId()
+    val pniIdentityKey: ByteString? = if (recipientServiceId is ServiceId.PNI) {
+      AppDependencies
+        .protocolStore
+        .aci()
+        .identities()
+        .getIdentity(SignalProtocolAddress(recipientServiceId.toString(), SignalServiceAddress.DEFAULT_DEVICE_ID))?.publicKey?.serialize()?.toByteString()
+    } else {
+      null
+    }
+
     val syncContent = Content(
       syncMessage = SyncMessage(
         sent = SyncMessage.Sent(
           destinationServiceId = targetRecipient.serviceId.get().toString(),
           timestamp = timestamp,
           message = dataMessage,
-          editMessage = editMessage
+          editMessage = editMessage,
+          expirationStartTimestamp = if ((dataMessage?.expireTimer ?: 0) > 0) System.currentTimeMillis() else null,
+          unidentifiedStatus = listOf(
+            SyncMessage.Sent.UnidentifiedDeliveryStatus(
+              destinationServiceIdBinary = recipientServiceId.toByteString(),
+              unidentified = primaryResult.sentSealedSender,
+              destinationPniIdentityKey = pniIdentityKey
+            )
+          )
         )
       )
     )
     val syncEnvelope = EnvelopeContent.encrypted(syncContent, ContentHint.IMPLICIT, Optional.empty())
 
-    return AppDependencies.messageService.sendMessage(
-      recipient = SignalServiceAddress(SignalStore.account.requireAci()),
+    return AppDependencies.messageService.sendSyncMessage(
       envelopeContent = syncEnvelope,
       timestamp = timestamp,
-      sealedSenderAccess = null, // We don't use sealed sender for sync messages
-      story = false,
-      isOnline = false,
       urgent = true,
       onEncrypted = { SignalLocalMetrics.IndividualMessageSend.onSyncMessageEncrypted(messageId) }
     ).bind()

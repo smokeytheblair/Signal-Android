@@ -6,10 +6,8 @@
 package org.signal.registration.screens.remotebackuprestore
 
 import android.text.format.DateFormat
-import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,13 +17,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,13 +29,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.signal.core.models.AccountEntropyPool
 import org.signal.core.ui.compose.AllDevicePreviews
 import org.signal.core.ui.compose.Buttons
 import org.signal.core.ui.compose.Dialogs
+import org.signal.core.ui.compose.KeepScreenOnEffect
 import org.signal.core.ui.compose.Previews
 import org.signal.core.ui.compose.SignalIcons
 import org.signal.core.ui.compose.theme.SignalTheme
@@ -50,6 +47,9 @@ import org.signal.registration.screens.OnePaneRegistrationScaffold
 import org.signal.registration.screens.RegistrationScaffold
 import org.signal.registration.screens.TwoPaneRegistrationScaffold
 import org.signal.registration.screens.attachDebugLogHelper
+import org.signal.registration.screens.shared.ContactSupportDialog
+import org.signal.registration.screens.shared.RestoreProgressDialog
+import org.signal.registration.test.TestTags
 import java.util.Date
 
 @Composable
@@ -58,6 +58,10 @@ fun RemoteRestoreScreen(
   onEvent: (RemoteBackupRestoreScreenEvents) -> Unit,
   modifier: Modifier = Modifier
 ) {
+  if (state.restoreState == RemoteBackupRestoreState.RestoreState.InProgress) {
+    KeepScreenOnEffect()
+  }
+
   when (state.loadState) {
     RemoteBackupRestoreState.LoadState.Loading -> {
       Dialogs.IndeterminateProgressDialog(
@@ -103,15 +107,17 @@ private fun OnePaneLayout(
   onEvent: (RemoteBackupRestoreScreenEvents) -> Unit,
   modifier: Modifier = Modifier
 ) {
+  val scrollState = rememberScrollState()
+
   OnePaneRegistrationScaffold(
-    modifier = modifier,
+    modifier = modifier.testTag(TestTags.REMOTE_BACKUP_RESTORE_SCREEN),
     params = params,
     content = { paddingValues ->
       Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
           .fillMaxSize()
-          .verticalScroll(rememberScrollState())
+          .verticalScroll(scrollState)
           .padding(paddingValues)
       ) {
         BackupInfoContent(state = state)
@@ -120,13 +126,17 @@ private fun OnePaneLayout(
       RestoreStateDialogs(state = state, onEvent = onEvent)
     },
     footer = {
-      Column(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(24.dp)
+      RegistrationScaffold.FooterSurface(
+        isElevated = scrollState.canScrollForward
       ) {
-        RestoreButton(onEvent, Modifier.fillMaxWidth())
-        CancelButton(onEvent, Modifier.fillMaxWidth())
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp)
+        ) {
+          RestoreButton(onEvent, Modifier.fillMaxWidth())
+          CancelButton(onEvent, Modifier.fillMaxWidth())
+        }
       }
     }
   )
@@ -139,8 +149,11 @@ private fun TwoPaneLayout(
   onEvent: (RemoteBackupRestoreScreenEvents) -> Unit,
   modifier: Modifier = Modifier
 ) {
+  val firstPaneScrollState = rememberScrollState()
+  val secondPaneScrollState = rememberScrollState()
+
   TwoPaneRegistrationScaffold(
-    modifier = modifier,
+    modifier = modifier.testTag(TestTags.REMOTE_BACKUP_RESTORE_SCREEN),
     params = params,
     firstPane = { paddingValues ->
       Column(
@@ -148,10 +161,10 @@ private fun TwoPaneLayout(
         modifier = Modifier
           .weight(1f)
           .fillMaxHeight()
-          .verticalScroll(rememberScrollState())
+          .verticalScroll(firstPaneScrollState)
           .padding(paddingValues)
       ) {
-        BackupInfoHeading()
+        BackupInfoHeading(twoPane = true)
       }
     },
     secondPane = { paddingValues ->
@@ -160,24 +173,28 @@ private fun TwoPaneLayout(
         modifier = Modifier
           .weight(1f)
           .fillMaxHeight()
-          .verticalScroll(rememberScrollState())
+          .verticalScroll(secondPaneScrollState)
           .padding(paddingValues)
       ) {
-        BackupInfoDetails(state = state)
+        BackupInfoDetails(state = state, twoPane = true)
       }
 
       RestoreStateDialogs(state = state, onEvent = onEvent)
     },
     footer = {
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(24.dp),
-        horizontalArrangement = Arrangement.End
+      RegistrationScaffold.FooterSurface(
+        isElevated = firstPaneScrollState.canScrollForward || secondPaneScrollState.canScrollForward
       ) {
-        CancelButton(onEvent, Modifier)
-        Spacer(modifier = Modifier.size(8.dp))
-        RestoreButton(onEvent, Modifier)
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+          horizontalArrangement = Arrangement.End
+        ) {
+          CancelButton(onEvent, Modifier)
+          Spacer(modifier = Modifier.size(8.dp))
+          RestoreButton(onEvent, Modifier)
+        }
       }
     }
   )
@@ -188,11 +205,14 @@ private fun BackupInfoContent(
   state: RemoteBackupRestoreState
 ) {
   BackupInfoHeading()
-  BackupInfoDetails(state = state)
+  BackupInfoDetails(
+    state = state,
+    modifier = Modifier.padding(top = 16.dp)
+  )
 }
 
 @Composable
-private fun BackupInfoHeading() {
+private fun BackupInfoHeading(twoPane: Boolean = false) {
   Icon(
     imageVector = SignalIcons.Backup.imageVector,
     contentDescription = null,
@@ -207,43 +227,46 @@ private fun BackupInfoHeading() {
 
   Text(
     text = stringResource(R.string.RemoteRestoreScreen__restore_from_backup),
-    style = MaterialTheme.typography.headlineMedium,
+    style = if (twoPane) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium,
     textAlign = TextAlign.Center,
-    modifier = Modifier.fillMaxWidth().attachDebugLogHelper()
+    modifier = Modifier
+      .fillMaxWidth()
+      .attachDebugLogHelper()
   )
 }
 
 @Composable
-private fun BackupInfoDetails(state: RemoteBackupRestoreState) {
-  if (state.backupTime > 0) {
-    Spacer(modifier = Modifier.height(12.dp))
+private fun BackupInfoDetails(state: RemoteBackupRestoreState, modifier: Modifier = Modifier, twoPane: Boolean = false) {
+  Column(
+    verticalArrangement = Arrangement.spacedBy(16.dp),
+    modifier = modifier
+  ) {
+    if (state.backupTime > 0) {
+      val context = LocalContext.current
+      val (dateStr, timeStr) = remember(context, state.backupTime) {
+        val date = Date(state.backupTime)
+        val dateFormatted = DateFormat.getMediumDateFormat(context).format(date)
+        val timeFormatted = DateFormat.getTimeFormat(context).format(date)
+        dateFormatted to timeFormatted
+      }
 
-    val context = LocalContext.current
-    val (dateStr, timeStr) = remember(context, state.backupTime) {
-      val date = Date(state.backupTime)
-      val dateFormatted = DateFormat.getMediumDateFormat(context).format(date)
-      val timeFormatted = DateFormat.getTimeFormat(context).format(date)
-      dateFormatted to timeFormatted
+      Text(
+        text = stringResource(R.string.RemoteRestoreScreen__your_last_backup_was_made_on_s_at_s, dateStr, timeStr),
+        style = if (twoPane) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal) else MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth()
+      )
     }
 
     Text(
-      text = stringResource(R.string.RemoteRestoreScreen__your_last_backup_was_made_on_s_at_s, dateStr, timeStr),
+      text = stringResource(R.string.RemoteRestoreScreen__your_media_will_restore_in_the_background),
       style = MaterialTheme.typography.bodyLarge,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       textAlign = TextAlign.Center,
       modifier = Modifier.fillMaxWidth()
     )
   }
-
-  Spacer(modifier = Modifier.height(16.dp))
-
-  Text(
-    text = stringResource(R.string.RemoteRestoreScreen__your_media_will_restore_in_the_background),
-    style = MaterialTheme.typography.bodyLarge,
-    color = MaterialTheme.colorScheme.onSurfaceVariant,
-    textAlign = TextAlign.Center,
-    modifier = Modifier.fillMaxWidth()
-  )
 }
 
 @Composable
@@ -253,7 +276,7 @@ private fun RestoreButton(
 ) {
   Buttons.LargeTonal(
     onClick = { onEvent(RemoteBackupRestoreScreenEvents.BackupRestoreBackup) },
-    modifier = modifier
+    modifier = modifier.testTag(TestTags.REMOTE_BACKUP_RESTORE_RESTORE_BUTTON)
   ) {
     Text(text = stringResource(R.string.RemoteRestoreScreen__restore_backup))
   }
@@ -266,7 +289,7 @@ private fun CancelButton(
 ) {
   TextButton(
     onClick = { onEvent(RemoteBackupRestoreScreenEvents.Cancel) },
-    modifier = modifier
+    modifier = modifier.testTag(TestTags.REMOTE_BACKUP_RESTORE_CANCEL_BUTTON)
   ) {
     Text(text = stringResource(android.R.string.cancel))
   }
@@ -277,11 +300,20 @@ private fun RestoreStateDialogs(
   state: RemoteBackupRestoreState,
   onEvent: (RemoteBackupRestoreScreenEvents) -> Unit
 ) {
+  if (state.showContactSupportDialog) {
+    ContactSupportDialog(
+      subject = R.string.RemoteRestoreScreen__contact_support_email_subject,
+      filter = R.string.RemoteRestoreScreen__contact_support_email_filter,
+      onDismiss = { onEvent(RemoteBackupRestoreScreenEvents.DismissContactSupport) }
+    )
+  }
+
   when (state.restoreState) {
     RemoteBackupRestoreState.RestoreState.None -> Unit
     RemoteBackupRestoreState.RestoreState.InProgress -> {
       RestoreProgressDialog(restoreProgress = state.restoreProgress)
     }
+
     RemoteBackupRestoreState.RestoreState.Restored -> Unit
     RemoteBackupRestoreState.RestoreState.NetworkFailure -> {
       Dialogs.SimpleAlertDialog(
@@ -292,6 +324,7 @@ private fun RestoreStateDialogs(
         onDismiss = { onEvent(RemoteBackupRestoreScreenEvents.DismissError) }
       )
     }
+
     RemoteBackupRestoreState.RestoreState.InvalidBackupVersion -> {
       Dialogs.SimpleAlertDialog(
         title = stringResource(R.string.RemoteRestoreScreen__couldnt_restore_this_backup),
@@ -302,16 +335,21 @@ private fun RestoreStateDialogs(
         onDismiss = { onEvent(RemoteBackupRestoreScreenEvents.DismissError) }
       )
     }
+
     RemoteBackupRestoreState.RestoreState.PermanentSvrBFailure -> {
       Dialogs.SimpleAlertDialog(
         title = stringResource(R.string.RemoteRestoreScreen__cant_restore_this_backup),
         body = stringResource(R.string.RemoteRestoreScreen__your_backup_is_not_recoverable),
         confirm = stringResource(R.string.RemoteRestoreScreen__contact_support),
         dismiss = stringResource(android.R.string.ok),
-        onConfirm = { onEvent(RemoteBackupRestoreScreenEvents.DismissError) },
+        onConfirm = {
+          onEvent(RemoteBackupRestoreScreenEvents.ContactSupport)
+          onEvent(RemoteBackupRestoreScreenEvents.DismissError)
+        },
         onDismiss = { onEvent(RemoteBackupRestoreScreenEvents.DismissError) }
       )
     }
+
     RemoteBackupRestoreState.RestoreState.Failed -> {
       Dialogs.SimpleAlertDialog(
         title = stringResource(R.string.RemoteRestoreScreen__couldnt_finish_restore),
@@ -322,69 +360,6 @@ private fun RestoreStateDialogs(
       )
     }
   }
-}
-
-@Composable
-private fun RestoreProgressDialog(restoreProgress: RemoteBackupRestoreState.RestoreProgress?) {
-  val context = LocalContext.current
-
-  AlertDialog(
-    onDismissRequest = {},
-    confirmButton = {},
-    dismissButton = {},
-    text = {
-      Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.fillMaxWidth()
-      ) {
-        Column(
-          horizontalAlignment = Alignment.CenterHorizontally,
-          modifier = Modifier.wrapContentSize()
-        ) {
-          if (restoreProgress == null || restoreProgress.phase == RemoteBackupRestoreState.RestoreProgress.Phase.Finalizing) {
-            CircularProgressIndicator(
-              modifier = Modifier
-                .padding(top = 55.dp, bottom = 16.dp)
-                .width(48.dp)
-                .height(48.dp)
-            )
-          } else {
-            CircularProgressIndicator(
-              progress = { restoreProgress.progress },
-              modifier = Modifier
-                .padding(top = 55.dp, bottom = 16.dp)
-                .width(48.dp)
-                .height(48.dp)
-            )
-          }
-
-          val progressText = when (restoreProgress?.phase) {
-            RemoteBackupRestoreState.RestoreProgress.Phase.Downloading -> stringResource(R.string.RemoteRestoreScreen__downloading_backup)
-            RemoteBackupRestoreState.RestoreProgress.Phase.Restoring -> stringResource(R.string.RemoteRestoreScreen__restoring_messages)
-            RemoteBackupRestoreState.RestoreProgress.Phase.Finalizing -> stringResource(R.string.RemoteRestoreScreen__finishing_restore)
-            null -> stringResource(R.string.RemoteRestoreScreen__restoring)
-          }
-
-          Text(
-            text = progressText,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(bottom = 12.dp)
-          )
-
-          if (restoreProgress != null && restoreProgress.phase != RemoteBackupRestoreState.RestoreProgress.Phase.Finalizing && restoreProgress.totalBytes > 0) {
-            val progressBytes = Formatter.formatShortFileSize(context, restoreProgress.bytesCompleted)
-            val totalBytes = Formatter.formatShortFileSize(context, restoreProgress.totalBytes)
-            Text(
-              text = stringResource(R.string.RemoteRestoreScreen__s_of_s_s, progressBytes, totalBytes, "%.2f%%".format(restoreProgress.progress * 100)),
-              style = MaterialTheme.typography.bodySmall,
-              modifier = Modifier.padding(bottom = 12.dp)
-            )
-          }
-        }
-      }
-    },
-    modifier = Modifier.width(212.dp)
-  )
 }
 
 @AllDevicePreviews

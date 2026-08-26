@@ -33,7 +33,7 @@ class NotificationsSettingsViewModel(private val sharedPreferences: SharedPrefer
 
     // Calculating slow notification stuff isn't thread-safe, so we do it without to start off so we have most state populated, then fetch it in the background.
     store.update { getState(calculateSlowNotifications = false) }
-    viewModelScope.launch(Dispatchers.IO) {
+    viewModelScope.launch(Dispatchers.Default) {
       store.update { getState(calculateSlowNotifications = true) }
     }
   }
@@ -111,6 +111,11 @@ class NotificationsSettingsViewModel(private val sharedPreferences: SharedPrefer
     refresh()
   }
 
+  fun setReactionNotificationEnabled(enabled: Boolean) {
+    SignalStore.settings.reactionNotifications = enabled
+    refresh()
+  }
+
   /**
    * @param currentState If provided and [calculateSlowNotifications] = false, then we will copy the slow notification state from it
    * @param calculateSlowNotifications If true, calculate the true slow notification state (this is not main-thread safe). Otherwise, it will copy from
@@ -135,7 +140,8 @@ class NotificationsSettingsViewModel(private val sharedPreferences: SharedPrefer
         currentState.messageNotificationsState.troubleshootNotifications
       } else {
         false
-      }
+      },
+      reactionNotificationEnabled = SignalStore.settings.reactionNotifications
     ),
     callNotificationsState = CallNotificationsState(
       notificationsEnabled = SignalStore.settings.isCallNotificationsEnabled && canEnableNotifications(),

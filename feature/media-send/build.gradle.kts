@@ -34,6 +34,8 @@ dependencies {
   implementation(project(":core:models"))
   implementation(project(":lib:image-editor"))
   implementation(project(":lib:glide"))
+  implementation(project(":lib:video"))
+  implementation(project(":feature:camera"))
 
   // Compose BOM
   platform(libs.androidx.compose.bom).let { composeBom ->
@@ -43,6 +45,7 @@ dependencies {
 
   // Compose dependencies
   implementation(libs.androidx.activity.compose)
+  implementation(libs.androidx.fragment.compose)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.ui.tooling.preview)
   debugImplementation(libs.androidx.compose.ui.tooling.core)
@@ -62,7 +65,16 @@ dependencies {
   // Permissions
   implementation(libs.accompanist.permissions)
 
+  // Media
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.ui)
+
+  // CameraX
+  implementation(libs.androidx.camera.core)
+  implementation(libs.androidx.camera.compose)
+
   // Testing
+  testImplementation(testFixtures(project(":core:ui")))
   testImplementation(testLibs.junit.junit)
   testImplementation(testLibs.mockk)
   testImplementation(testLibs.assertk)

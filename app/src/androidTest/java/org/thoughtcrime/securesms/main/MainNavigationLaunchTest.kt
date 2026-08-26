@@ -13,7 +13,12 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
+import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
@@ -32,8 +37,8 @@ import org.thoughtcrime.securesms.conversation.ConversationIntents
 import org.thoughtcrime.securesms.conversation.v2.ConversationFragment
 import org.thoughtcrime.securesms.conversationlist.ConversationListArchiveFragment
 import org.thoughtcrime.securesms.conversationlist.ConversationListFragment
-import org.thoughtcrime.securesms.mediasend.v2.MediaSelectionActivity
-import org.thoughtcrime.securesms.providers.BlobProvider
+import org.thoughtcrime.securesms.dependencies.AppDependencies
+import org.thoughtcrime.securesms.mediasend.v3.MediaSendV3Activity
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.stories.landing.StoriesLandingFragment
@@ -42,6 +47,7 @@ import java.io.ByteArrayOutputStream
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import org.signal.mediasend.R as MediaSendR
 
 /**
  * End-to-end launch tests for [MainActivity], covering cold-launch and onNewIntent paths
@@ -49,7 +55,6 @@ import java.util.concurrent.TimeUnit
  */
 @RunWith(AndroidJUnit4::class)
 class MainNavigationLaunchTest {
-
   @get:Rule
   val harness = SignalActivityRule(othersCount = 2)
 
@@ -89,7 +94,8 @@ class MainNavigationLaunchTest {
             appendLine("fragments observed: ${recorder.allCreated}")
             appendLine("activity fragments: ${launched.activity.supportFragmentManager.fragments.map { it::class.simpleName }}")
             appendLine("vm.currentListLocation: ${vm.mainNavigationState.value.currentListLocation}")
-            appendLine("vm.earlyNavigationDetailLocationRequested: ${vm.earlyNavigationDetailLocationRequested}")
+            appendLine("vm.detailLocation: ${vm.detailLocation.value}")
+            appendLine("vm.chatsBackStackEntries: ${vm.chatsBackStackEntries.toList()}")
           }
         }
         throw IllegalStateException("${e.message}\n$state", e)
@@ -121,9 +127,9 @@ class MainNavigationLaunchTest {
   /**
    * Image-share cold-launch: the dispatch path through `ShareOrDraftData.StartSendMedia`
    * that hops the user from the conversation into the media-send screen
-   * ([MediaSelectionActivity]). Asserts that the secondary activity actually launches and
-   * that its [MediaReviewFragment] surfaces the recipient's display name in the top
-   * corner — i.e. it knows who the share is targeted at.
+   * ([MediaSendV3Activity]). Asserts that the secondary activity actually launches and that
+   * its edit screen's summary pill names both the recipient and the shared photo — i.e. it
+   * knows who the share is targeted at and what is being sent.
    */
   @Test
   fun coldLaunch_shareImageIntent_opensMediaSendForRecipient() {
@@ -131,13 +137,18 @@ class MainNavigationLaunchTest {
     val intent = shareImageIntent(recipient = recipient, media = media)
 
     launchSync(intent).use { launched ->
-      val mediaSend = launched.awaitActivity(MediaSelectionActivity::class.java, timeoutMs = 20_000)
-      val expectedName = runOnMainSync { Recipient.resolved(recipient).getDisplayName(context) }
+      launched.awaitActivity(MediaSendV3Activity::class.java, timeoutMs = 20_000)
 
-      await(timeoutMs = 15_000, description = "recipient label populated in MediaReviewFragment") {
-        // await() already runs the predicate on the main thread; nesting another
-        // runOnMainSync here would throw "can not be called from the main application thread".
-        mediaSend.findViewById<TextView>(R.id.recipient)?.text?.toString() == expectedName
+      val expectedName = runOnMainSync { Recipient.resolved(recipient).getDisplayName(context) }
+      val expectedMedia = context.resources.getQuantityString(MediaSendR.plurals.MediaEditScreen__photo, 1, 1)
+
+      await(timeoutMs = 15_000, description = "media editor summary pill showing \"$expectedName\" / \"$expectedMedia\"") {
+        // Re-resolve each poll rather than closing over the awaitActivity instance: the flow
+        // toggles requestedOrientation as it settles, and a recreated activity would leave us
+        // reading a dead composition.
+        val mediaSend = launched.latestActivity(MediaSendV3Activity::class.java) ?: return@await false
+        val texts = mediaSend.composeTexts()
+        expectedName in texts && expectedMedia in texts
       }
 
       // Exactly one ConversationFragment should have been created — the share dispatch
@@ -254,8 +265,9 @@ class MainNavigationLaunchTest {
           "starts handling it on cold launch, update or delete this test. Got: ${recorder.allCreated}"
       }
       val vm = runOnMainSync { launched.activity.mainNavigationViewModel() }
-      check(vm.earlyNavigationDetailLocationRequested == null) {
-        "Expected no early detail to be staged, got ${vm.earlyNavigationDetailLocationRequested}"
+      val staged = runOnMainSync { vm.chatsBackStackEntries.filterNot { it is MainNavigationDetailLocation.Empty } }
+      check(staged.isEmpty()) {
+        "Expected no detail to be staged on the chats back stack, got $staged"
       }
     }
   }
@@ -289,8 +301,9 @@ class MainNavigationLaunchTest {
         "Expected default CHATS, got ${vm.mainNavigationState.value.currentListLocation}"
       }
       Thread.sleep(750)
-      check(vm.earlyNavigationDetailLocationRequested == null) {
-        "Expected no early detail, got ${vm.earlyNavigationDetailLocationRequested}"
+      val detailLocation = runOnMainSync { vm.detailLocation.value }
+      check(detailLocation == MainNavigationDetailLocation.Empty) {
+        "Expected Empty detail location, got $detailLocation"
       }
       check(recorder.createdArgs.isEmpty()) {
         "Expected no ConversationFragment for bare launch, got ${recorder.createdArgs.size}"
@@ -348,11 +361,13 @@ class MainNavigationLaunchTest {
       await(description = "no new ConversationFragment after Empty detail intent") {
         recorder.createdArgs.size == baseline
       }
-      // The user-visible signal that we're "back on the list" is the chat list fragment
-      // being attached, not just the VM saying CHATS.
-      awaitListFragment(launched, MainNavigationListLocation.CHATS)
 
       val vm = runOnMainSync { launched.activity.mainNavigationViewModel() }
+
+      await(description = "conversation cleared from chats back stack after Empty detail intent") {
+        vm.chatsBackStackEntries.none { it is MainNavigationDetailLocation.Conversation }
+      }
+
       check(vm.mainNavigationState.value.currentListLocation == MainNavigationListLocation.CHATS) {
         "Expected CHATS, got ${vm.mainNavigationState.value.currentListLocation}"
       }
@@ -569,17 +584,16 @@ class MainNavigationLaunchTest {
   }
 
   private fun realBlob(bytes: ByteArray, mimeType: String): Uri {
-    return BlobProvider.getInstance()
+    return AppDependencies.blobs
       .forData(bytes)
       .withMimeType(mimeType)
       .createForSingleSessionInMemory()
   }
 
   /**
-   * Build a [Media] backed by a real 1×1 JPEG. The media-send screen attempts to decode
-   * the image during MediaReviewFragment setup, so a fake byte array won't survive — we
-   * need genuine JPEG bytes for the fragment to reach the state where `R.id.recipient`
-   * is populated.
+   * Build a [Media] backed by a real 1×1 JPEG. The media editor decodes each page to render
+   * it, so genuine JPEG bytes keep the screen in the state a real share would put it in
+   * rather than one recovering from a decode failure.
    */
   private fun realJpegMedia(): Media {
     val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
@@ -735,6 +749,32 @@ class MainNavigationLaunchTest {
     MainNavigationListLocation.STORIES -> StoriesLandingFragment::class.java
   }
 
+  /**
+   * Every string the activity's Compose hierarchy is currently rendering, read straight off the
+   * semantics tree. Media send is Compose end-to-end, so there is no view to findViewById; and the
+   * looper never goes idle here (see [launchSync]), which rules out the idle-synchronized matchers
+   * of a Compose test rule. Main-thread read — [await] already provides that.
+   */
+  private fun Activity.composeTexts(): List<String> {
+    return window.decorView.composeRoots()
+      .flatMap { it.semanticsOwner.getAllSemanticsNodes(mergingEnabled = false) }
+      .flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }
+      .map { it.text }
+  }
+
+  private fun View.composeRoots(): List<RootForTest> {
+    val roots = mutableListOf<RootForTest>()
+    if (this is RootForTest) {
+      roots += this
+    }
+    if (this is ViewGroup) {
+      for (i in 0 until childCount) {
+        roots += getChildAt(i).composeRoots()
+      }
+    }
+    return roots
+  }
+
   private fun awaitListFragment(launched: LaunchedActivity, location: MainNavigationListLocation) {
     val expected = listFragmentClass(location)
     try {
@@ -804,17 +844,20 @@ class MainNavigationLaunchTest {
      */
     val activity: MainActivity get() = checkNotNull(activityHolder[0]) { "No active MainActivity" }
 
+    /** Most-recently-created, not-yet-destroyed activity of [clazz], or null. */
+    fun <T : Activity> latestActivity(clazz: Class<T>): T? = synchronized(allActivities) {
+      allActivities.lastOrNull { clazz.isInstance(it) }?.let { clazz.cast(it) }
+    }
+
     /**
      * Poll until an activity of [clazz] has been created, then return it. Used to assert
-     * the share-image flow's hop into MediaSelectionActivity.
+     * the share-image flow's hop into [MediaSendV3Activity].
      */
     fun <T : Activity> awaitActivity(clazz: Class<T>, timeoutMs: Long = 10_000): T {
       val deadline = System.currentTimeMillis() + timeoutMs
       while (System.currentTimeMillis() < deadline) {
-        val match = synchronized(allActivities) {
-          allActivities.firstOrNull { clazz.isInstance(it) }
-        }
-        if (match != null) return clazz.cast(match)!!
+        val match = latestActivity(clazz)
+        if (match != null) return match
         Thread.sleep(50)
       }
       val seen = synchronized(allActivities) { allActivities.map { it::class.simpleName } }
@@ -826,7 +869,7 @@ class MainNavigationLaunchTest {
     }
 
     override fun close() {
-      // Don't wait for looper idle — secondary activities (e.g. MediaSelectionActivity
+      // Don't wait for looper idle — secondary activities (e.g. MediaSendV3Activity
       // opened by share processing) can keep it busy indefinitely. Finish every tracked
       // activity so subsequent tests start from a clean slate.
       val toFinish = synchronized(allActivities) { allActivities.toList() }

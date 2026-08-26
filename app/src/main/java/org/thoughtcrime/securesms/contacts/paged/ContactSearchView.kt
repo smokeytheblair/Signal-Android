@@ -7,6 +7,7 @@ package org.thoughtcrime.securesms.contacts.paged
 
 import android.content.Context
 import android.util.AttributeSet
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -17,12 +18,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.fragment.app.FragmentManager
 import kotlinx.collections.immutable.persistentHashMapOf
 import kotlinx.coroutines.flow.filter
@@ -158,7 +157,7 @@ class ContactSearchView : AbstractComposeView {
         longClickCallbacks = currentLongClickCallbacks ?: rememberDefaultContactSearchItemLongClickCallbacks(),
         storyContextMenuCallbacks = currentStoryContextMenuCallbacks ?: rememberDefaultContactSearchItemStoryContextMenuCallbacks(vm),
         callButtonClickCallbacks = currentCallButtonClickCallbacks ?: rememberDefaultContactSearchItemCallButtonClickCallbacks(),
-        modifier = Modifier.nestedScroll(rememberNestedScrollInteropConnection())
+        modifier = Modifier.fillMaxSize()
       )
     }
   }

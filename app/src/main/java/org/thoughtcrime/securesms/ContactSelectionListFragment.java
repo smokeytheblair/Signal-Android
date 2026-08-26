@@ -280,8 +280,9 @@ public final class ContactSelectionListFragment extends LoggingFragment {
             false,
             new ContactSelectionListAdapter.ArbitraryRepository(),
             new SearchRepository(requireContext().getString(R.string.note_to_self)),
-            new ContactSearchPagedDataSourceRepository(requireContext()),
-            fixedContacts
+            new ContactSearchPagedDataSourceRepository(requireContext(), requireContext().getString(R.string.note_to_self)),
+            fixedContacts,
+            false
         )
     ).get(ContactSearchViewModel.class);
 
@@ -552,6 +553,8 @@ public final class ContactSelectionListFragment extends LoggingFragment {
 
       @Override
       protected void onPostExecute(Boolean result) {
+        setRefreshing(false);
+
         if (result) {
           reset();
         } else {
@@ -599,7 +602,18 @@ public final class ContactSelectionListFragment extends LoggingFragment {
       boolean         isUnknown       = contact instanceof ContactSearchKey.UnknownRecipientKey;
       SelectedContact selectedContact = contact.requireSelectedContact();
 
-      if (!canSelectSelf && !selectedContact.hasUsername() && Recipient.self().getId().equals(selectedContact.getOrCreateRecipientId())) {
+      boolean needsSelfCheck = !canSelectSelf && !selectedContact.hasUsername();
+
+      if (needsSelfCheck) {
+        lifecycleDisposable.add(contactChipViewModel.isSelf(selectedContact)
+                                                    .subscribe(isSelf -> onItemClickResolved(contact, selectedContact, isUnknown, isSelf)));
+      } else {
+        onItemClickResolved(contact, selectedContact, isUnknown, false);
+      }
+    }
+
+    private void onItemClickResolved(ContactSearchKey contact, SelectedContact selectedContact, boolean isUnknown, boolean isSelf) {
+      if (isSelf) {
         Toast.makeText(requireContext(), R.string.ContactSelectionListFragment_you_do_not_need_to_add_yourself_to_the_group, Toast.LENGTH_SHORT).show();
         return;
       }

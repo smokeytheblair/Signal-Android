@@ -10,6 +10,7 @@ import android.database.Cursor
 import com.google.protobuf.InvalidProtocolBufferException
 import org.signal.core.models.ServiceId
 import org.signal.core.util.Base64
+import org.signal.core.util.Bitmask
 import org.signal.core.util.Util
 import org.signal.core.util.logging.Log
 import org.signal.core.util.optionalBlob
@@ -126,6 +127,7 @@ object RecipientTableCursorUtil {
       distributionListId = distributionListId,
       recipientType = RecipientTable.RecipientType.fromId(cursor.requireInt(RecipientTable.TYPE)),
       isBlocked = cursor.requireBoolean(RecipientTable.BLOCKED),
+      blockedAt = cursor.requireLong(RecipientTable.BLOCKED_AT),
       muteUntil = cursor.requireLong(RecipientTable.MUTE_UNTIL),
       messageVibrateState = RecipientTable.VibrateState.fromId(cursor.requireInt(RecipientTable.MESSAGE_VIBRATE)),
       callVibrateState = RecipientTable.VibrateState.fromId(cursor.requireInt(RecipientTable.CALL_VIBRATE)),
@@ -174,7 +176,9 @@ object RecipientTableCursorUtil {
   fun readCapabilities(cursor: Cursor): RecipientRecord.Capabilities {
     val capabilities = cursor.requireLong(RecipientTable.CAPABILITIES)
     return RecipientRecord.Capabilities(
-      rawBits = capabilities
+      rawBits = capabilities,
+      usernameSyncMessages = Recipient.Capability.deserialize(Bitmask.read(capabilities, RecipientTable.Capabilities.USERNAME_SYNC_MESSAGES, RecipientTable.Capabilities.BIT_LENGTH).toInt()),
+      optionalPhoneNumber = Recipient.Capability.deserialize(Bitmask.read(capabilities, RecipientTable.Capabilities.OPTIONAL_PHONE_NUMBER, RecipientTable.Capabilities.BIT_LENGTH).toInt())
     )
   }
 

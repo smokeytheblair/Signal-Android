@@ -28,7 +28,7 @@ import androidx.annotation.WorkerThread;
 import org.greenrobot.eventbus.EventBus;
 import org.signal.core.util.logging.Log;
 import org.thoughtcrime.securesms.attachments.Attachment;
-import org.thoughtcrime.securesms.attachments.AttachmentId;
+import org.signal.core.models.database.AttachmentId;
 import org.thoughtcrime.securesms.attachments.DatabaseAttachment;
 import org.thoughtcrime.securesms.backup.v2.BackupRepository;
 import org.thoughtcrime.securesms.contacts.sync.ContactDiscovery;
@@ -698,7 +698,7 @@ public class MessageSender {
     private final AttachmentId       attachmentId;
     private final Collection<String> jobIds;
 
-    PreUploadResult(@NonNull Media media, @NonNull AttachmentId attachmentId, @NonNull Collection<String> jobIds) {
+    public PreUploadResult(@NonNull Media media, @NonNull AttachmentId attachmentId, @NonNull Collection<String> jobIds) {
       this.media        = media;
       this.attachmentId = attachmentId;
       this.jobIds       = jobIds;

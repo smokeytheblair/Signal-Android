@@ -5,6 +5,7 @@ import androidx.annotation.WorkerThread
 import okio.utf8Size
 import org.signal.core.util.UuidUtil.parseOrThrow
 import org.signal.core.util.logging.Log
+import org.signal.libsignal.protocol.NoSessionException
 import org.thoughtcrime.securesms.crypto.SealedSenderAccessUtil
 import org.thoughtcrime.securesms.database.NoSuchMessageException
 import org.thoughtcrime.securesms.database.RecipientTable.SealedSenderAccessMode
@@ -27,7 +28,6 @@ import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientUtil
 import org.thoughtcrime.securesms.transport.RetryLaterException
 import org.thoughtcrime.securesms.transport.UndeliverableMessageException
-import org.thoughtcrime.securesms.util.MessageUtil
 import org.thoughtcrime.securesms.util.RemoteConfig
 import org.thoughtcrime.securesms.util.SignalLocalMetrics
 import org.whispersystems.signalservice.api.SignalServiceMessageSender.IndividualSendEvents
@@ -37,6 +37,7 @@ import org.whispersystems.signalservice.api.messages.SignalServiceAttachment
 import org.whispersystems.signalservice.api.messages.SignalServiceDataMessage
 import org.whispersystems.signalservice.api.messages.SignalServiceDataMessage.PaymentActivation
 import org.whispersystems.signalservice.api.messages.SignalServiceEditMessage
+import org.whispersystems.signalservice.api.messages.SignalServiceMessageLimits
 import org.whispersystems.signalservice.api.messages.SignalServicePreview
 import org.whispersystems.signalservice.api.messages.shared.SharedContact
 import org.whispersystems.signalservice.api.push.exceptions.ProofRequiredException
@@ -163,7 +164,17 @@ class IndividualSendJob private constructor(parameters: Parameters, private val 
       val profileKey = recipient.profileKey
       val accessMode = recipient.sealedSenderAccessMode
 
-      val unidentified = deliver(message, originalEditedMessage)
+      val unidentified = try {
+        deliver(message, originalEditedMessage)
+      } catch (e: NoSessionException) {
+        warn(TAG, message.sentTimeMillis.toString(), "Failed to send message, likely due to a missing or corrupt session. Archiving sessions and retrying.", e)
+
+        val recipientId = message.threadRecipient.id
+        AppDependencies.protocolStore.aci().sessions().archiveSessions(recipientId)
+        AppDependencies.protocolStore.pniOrNull()?.sessions()?.archiveSessions(recipientId)
+
+        throw RetryLaterException()
+      }
 
       SignalDatabase.messages.markAsSent(messageId)
       markAttachmentsUploaded(messageId, message)
@@ -247,8 +258,8 @@ class IndividualSendJob private constructor(parameters: Parameters, private val 
 
   @Throws(IOException::class, UnregisteredUserException::class, UntrustedIdentityException::class, UndeliverableMessageException::class)
   private fun deliver(message: OutgoingMessage, originalEditedMessage: MessageRecord?): Boolean {
-    if (message.body.utf8Size() > MessageUtil.MAX_INLINE_BODY_SIZE_BYTES) {
-      throw UndeliverableMessageException("The total body size was greater than our limit of " + MessageUtil.MAX_INLINE_BODY_SIZE_BYTES + " bytes.")
+    if (message.body.utf8Size() > SignalServiceMessageLimits.MAX_INLINE_BODY_SIZE_BYTES) {
+      throw UndeliverableMessageException("The total body size was greater than our limit of " + SignalServiceMessageLimits.MAX_INLINE_BODY_SIZE_BYTES + " bytes.")
     }
 
     try {

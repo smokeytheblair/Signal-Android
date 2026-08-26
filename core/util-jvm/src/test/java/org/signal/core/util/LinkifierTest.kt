@@ -103,6 +103,10 @@ class LinkifierTest(private val case: Case) {
       Case("multiple trailing punctuation chars are all trimmed", "Wow https://signal.org!!! amazing", listOf(web("https://signal.org"))),
       Case("trailing slash is preserved", "https://signal.org/ end", listOf(web("https://signal.org/"))),
       Case("trailing underscore is preserved", "https://example.com/path_ tail", listOf(web("https://example.com/path_"))),
+      Case("comma in url path is preserved", "Go to https://example.com/a,b/c", listOf(web("https://example.com/a,b/c"))),
+      Case("comma in url query is preserved", "Go to https://example.com/search?q=a,b", listOf(web("https://example.com/search?q=a,b"))),
+      Case("semicolon in url path is preserved", "https://example.com/pricewatch/compare/2290176;2126182/", listOf(web("https://example.com/pricewatch/compare/2290176;2126182/"))),
+      Case("semicolon in url query is preserved", "Go to https://example.com/search?a=1;b=2", listOf(web("https://example.com/search?a=1;b=2"))),
 
       // ----- bracket / paren handling -----
       Case("trailing closing paren without opener is trimmed", "(see https://signal.org)", listOf(web("https://signal.org"))),
@@ -114,6 +118,7 @@ class LinkifierTest(private val case: Case) {
       // ----- multiple URLs in one input -----
       Case("two urls separated by text", "First https://a.com then https://b.com", listOf(web("https://a.com"), web("https://b.com"))),
       Case("two urls separated only by comma", "https://a.com,https://b.com", listOf(web("https://a.com"), web("https://b.com"))),
+      Case("two urls separated only by semicolon", "https://a.com;https://b.com", listOf(web("https://a.com"), web("https://b.com"))),
       Case(
         name = "multi-line text with several urls per line",
         input = """

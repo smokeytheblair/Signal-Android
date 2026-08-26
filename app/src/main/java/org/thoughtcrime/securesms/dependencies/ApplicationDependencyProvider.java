@@ -7,39 +7,56 @@ import android.os.HandlerThread;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
+import androidx.media3.exoplayer.ExoPlayer;
 
+import okhttp3.OkHttpClient;
 import org.jetbrains.annotations.NotNull;
 import org.signal.billing.BillingFactory;
 import org.signal.core.models.ServiceId.ACI;
 import org.signal.core.models.ServiceId.PNI;
+import org.signal.core.util.AppForegroundObserver;
+import org.signal.core.util.ByteUnit;
+import org.signal.core.util.SleepTimer;
 import org.signal.core.util.ThreadUtil;
 import org.signal.core.util.billing.BillingApi;
 import org.signal.core.util.concurrent.DeadlockDetector;
 import org.signal.core.util.concurrent.SignalExecutors;
+import org.signal.core.util.contentproviders.BlobProvider;
+import org.signal.donations.permits.DonationPermitsRepository;
 import org.signal.libsignal.net.Network;
 import org.signal.libsignal.protocol.SignalProtocolAddress;
 import org.signal.libsignal.zkgroup.GenericServerPublicParams;
 import org.signal.libsignal.zkgroup.InvalidInputException;
+import org.signal.libsignal.zkgroup.ServerPublicParams;
 import org.signal.libsignal.zkgroup.profiles.ClientZkProfileOperations;
 import org.signal.libsignal.zkgroup.receipts.ClientZkReceiptOperations;
 import org.signal.network.api.ArchiveApi;
-import org.signal.network.api.KeysApiV2;
-import org.signal.network.api.MessageApiV2;
-import org.signal.network.rest.SignalRestClient;
+import org.signal.network.api.ArchiveApiV2;
+import org.signal.network.api.AttachmentApi;
 import org.signal.network.api.CallingApi;
 import org.signal.network.api.CdsApi;
 import org.signal.network.api.CertificateApi;
+import org.signal.network.api.KeysApiV2;
 import org.signal.network.api.LinkDeviceApi;
+import org.signal.network.api.MessageApiV2;
 import org.signal.network.api.PaymentsApi;
 import org.signal.network.api.ProvisioningApi;
 import org.signal.network.api.RateLimitChallengeApi;
+import org.signal.network.api.RegistrationApiV2;
 import org.signal.network.api.RemoteConfigApi;
 import org.signal.network.api.SvrBApi;
 import org.signal.network.api.UsernameApi;
+import org.signal.network.rest.SignalRestClient;
+import org.signal.network.service.ArchiveService;
 import org.signal.network.service.MessageService;
+import org.signal.video.exo.ExoPlayerPool;
+import org.thoughtcrime.securesms.backup.v2.SignalStoreArchiveCacheStore;
 import org.thoughtcrime.securesms.BuildConfig;
 import org.thoughtcrime.securesms.components.TypingStatusRepository;
 import org.thoughtcrime.securesms.components.TypingStatusSender;
+import org.thoughtcrime.securesms.components.settings.app.subscription.permits.DonationPermits;
+import org.thoughtcrime.securesms.components.settings.app.subscription.permits.NetworkDonationPermitIssuer;
+import org.thoughtcrime.securesms.crypto.AppAttachmentSecretStore;
 import org.thoughtcrime.securesms.crypto.ReentrantSessionLock;
 import org.thoughtcrime.securesms.crypto.storage.SignalBaseIdentityKeyStore;
 import org.thoughtcrime.securesms.crypto.storage.SignalIdentityKeyStore;
@@ -93,9 +110,7 @@ import org.thoughtcrime.securesms.service.TrimThreadsByDateManager;
 import org.thoughtcrime.securesms.service.webrtc.SignalCallManager;
 import org.thoughtcrime.securesms.shakereport.ShakeToReport;
 import org.thoughtcrime.securesms.stories.Stories;
-import org.thoughtcrime.securesms.util.AlarmSleepTimer;
-import org.signal.core.util.AppForegroundObserver;
-import org.signal.core.util.ByteUnit;
+import org.thoughtcrime.securesms.util.AdaptiveSleepTimer;
 import org.thoughtcrime.securesms.util.EarlyMessageCache;
 import org.thoughtcrime.securesms.util.Environment;
 import org.thoughtcrime.securesms.util.FrameRateTracker;
@@ -111,7 +126,6 @@ import org.whispersystems.signalservice.api.SignalServiceDataStore;
 import org.whispersystems.signalservice.api.SignalServiceMessageReceiver;
 import org.whispersystems.signalservice.api.SignalServiceMessageSender;
 import org.whispersystems.signalservice.api.account.AccountApi;
-import org.signal.network.api.AttachmentApi;
 import org.whispersystems.signalservice.api.crypto.SignalServiceCipher;
 import org.whispersystems.signalservice.api.donations.DonationsApi;
 import org.whispersystems.signalservice.api.groupsv2.ClientZkOperations;
@@ -126,12 +140,10 @@ import org.whispersystems.signalservice.api.services.DonationsService;
 import org.whispersystems.signalservice.api.services.ProfileService;
 import org.whispersystems.signalservice.api.storage.StorageServiceApi;
 import org.whispersystems.signalservice.api.util.CredentialsProvider;
-import org.signal.core.util.SleepTimer;
-import org.signal.core.util.UptimeSleepTimer;
 import org.whispersystems.signalservice.api.websocket.SignalWebSocket;
 import org.whispersystems.signalservice.api.websocket.WebSocketFactory;
 import org.whispersystems.signalservice.api.websocket.WebSocketUnavailableException;
-import org.whispersystems.signalservice.internal.configuration.SignalServiceConfiguration;
+import org.signal.network.config.SignalServiceConfiguration;
 import org.whispersystems.signalservice.internal.push.PushServiceSocket;
 import org.whispersystems.signalservice.internal.websocket.LibSignalChatConnection;
 import org.whispersystems.signalservice.internal.websocket.LibSignalNetworkExtensions;
@@ -201,6 +213,7 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
                                                 protocolStore.aci(),
                                                 new SignalProtocolAddress(pushServiceSocket.getCredentialsProvider().getAci().getLibSignalServiceId(),
                                                                           pushServiceSocket.getCredentialsProvider().getDeviceId()),
+                                                ReentrantSessionLock.INSTANCE,
                                                 PreKeyBatcher.INSTANCE
                                               )
                                             );
@@ -380,7 +393,7 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
 
   @Override
   public @NonNull SignalWebSocket.AuthenticatedWebSocket provideAuthWebSocket(@NonNull Supplier<SignalServiceConfiguration> signalServiceConfigurationSupplier, @NonNull Supplier<Network> libSignalNetworkSupplier) {
-    SleepTimer                   sleepTimer    = !SignalStore.account().isFcmEnabled() || SignalStore.settings().getForceWebsocketMode().isEnabled() ? new AlarmSleepTimer(context) : new UptimeSleepTimer();
+    SleepTimer                   sleepTimer    = new AdaptiveSleepTimer(context);
     SignalWebSocketHealthMonitor healthMonitor = new SignalWebSocketHealthMonitor(sleepTimer, true);
 
     WebSocketFactory authFactory = () -> {
@@ -399,7 +412,7 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
     };
 
     SignalWebSocket.AuthenticatedWebSocket webSocket = new SignalWebSocket.AuthenticatedWebSocket(authFactory,
-                                                                                                  () -> !SignalStore.misc().isClientDeprecated() && !DeviceTransferBlockingInterceptor.getInstance().isBlockingNetwork() && !Environment.IS_INSTRUMENTATION,
+                                                                                                  () -> !SignalStore.misc().isClientDeprecated() && SignalStore.account().isRegistered() && !TextSecurePreferences.isUnauthorizedReceived(context) && !DeviceTransferBlockingInterceptor.getInstance().isBlockingNetwork() && !Environment.IS_INSTRUMENTATION,
                                                                                                   sleepTimer,
                                                                                                   TimeUnit.SECONDS.toMillis(30));
     if (AppForegroundObserver.isForegrounded()) {
@@ -413,7 +426,7 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
 
   @Override
   public @NonNull SignalWebSocket.UnauthenticatedWebSocket provideUnauthWebSocket(@NonNull Supplier<SignalServiceConfiguration> signalServiceConfigurationSupplier, @NonNull Supplier<Network> libSignalNetworkSupplier) {
-    SleepTimer                   sleepTimer    = !SignalStore.account().isFcmEnabled() || SignalStore.settings().getForceWebsocketMode().isEnabled() ? new AlarmSleepTimer(context) : new UptimeSleepTimer();
+    SleepTimer                   sleepTimer    = new AdaptiveSleepTimer(context);
     SignalWebSocketHealthMonitor healthMonitor = new SignalWebSocketHealthMonitor(sleepTimer, false);
 
     WebSocketFactory unauthFactory = () -> {
@@ -446,10 +459,6 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
       throw new IllegalStateException("No ACI set!");
     }
 
-    if (localPni == null) {
-      throw new IllegalStateException("No PNI set!");
-    }
-
     boolean needsPreKeyJob = false;
 
     if (!SignalStore.account().hasAciIdentityKey()) {
@@ -457,7 +466,7 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
       needsPreKeyJob = true;
     }
 
-    if (!SignalStore.account().hasPniIdentityKey()) {
+    if (localPni != null && !SignalStore.account().hasPniIdentityKey()) {
       SignalStore.account().generatePniIdentityKeyIfNecessary();
       needsPreKeyJob = true;
     }
@@ -475,12 +484,16 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
                                                                                        new TextSecureSessionStore(localAci),
                                                                                        new SignalSenderKeyStore(context));
 
-    SignalServiceAccountDataStoreImpl pniStore = new SignalServiceAccountDataStoreImpl(context,
-                                                                                       new TextSecurePreKeyStore(localPni),
-                                                                                       new SignalKyberPreKeyStore(localPni),
-                                                                                       new SignalIdentityKeyStore(baseIdentityStore, () -> SignalStore.account().getPniIdentityKey()),
-                                                                                       new TextSecureSessionStore(localPni),
-                                                                                       new SignalSenderKeyStore(context));
+    SignalServiceAccountDataStoreImpl pniStore = null;
+    if (localPni != null) {
+      pniStore = new SignalServiceAccountDataStoreImpl(context,
+                                                       new TextSecurePreKeyStore(localPni),
+                                                       new SignalKyberPreKeyStore(localPni),
+                                                       new SignalIdentityKeyStore(baseIdentityStore, () -> SignalStore.account().getPniIdentityKey()),
+                                                       new TextSecureSessionStore(localPni),
+                                                       new SignalSenderKeyStore(context));
+    }
+
     return new SignalServiceDataStoreImpl(context, aciStore, pniStore);
   }
 
@@ -490,7 +503,7 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
   }
 
   @Override
-  public @NonNull SimpleExoPlayerPool provideExoPlayerPool() {
+  public @NonNull ExoPlayerPool<ExoPlayer> provideExoPlayerPool() {
     return new SimpleExoPlayerPool(context);
   }
 
@@ -501,7 +514,16 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
 
   @Override
   public @NonNull DonationsService provideDonationsService(@NonNull DonationsApi donationsApi) {
-    return new DonationsService(donationsApi);
+    return new DonationsService(donationsApi, DonationPermits.INSTANCE);
+  }
+
+  @Override
+  public @NonNull DonationPermitsRepository provideDonationPermitsRepository(@NonNull byte[] zkGroupServerPublicParams) {
+    try {
+      return new DonationPermitsRepository(NetworkDonationPermitIssuer.INSTANCE, new ServerPublicParams(zkGroupServerPublicParams));
+    } catch (InvalidInputException e) {
+      throw new AssertionError(e);
+    }
   }
 
   @Override
@@ -525,17 +547,35 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
   }
 
   @Override
+  public @NonNull OkHttpClient provideOkHttpClient() {
+    return new OkHttpClient.Builder()
+        .addInterceptor(new StandardUserAgentInterceptor())
+        .dns(SignalServiceNetworkAccess.DNS)
+        .build();
+  }
+
+  @Override
   public @NonNull BillingApi provideBillingApi() {
     return BillingFactory.create(GooglePlayBillingDependencies.INSTANCE, Environment.Backups.supportsGooglePlayBilling());
   }
 
   @Override
-  public @NonNull ArchiveApi provideArchiveApi(@NonNull SignalWebSocket.AuthenticatedWebSocket authWebSocket, @NonNull SignalWebSocket.UnauthenticatedWebSocket unauthWebSocket, @NonNull PushServiceSocket pushServiceSocket, @NonNull SignalServiceConfiguration signalServiceConfiguration) {
+  public @NonNull ArchiveApiV2 provideArchiveApiV2(@NonNull SignalWebSocket.AuthenticatedWebSocket authWebSocket, @NonNull SignalWebSocket.UnauthenticatedWebSocket unauthWebSocket, @NonNull SignalServiceConfiguration signalServiceConfiguration) {
     try {
-      return new ArchiveApi(authWebSocket, unauthWebSocket, pushServiceSocket, new GenericServerPublicParams(signalServiceConfiguration.getBackupServerPublicParams()));
+      return new ArchiveApiV2(authWebSocket, unauthWebSocket, new GenericServerPublicParams(signalServiceConfiguration.getBackupServerPublicParams()));
     } catch (InvalidInputException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @Override
+  public @NonNull ArchiveService provideArchiveService(@NonNull ArchiveApiV2 archiveApi) {
+    return new ArchiveService(archiveApi, SignalStoreArchiveCacheStore.INSTANCE);
+  }
+
+  @Override
+  public @NonNull ArchiveApi provideArchiveApi(@NonNull PushServiceSocket pushServiceSocket) {
+    return new ArchiveApi(pushServiceSocket);
   }
 
   @Override
@@ -556,6 +596,11 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
   @Override
   public @NonNull RegistrationApi provideRegistrationApi(@NonNull PushServiceSocket pushServiceSocket) {
     return new RegistrationApi(pushServiceSocket);
+  }
+
+  @Override
+  public @NonNull RegistrationApiV2 provideRegistrationApiV2(@NonNull SignalRestClient signalRestClient) {
+    return new RegistrationApiV2(signalRestClient, Environment.PHONENUMBERLESS_REGISTRATION);
   }
 
   @Override
@@ -631,6 +676,10 @@ public class ApplicationDependencyProvider implements AppDependencies.Provider {
   @Override
   public @NonNull KeyTransparencyApi provideKeyTransparencyApi(@NonNull SignalWebSocket.UnauthenticatedWebSocket unauthWebSocket) {
     return new KeyTransparencyApi(unauthWebSocket);
+  }
+
+  @Override public @NotNull BlobProvider provideBlobs() {
+    return new BlobProvider(context, AppAttachmentSecretStore.INSTANCE);
   }
 
   @VisibleForTesting

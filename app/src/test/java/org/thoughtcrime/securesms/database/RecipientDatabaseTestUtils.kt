@@ -37,6 +37,7 @@ object RecipientDatabaseTestUtils {
     groupId: GroupId? = null,
     groupType: RecipientTable.RecipientType = RecipientTable.RecipientType.INDIVIDUAL,
     blocked: Boolean = false,
+    blockedAt: Long = 0,
     muteUntil: Long = -1,
     messageVibrateState: RecipientTable.VibrateState = RecipientTable.VibrateState.DEFAULT,
     callVibrateState: RecipientTable.VibrateState = RecipientTable.VibrateState.DEFAULT,
@@ -100,6 +101,7 @@ object RecipientDatabaseTestUtils {
       distributionListId = null,
       recipientType = groupType,
       isBlocked = blocked,
+      blockedAt = blockedAt,
       muteUntil = muteUntil,
       messageVibrateState = messageVibrateState,
       callVibrateState = callVibrateState,
@@ -122,7 +124,9 @@ object RecipientDatabaseTestUtils {
       notificationChannel = notificationChannel,
       sealedSenderAccessMode = sealedSenderAccessMode,
       capabilities = RecipientRecord.Capabilities(
-        rawBits = capabilities
+        rawBits = capabilities,
+        usernameSyncMessages = Recipient.Capability.SUPPORTED,
+        optionalPhoneNumber = Recipient.Capability.SUPPORTED
       ),
       storageId = storageId,
       mentionSetting = mentionSetting,

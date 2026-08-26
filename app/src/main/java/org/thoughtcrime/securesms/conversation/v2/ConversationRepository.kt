@@ -24,6 +24,7 @@ import io.reactivex.rxjava3.core.Maybe
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.core.SingleEmitter
 import io.reactivex.rxjava3.schedulers.Schedulers
+import org.signal.core.models.database.StickerRecord
 import org.signal.core.util.DrawableUtil
 import org.signal.core.util.StreamUtil
 import org.signal.core.util.Util
@@ -31,13 +32,13 @@ import org.signal.core.util.concurrent.MaybeCompat
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.dp
 import org.signal.core.util.logging.Log
+import org.signal.emoji.EmojiStrings
 import org.signal.paging.PagedData
 import org.signal.paging.PagingConfig
 import org.thoughtcrime.securesms.R
 import org.thoughtcrime.securesms.ShortcutLauncherActivity
 import org.thoughtcrime.securesms.attachments.TombstoneAttachment
 import org.thoughtcrime.securesms.avatar.fallback.FallbackAvatarDrawable
-import org.thoughtcrime.securesms.components.emoji.EmojiStrings
 import org.thoughtcrime.securesms.contactshare.Contact
 import org.thoughtcrime.securesms.contactshare.ContactUtil
 import org.thoughtcrime.securesms.conversation.ConversationMessage
@@ -62,7 +63,6 @@ import org.thoughtcrime.securesms.database.model.MessageId
 import org.thoughtcrime.securesms.database.model.MessageRecord
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord
 import org.thoughtcrime.securesms.database.model.ReactionRecord
-import org.thoughtcrime.securesms.database.model.StickerRecord
 import org.thoughtcrime.securesms.database.model.databaseprotos.BodyRangeList
 import org.thoughtcrime.securesms.database.model.databaseprotos.MessageExtras
 import org.thoughtcrime.securesms.database.model.databaseprotos.PinnedMessage
@@ -86,7 +86,6 @@ import org.thoughtcrime.securesms.mms.Slide
 import org.thoughtcrime.securesms.mms.SlideDeck
 import org.thoughtcrime.securesms.polls.Poll
 import org.thoughtcrime.securesms.profiles.spoofing.ReviewRecipient
-import org.thoughtcrime.securesms.providers.BlobProvider
 import org.thoughtcrime.securesms.recipients.Recipient
 import org.thoughtcrime.securesms.recipients.RecipientId
 import org.thoughtcrime.securesms.recipients.RecipientUtil
@@ -601,7 +600,7 @@ class ConversationRepository(
     return Single.fromCallable {
       val recipients = if (groupRecord == null) {
         listOf(recipient)
-      } else if (groupRecord.isV2Group) {
+      } else if (groupRecord.hasV2GroupProperties) {
         groupRecord.requireV2GroupProperties().getMemberRecipients(GroupTable.MemberSet.FULL_MEMBERS_EXCLUDING_SELF)
       } else {
         emptyList()
@@ -652,7 +651,7 @@ class ConversationRepository(
         }
       }
 
-      if (group != null && group.isV2Group) {
+      if (group != null && group.hasV2GroupProperties) {
         val groupId = group.id.requireV2()
         val duplicateRecipients: List<ReviewRecipient> = SignalDatabase.nameCollisions.getCollisionsForThreadRecipientId(group.recipientId)
 
@@ -681,7 +680,7 @@ class ConversationRepository(
         val thumbnailUri = thumbnailSlide.uri ?: return@fromCallable null
 
         val inputStream = PartAuthority.getAttachmentStream(applicationContext, thumbnailUri)
-        val tempUri = BlobProvider.getInstance().forData(inputStream, thumbnailSlide.fileSize)
+        val tempUri = AppDependencies.blobs.forData(inputStream, thumbnailSlide.fileSize)
           .withMimeType(thumbnailSlide.contentType)
           .createForSingleSessionOnDisk(applicationContext)
 
@@ -826,9 +825,9 @@ class ConversationRepository(
     SignalExecutors.BOUNDED_IO.execute {
       slides
         .mapNotNull(Slide::getUri)
-        .filter(BlobProvider::isAuthority)
+        .filter { AppDependencies.blobs.isAuthority(it) }
         .forEach {
-          BlobProvider.getInstance().delete(applicationContext, it)
+          AppDependencies.blobs.delete(applicationContext, it)
         }
     }
   }

@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.text.TextUtils
 import androidx.annotation.VisibleForTesting
 import androidx.sqlite.db.SupportSQLiteDatabase
+import org.signal.core.models.database.DatabaseId
 import org.signal.core.util.logging.Log
 import java.lang.Exception
 import java.util.LinkedList
@@ -141,6 +142,18 @@ object SqlUtil {
       }
     }
     return false
+  }
+
+  @JvmStatic
+  fun getAllColumns(db: SupportSQLiteDatabase, table: String): Set<String> {
+    val columns = mutableSetOf<String>()
+    db.query("PRAGMA table_info($table)", arrayOf()).use { cursor ->
+      val nameColumnIndex = cursor.getColumnIndexOrThrow("name")
+      while (cursor.moveToNext()) {
+        columns += cursor.getString(nameColumnIndex)
+      }
+    }
+    return columns
   }
 
   @JvmStatic

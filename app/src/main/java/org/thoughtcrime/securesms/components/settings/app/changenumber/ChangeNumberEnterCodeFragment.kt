@@ -30,6 +30,7 @@ import org.thoughtcrime.securesms.registration.fragments.ContactSupportBottomShe
 import org.thoughtcrime.securesms.registration.fragments.RegistrationViewDelegate
 import org.thoughtcrime.securesms.registration.fragments.SignalStrengthPhoneStateListener
 import org.thoughtcrime.securesms.registration.sms.ReceivedSmsEvent
+import org.thoughtcrime.securesms.util.SystemWindowInsetsSetter
 import org.thoughtcrime.securesms.util.concurrent.AssertedSuccessListener
 import org.thoughtcrime.securesms.util.navigation.safeNavigate
 import org.thoughtcrime.securesms.util.visible
@@ -56,6 +57,8 @@ class ChangeNumberEnterCodeFragment : LoggingFragment(R.layout.fragment_change_n
 
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     super.onViewCreated(view, savedInstanceState)
+    SystemWindowInsetsSetter.attach(view, viewLifecycleOwner, SystemWindowInsetsSetter.SAFE_AREA_WITH_KEYBOARD)
+
     val toolbar: Toolbar = view.findViewById(R.id.toolbar)
     toolbar.title = viewModel.number.fullFormattedNumber
     toolbar.setNavigationOnClickListener {
@@ -128,11 +131,14 @@ class ChangeNumberEnterCodeFragment : LoggingFragment(R.layout.fragment_change_n
     binding.codeEntryLayout.resendSmsCountDown.startCountDownTo(state.nextSmsTimestamp.milliseconds)
     binding.codeEntryLayout.callMeCountDown.startCountDownTo(state.nextCallTimestamp.milliseconds)
     when (val outcome = state.changeNumberOutcome) {
-      is ChangeNumberOutcome.RecoveryPasswordWorked,
-      is ChangeNumberOutcome.VerificationCodeWorked -> changeNumberSuccess()
+      is ChangeNumberOutcome.Succeeded -> changeNumberSuccess()
 
       is ChangeNumberOutcome.ChangeNumberRequestOutcome -> if (!state.inProgress && !outcome.result.isSuccess()) {
-        presentGenericError(outcome.result)
+        if (outcome.result is VerificationCodeRequestResult.RequestVerificationCodeRateLimited) {
+          Log.i(TAG, "Verification code request rate limited; staying on code entry screen.")
+        } else {
+          presentGenericError(outcome.result)
+        }
       }
 
       null -> Unit
@@ -158,6 +164,8 @@ class ChangeNumberEnterCodeFragment : LoggingFragment(R.layout.fragment_change_n
     when (result) {
       is VerificationCodeRequestResult.Success -> binding.codeEntryLayout.keyboard.displaySuccess()
       is VerificationCodeRequestResult.RateLimited -> presentRateLimitedDialog()
+      is VerificationCodeRequestResult.RequestVerificationCodeRateLimited -> presentRateLimitedDialog(retryAfterSeconds = (result.nextSmsTimestamp - System.currentTimeMillis().milliseconds).inWholeSeconds.coerceAtLeast(0))
+      is VerificationCodeRequestResult.SubmitVerificationCodeRateLimited -> presentRateLimitedDialog()
       is VerificationCodeRequestResult.RegistrationLocked -> presentRegistrationLocked(result.timeRemaining)
       else -> presentGenericError(result)
     }

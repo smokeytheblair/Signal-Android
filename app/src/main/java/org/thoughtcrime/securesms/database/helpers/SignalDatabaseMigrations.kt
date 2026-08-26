@@ -170,6 +170,14 @@ import org.thoughtcrime.securesms.database.helpers.migration.V314_FixMessageRequ
 import org.thoughtcrime.securesms.database.helpers.migration.V315_CleanupE164SenderKeyShared
 import org.thoughtcrime.securesms.database.helpers.migration.V316_AddVerifiedGroupNameHashMigration
 import org.thoughtcrime.securesms.database.helpers.migration.V317_AddMessageThreadDateReceivedUnreadIndex
+import org.thoughtcrime.securesms.database.helpers.migration.V318_AddMessageNotificationStateIndex
+import org.thoughtcrime.securesms.database.helpers.migration.V319_AddAttachmentAndMessageIndexes
+import org.thoughtcrime.securesms.database.helpers.migration.V320_AddAttachmentThumbnailFileAndUuidIndexes
+import org.thoughtcrime.securesms.database.helpers.migration.V321_AddScheduledMessageIndex
+import org.thoughtcrime.securesms.database.helpers.migration.V322_NormalizeStickerTable
+import org.thoughtcrime.securesms.database.helpers.migration.V323_AddStickerPackStorageSync
+import org.thoughtcrime.securesms.database.helpers.migration.V324_MoveGroupV1StorageIdsToUnknownIds
+import org.thoughtcrime.securesms.database.helpers.migration.V325_AddBlockedAtToRecipientTable
 import org.thoughtcrime.securesms.database.SQLiteDatabase as SignalSqliteDatabase
 
 /**
@@ -347,10 +355,18 @@ object SignalDatabaseMigrations {
     314 to V314_FixMessageRequestAcceptedToRecipient,
     315 to V315_CleanupE164SenderKeyShared,
     316 to V316_AddVerifiedGroupNameHashMigration,
-    317 to V317_AddMessageThreadDateReceivedUnreadIndex
+    317 to V317_AddMessageThreadDateReceivedUnreadIndex,
+    318 to V318_AddMessageNotificationStateIndex,
+    319 to V319_AddAttachmentAndMessageIndexes,
+    320 to V320_AddAttachmentThumbnailFileAndUuidIndexes,
+    321 to V321_AddScheduledMessageIndex,
+    322 to V322_NormalizeStickerTable,
+    323 to V323_AddStickerPackStorageSync,
+    324 to V324_MoveGroupV1StorageIdsToUnknownIds,
+    325 to V325_AddBlockedAtToRecipientTable
   )
 
-  const val DATABASE_VERSION = 317
+  const val DATABASE_VERSION = 325
 
   @JvmStatic
   fun migrate(context: Application, db: SignalSqliteDatabase, oldVersion: Int, newVersion: Int) {

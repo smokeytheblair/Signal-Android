@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.MultiplePermissionsState
@@ -113,7 +114,9 @@ private fun OnePaneLayout(
           Text(
             text = stringResource(id = R.string.GrantPermissionsFragment__allow_permissions),
             style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.fillMaxWidth().attachDebugLogHelper()
+            modifier = Modifier
+              .fillMaxWidth()
+              .attachDebugLogHelper()
           )
 
           Text(
@@ -131,7 +134,7 @@ private fun OnePaneLayout(
       PermissionButtons(
         onProceed = onProceed,
         permissionsState = permissionsState,
-        showElevation = scrollState.canScrollForward,
+        isElevated = scrollState.canScrollForward,
         modifier = Modifier.padding(params.footerPadding)
       )
     }
@@ -146,7 +149,8 @@ private fun TwoPaneLayout(
   permissionsState: MultiplePermissionsState,
   onProceed: () -> Unit
 ) {
-  val scrollState = rememberScrollState()
+  val firstPaneScrollState = rememberScrollState()
+  val secondPaneScrollState = rememberScrollState()
 
   TwoPaneRegistrationScaffold(
     modifier = modifier.fillMaxSize(),
@@ -156,17 +160,20 @@ private fun TwoPaneLayout(
         modifier = Modifier
           .weight(1f)
           .fillMaxHeight()
+          .verticalScroll(firstPaneScrollState)
           .padding(paddingValues)
       ) {
         Text(
           text = stringResource(id = R.string.GrantPermissionsFragment__allow_permissions),
-          style = MaterialTheme.typography.headlineMedium,
-          modifier = Modifier.fillMaxWidth().attachDebugLogHelper()
+          style = MaterialTheme.typography.headlineLarge,
+          modifier = Modifier
+            .fillMaxWidth()
+            .attachDebugLogHelper()
         )
 
         Text(
           text = stringResource(id = R.string.GrantPermissionsFragment__to_help_you_message_people_you_know),
-          style = MaterialTheme.typography.bodyLarge,
+          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
           modifier = Modifier.padding(top = 16.dp)
         )
@@ -177,7 +184,7 @@ private fun TwoPaneLayout(
         modifier = Modifier
           .weight(1f)
           .fillMaxHeight()
-          .verticalScroll(scrollState)
+          .verticalScroll(secondPaneScrollState)
           .padding(paddingValues)
       ) {
         PermissionList(permissions)
@@ -187,7 +194,7 @@ private fun TwoPaneLayout(
       PermissionButtons(
         onProceed = onProceed,
         permissionsState = permissionsState,
-        showElevation = scrollState.canScrollForward,
+        isElevated = firstPaneScrollState.canScrollForward || secondPaneScrollState.canScrollForward,
         modifier = Modifier.padding(params.footerPadding)
       )
     }
@@ -271,12 +278,11 @@ private fun PermissionRow(
 private fun PermissionButtons(
   onProceed: () -> Unit,
   permissionsState: MultiplePermissionsState,
-  showElevation: Boolean,
+  isElevated: Boolean,
   modifier: Modifier = Modifier
 ) {
-  Surface(
-    modifier = Modifier.fillMaxWidth(),
-    shadowElevation = if (showElevation) 8.dp else 0.dp
+  RegistrationScaffold.FooterSurface(
+    isElevated = isElevated
   ) {
     Row(
       horizontalArrangement = Arrangement.End,

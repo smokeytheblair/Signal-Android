@@ -14,7 +14,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import org.thoughtcrime.securesms.attachments.AttachmentId
+import org.signal.core.models.database.AttachmentId
 import org.thoughtcrime.securesms.attachments.Cdn
 import org.thoughtcrime.securesms.attachments.DatabaseAttachment
 import org.thoughtcrime.securesms.database.AttachmentTable
@@ -491,6 +491,7 @@ class AttachmentUtilTest {
       archiveCdn = null,
       thumbnailRestoreState = AttachmentTable.ThumbnailRestoreState.NONE,
       archiveTransferState = AttachmentTable.ArchiveTransferState.NONE,
+      archiveThumbnailTransferState = AttachmentTable.ArchiveTransferState.NONE,
       uuid = null,
       quoteTargetContentType = null,
       metadata = null
